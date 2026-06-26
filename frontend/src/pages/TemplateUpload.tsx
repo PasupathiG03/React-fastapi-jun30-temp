@@ -106,33 +106,46 @@ export default function TemplateUploadPage() {
 
   return (
     <div className="p-6 w-full space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-            style={{ background: "linear-gradient(135deg, #1d55e8, #1235b0)" }}
-          >
-            <UploadCloud className="w-5 h-5 text-white" />
+      {loading ? (
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gray-200 animate-pulse"></div>
+            <div className="space-y-2">
+              <div className="h-6 w-40 bg-gray-200 rounded animate-pulse"></div>
+              <div className="h-4 w-64 bg-gray-200 rounded animate-pulse"></div>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Template Upload</h1>
-            <p className="text-sm text-gray-500">Manage and upload templates for processing</p>
-          </div>
+          <div className="w-36 h-10 bg-gray-200 rounded-lg animate-pulse"></div>
         </div>
+      ) : (
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+              style={{ background: "linear-gradient(135deg, #1d55e8, #1235b0)" }}
+            >
+              <UploadCloud className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Template Upload</h1>
+              <p className="text-sm text-gray-500">Manage and upload templates for processing</p>
+            </div>
+          </div>
 
-        <button
-          onClick={() => {
-            setFile(null);
-            setError("");
-            setSuccess("");
-            setIsModalOpen(true);
-          }}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Upload Template
-        </button>
-      </div>
+          <button
+            onClick={() => {
+              setFile(null);
+              setError("");
+              setSuccess("");
+              setIsModalOpen(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Upload Template
+          </button>
+        </div>
+      )}
 
       {/* Templates List */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
