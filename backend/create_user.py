@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from app.core.database import Base, engine, SessionLocal
 from app.core.security import hash_password
 from app.models.user import User
+from app.models.role import Role
 
 
 def create_user(
