@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Users, Plus, Trash2, ToggleLeft, ToggleRight, X, Edit2, ShieldAlert } from "lucide-react";
 import { UserItem, fetchUsers, createUser, updateUser, deleteUser, UserCreatePayload } from "@/services/user";
 import { RoleItem, fetchRoles } from "@/services/role";
+import { createPortal } from "react-dom";
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState<UserItem[]>([]);
@@ -35,9 +36,10 @@ export default function UserManagementPage() {
         fetchRoles().catch(() => [] as RoleItem[])
       ]);
       setUsers(usersData);
+      setUsers(usersData);
       setRoles(rolesData.filter(r => r.is_active)); // Only active roles for assignment
-    } catch {
-      // silently fail — non-superusers get 403
+    } catch (err: any) {
+      setError(err.message || "Failed to load users");
     } finally {
       setLoadingUsers(false);
     }
@@ -169,8 +171,8 @@ export default function UserManagementPage() {
       )}
 
       {/* Create/Edit Form Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {isModalOpen && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
           <div className="bg-white rounded-2xl border border-gray-100 shadow-2xl w-full max-w-2xl overflow-visible">
             <div
               className="px-6 py-4 border-b border-gray-100 flex items-center justify-between rounded-t-2xl"
@@ -288,13 +290,21 @@ export default function UserManagementPage() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Success Message Banner */}
       {success && (
         <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-green-50 border border-green-100 text-sm text-green-700 shadow-sm">
           ✓ {success}
+        </div>
+      )}
+
+      {/* Error Message Banner (for data loading issues) */}
+      {error && !isModalOpen && (
+        <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-red-50 border border-red-100 text-sm text-red-600 shadow-sm">
+          ⚠️ {error}
         </div>
       )}
 

@@ -12,7 +12,9 @@ import {
   updateMenu,
   updateMenuOrders,
   type MenuItem,
+  type MenuUpdatePayload,
 } from "@/services/menu";
+import { createPortal } from "react-dom";
 
 function toSlug(name: string): string {
   return name
@@ -270,8 +272,8 @@ export default function MenuManagementPage() {
       )}
 
       {/* Create Form Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {isModalOpen && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
           <div className="bg-white rounded-2xl border border-gray-100 shadow-2xl w-full max-w-2xl overflow-visible">
             <div
               className="px-6 py-4 border-b border-gray-100 flex items-center justify-between rounded-t-2xl"
@@ -374,7 +376,8 @@ export default function MenuManagementPage() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Success Message Banner */}

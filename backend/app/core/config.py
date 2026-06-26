@@ -3,6 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "AI Report Platform"
+    DEBUG: bool = False
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/ai_report_db"
     SECRET_KEY: str = "change-me-in-production-use-a-long-random-string"
     ALGORITHM: str = "HS256"

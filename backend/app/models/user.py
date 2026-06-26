@@ -74,6 +74,7 @@ class AuditMixin:
         }
         if cls.__name__ == "User":
             kwargs["remote_side"] = "User.id"
+            kwargs["overlaps"] = "created_by"
         return relationship("User", **kwargs)
 
 

@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_db, get_superuser
+from app.core.dependencies import get_db, get_superuser, get_current_user
 from app.models.role import Role
 from app.schemas.role import RoleCreate, RoleOut, RoleUpdate
 
@@ -12,7 +12,7 @@ router = APIRouter()
 @router.get("/", response_model=List[RoleOut])
 def list_roles(
     db: Session = Depends(get_db),
-    _=Depends(get_superuser),
+    current_user=Depends(get_current_user),
 ):
     """List all active roles."""
     return db.query(Role).filter(Role.is_active == True).order_by(Role.id.desc()).all()

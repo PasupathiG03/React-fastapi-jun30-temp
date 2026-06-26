@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_db, get_superuser
+from app.core.dependencies import get_db, get_superuser, get_current_user
 from app.models.user import User
 from app.schemas.user import UserCreate, UserOut, UserUpdate
 from app.core.security import hash_password
@@ -15,7 +15,7 @@ DEFAULT_PASSWORD = "Admin@123#"
 @router.get("/", response_model=List[UserOut])
 def list_users(
     db: Session = Depends(get_db),
-    _=Depends(get_superuser),
+    current_user=Depends(get_current_user),
 ):
     """List all users (superusers only)."""
     return db.query(User).filter(User.is_active == True).order_by(User.id.desc()).all()

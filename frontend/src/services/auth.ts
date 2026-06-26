@@ -33,10 +33,32 @@ function extractErrorMessage(err: unknown): string {
     if (typeof detail === "string") return detail;
     if (Array.isArray(detail) && detail.length > 0) {
       const first = detail[0];
-      if (first && typeof first === "object" && "msg" in first) {
+    if (first && typeof first === "object" && "msg" in first) {
         return String((first as { msg: unknown }).msg);
       }
     }
   }
   return "Invalid username or password";
+}
+
+export interface ChangePasswordPayload {
+  old_password: string;
+  new_password: string;
+  confirm_password: string;
+}
+
+export async function changePasswordApi(payload: ChangePasswordPayload, token: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/api/auth/change-password`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(err));
+  }
 }

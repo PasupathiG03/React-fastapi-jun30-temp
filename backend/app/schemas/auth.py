@@ -45,3 +45,19 @@ class UserOut(BaseModel):
     is_superuser: bool
 
     model_config = {"from_attributes": True}
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+    confirm_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, v: str) -> str:
+        if len(v) < 6:
+            raise ValueError("Password must be at least 6 characters long")
+        if not re.search(r"[a-zA-Z]", v):
+            raise ValueError("Password must contain at least one alphabet character")
+        if not re.search(r"[^a-zA-Z0-9\s]", v):
+            raise ValueError("Password must contain at least one symbol")
+        return v

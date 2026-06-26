@@ -6,7 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { LayoutDashboard, LogOut, Users } from "lucide-react";
 import { Cog } from "flowbite-react-icons/outline";
-import { clearToken } from "@/lib/auth";
+import { clearToken, getToken } from "@/lib/auth";
+import { API_BASE_URL } from "@/lib/constants";
 import { ICON_MAP } from "@/lib/icons";
 import { fetchMenus, type MenuItem } from "@/services/menu";
 
@@ -25,8 +26,17 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
   const router = useRouter();
   const [dynamicMenus, setDynamicMenus] = useState<MenuItem[]>([]);
   const [fetching, setFetching] = useState(true);
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   useEffect(() => {
+    const token = getToken();
+    if (token) {
+      fetch(`${API_BASE_URL}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => data && setUserRole(data.role?.name))
+        .catch(() => {});
+    }
+
     fetchMenus()
       .then(setDynamicMenus)
       .catch(() => {})
@@ -217,7 +227,9 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
             )}
 
             {/* Static: Menu Management */}
-            <NavLink href="/menu-management" label="Menu Management" Icon={Cog} />
+            {userRole === "Developer" && (
+              <NavLink href="/menu-management" label="Menu Management" Icon={Cog} />
+            )}
           </>
         )}
       </nav>

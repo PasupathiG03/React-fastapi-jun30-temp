@@ -3,9 +3,10 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, get_db
-from app.core.security import create_access_token, verify_password
+from app.core.security import create_access_token, verify_password, hash_password
 from app.models.user import User
-from app.schemas.auth import LoginRequest, Token, UserOut
+from app.schemas.auth import LoginRequest, Token, ChangePasswordRequest
+from app.schemas.user import UserOut
 
 router = APIRouter()
 
@@ -36,3 +37,24 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 @router.get("/me", response_model=UserOut)
 def me(current_user: User = Depends(get_current_user)):
     return current_user
+
+@router.put("/change-password", status_code=status.HTTP_204_NO_CONTENT)
+def change_password(
+    payload: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if payload.new_password != payload.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Passwords do not match",
+        )
+    
+    if not verify_password(payload.old_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect old password",
+        )
+        
+    current_user.hashed_password = hash_password(payload.new_password)
+    db.commit()
