@@ -39,12 +39,11 @@ class AuditMixin:
     # names are scoped per-table (fk_<tablename>_created_by) instead of shared.
     @declared_attr
     def created_by_id(cls):
-        self_ref = cls.__tablename__ == "users"
         return Column(
             Integer,
             ForeignKey(
                 "users.id",
-                use_alter=self_ref,
+                use_alter=True,
                 name=f"fk_{cls.__tablename__}_created_by",
                 ondelete="SET NULL",
             ),
@@ -53,12 +52,11 @@ class AuditMixin:
 
     @declared_attr
     def updated_by_id(cls):
-        self_ref = cls.__tablename__ == "users"
         return Column(
             Integer,
             ForeignKey(
                 "users.id",
-                use_alter=self_ref,
+                use_alter=True,
                 name=f"fk_{cls.__tablename__}_updated_by",
                 ondelete="SET NULL",
             ),
