@@ -1,8 +1,6 @@
-"use client";
 
 import React, { useState } from "react";
-import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff, Loader2, CheckCircle2, User, Lock } from "lucide-react";
 import { loginApi } from "@/services/auth";
@@ -20,7 +18,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const router = useRouter();
+  const navigate = useNavigate();
 
   const toggleVisibility = () => setIsVisible(!isVisible);
 
@@ -32,7 +30,7 @@ export default function LoginPage() {
       const { access_token } = await loginApi({ employee_id: email, password });
       saveToken(access_token);
       setIsSuccess(true);
-      setTimeout(() => router.push("/dashboard"), 800);
+      setTimeout(() => navigate("/dashboard"), 800);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -144,14 +142,11 @@ export default function LoginPage() {
                 {/* Logo */}
                 <div className="flex flex-col items-center justify-center mb-6 gap-4">
                   <div className="w-[140px]">
-                    <Image
+                    <img
                       src="/assets/logo.png"
-                      unoptimized
                       alt="Platform Logo"
                       width={300}
                       height={100}
-                      loading="eager"
-                      priority
                       className="drop-shadow-lg brightness-0 invert w-full h-auto"
                     />
                   </div>

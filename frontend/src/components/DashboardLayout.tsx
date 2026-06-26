@@ -1,7 +1,6 @@
-"use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router-dom";
 import TopBar from "@/components/TopBar";
 import Sidebar from "@/components/Sidebar";
 import { isAuthenticated } from "@/lib/auth";
@@ -9,15 +8,15 @@ import { isAuthenticated } from "@/lib/auth";
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!isAuthenticated()) {
-      router.replace("/login");
+      navigate("/login");
       return;
     }
     setLoading(false);
-  }, [router]);
+  }, [navigate]);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">

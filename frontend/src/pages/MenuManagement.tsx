@@ -1,4 +1,3 @@
-"use client";
 
 import { useEffect, useRef, useState } from "react";
 import { Reorder } from "framer-motion";
@@ -125,6 +124,7 @@ export default function MenuManagementPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<MenuItem | null>(null);
 
   // Form state
   const [name, setName] = useState("");
@@ -196,11 +196,16 @@ export default function MenuManagementPage() {
     }
   }
 
-  async function handleDelete(menu: MenuItem) {
-    if (!confirm(`Delete "${menu.name}"?`)) return;
+  function handleDelete(menu: MenuItem) {
+    setItemToDelete(menu);
+  }
+
+  async function handleDeleteConfirm() {
+    if (!itemToDelete) return;
     try {
-      await deleteMenu(menu.id);
-      setMenus((prev) => prev.filter((m) => m.id !== menu.id));
+      await deleteMenu(itemToDelete.id);
+      setMenus((prev) => prev.filter((m) => m.id !== itemToDelete.id));
+      setItemToDelete(null);
     } catch {
       setError("Failed to delete menu");
     }
@@ -664,6 +669,42 @@ export default function MenuManagementPage() {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {itemToDelete && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <div 
+            className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity"
+            onClick={() => setItemToDelete(null)}
+          />
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col p-6">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Menu Item?</h3>
+              <p className="text-sm text-gray-500 mb-6">
+                Are you sure you want to permanently delete <span className="font-semibold text-gray-800">{itemToDelete.name}</span>? This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex gap-3 w-full">
+              <button
+                onClick={() => setItemToDelete(null)}
+                className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-sm"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

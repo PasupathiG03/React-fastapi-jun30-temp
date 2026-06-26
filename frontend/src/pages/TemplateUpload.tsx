@@ -1,8 +1,7 @@
-"use client";
 
 import { useEffect, useState, useRef } from "react";
 import { UploadCloud, FileType, CheckCircle2, AlertCircle, X, Plus, Trash2 } from "lucide-react";
-import { uploadTemplateApi, fetchTemplatesApi, TemplateItem } from "@/services/template";
+import { uploadTemplateApi, fetchTemplatesApi, deleteTemplateApi, TemplateItem } from "@/services/template";
 import { createPortal } from "react-dom";
 
 export default function TemplateUploadPage() {
@@ -10,6 +9,7 @@ export default function TemplateUploadPage() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [itemToDelete, setItemToDelete] = useState<TemplateItem | null>(null);
   const ITEMS_PER_PAGE = 10;
 
   // Upload modal state
@@ -93,8 +93,19 @@ export default function TemplateUploadPage() {
     }
   }
 
+  async function handleDeleteConfirm() {
+    if (!itemToDelete) return;
+    try {
+      await deleteTemplateApi(itemToDelete.id);
+      setItemToDelete(null);
+      loadTemplates();
+    } catch (err: any) {
+      alert(err.message || "Failed to delete template");
+    }
+  }
+
   return (
-    <div className="p-8 w-full space-y-6">
+    <div className="p-6 w-full space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div
@@ -165,6 +176,7 @@ export default function TemplateUploadPage() {
                   <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Upload Date</th>
                   <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Uploaded By</th>
                   <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Size</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -197,6 +209,15 @@ export default function TemplateUploadPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">{(tpl.size / 1024 / 1024).toFixed(2)} MB</td>
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        onClick={() => setItemToDelete(tpl)}
+                        className="p-1.5 text-red-500 hover:bg-red-100 rounded-lg transition-colors"
+                        title="Delete Template"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -364,6 +385,42 @@ export default function TemplateUploadPage() {
               >
                 <UploadCloud className="w-4 h-4" />
                 {uploading ? "Uploading..." : "Upload Template"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {itemToDelete && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <div 
+            className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity"
+            onClick={() => setItemToDelete(null)}
+          />
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col p-6">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Template?</h3>
+              <p className="text-sm text-gray-500 mb-6">
+                Are you sure you want to permanently delete <span className="font-semibold text-gray-800">{itemToDelete.filename}</span>? This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex gap-3 w-full">
+              <button
+                onClick={() => setItemToDelete(null)}
+                className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-sm"
+              >
+                Delete
               </button>
             </div>
           </div>

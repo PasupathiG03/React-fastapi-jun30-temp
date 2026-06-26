@@ -1,8 +1,6 @@
-"use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { LayoutDashboard, LogOut, Users } from "lucide-react";
 import { Cog } from "flowbite-react-icons/outline";
@@ -22,8 +20,9 @@ interface Props {
 }
 
 export default function Sidebar({ collapsed, loading = false }: Props) {
-  const pathname = usePathname();
-  const router = useRouter();
+  const location = useLocation();
+  const pathname = location.pathname;
+  const navigate = useNavigate();
   const [dynamicMenus, setDynamicMenus] = useState<MenuItem[]>([]);
   const [fetching, setFetching] = useState(true);
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -45,7 +44,7 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
 
   function handleLogout() {
     clearToken();
-    router.push("/login");
+    navigate("/login");
   }
 
   function NavLink({
@@ -60,7 +59,7 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
     const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
     return (
       <Link
-        href={href}
+        to={href}
         title={collapsed ? label : undefined}
         className={`flex items-center mx-2 px-3 py-2.5 rounded-lg mb-0.5 transition-all text-sm font-medium
           ${collapsed ? "justify-center gap-0" : "gap-3"}

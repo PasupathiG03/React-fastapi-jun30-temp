@@ -50,3 +50,19 @@ export async function fetchTemplatesApi(): Promise<TemplateItem[]> {
 
   return res.json();
 }
+
+export async function deleteTemplateApi(id: number): Promise<void> {
+  const token = getToken();
+  const response = await fetch(`${API_BASE_URL}/api/templates/${id}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || "Failed to delete template");
+  }
+}
+

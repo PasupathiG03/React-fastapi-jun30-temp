@@ -1,4 +1,3 @@
-"use client";
 
 import { useEffect, useState } from "react";
 import { FileText, BarChart2, BookOpen, Users, TrendingUp, Clock, ArrowUpRight } from "lucide-react";

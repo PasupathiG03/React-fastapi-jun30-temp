@@ -86,3 +86,31 @@ async def upload_template(
     db.refresh(db_template)
 
     return db_template
+
+@router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_template(
+    template_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Permanently delete a template from the database and the filesystem.
+    """
+    db_template = db.query(Template).filter(Template.id == template_id).first()
+    if not db_template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    # Delete physical file
+    file_path = BASE_DIR / db_template.path
+    if file_path.exists():
+        try:
+            os.remove(file_path)
+        except Exception as e:
+            # If we can't delete the file, we might want to log it but still delete DB record
+            # Or raise 500. Let's raise 500 for safety.
+            raise HTTPException(status_code=500, detail=f"Could not delete physical file: {str(e)}")
+
+    # Delete DB record
+    db.delete(db_template)
+    db.commit()
+    return None

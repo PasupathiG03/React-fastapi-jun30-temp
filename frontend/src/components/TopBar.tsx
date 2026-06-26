@@ -1,8 +1,6 @@
-"use client";
 
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router-dom";
 import { ChevronDown, ChevronLeft, ChevronRight, LogOut, Key, X } from "lucide-react";
 import { API_BASE_URL } from "@/lib/constants";
 import { clearToken, getToken } from "@/lib/auth";
@@ -30,7 +28,7 @@ export default function TopBar({ collapsed, onToggle, loading = false }: Props) 
   const [passwordLoading, setPasswordLoading] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
-  const router = useRouter();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const token = getToken();
@@ -56,7 +54,7 @@ export default function TopBar({ collapsed, onToggle, loading = false }: Props) 
 
   function handleLogout() {
     clearToken();
-    router.push("/login");
+    navigate("/login");
   }
 
   async function handleChangePassword(e: React.FormEvent) {
@@ -107,13 +105,12 @@ export default function TopBar({ collapsed, onToggle, loading = false }: Props) 
         {loading ? (
           <div className="h-8 w-28 bg-white/30 rounded-lg animate-pulse" />
         ) : (
-          <Image
+          <img
             src="/assets/logo.png"
             alt="Logo"
             width={110}
             height={36}
             className="h-8 w-auto object-contain brightness-0 invert"
-            priority
           />
         )}
       </div>
