@@ -11,7 +11,8 @@ from app.core.config import settings
 from app.core.database import Base
 
 # Import all models so Alembic can detect them for autogenerate
-import app.models.user  # noqa: F401
+import app.models.user   # noqa: F401
+import app.models.menu   # noqa: F401
 
 config = context.config
 

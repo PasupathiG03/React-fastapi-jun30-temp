@@ -16,8 +16,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       router.replace("/login");
       return;
     }
-    const t = setTimeout(() => setLoading(false), 1000);
-    return () => clearTimeout(t);
+    setLoading(false);
   }, [router]);
 
   return (

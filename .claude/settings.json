@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "WebFetch(domain:flowbite.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "Bash(npm show *)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(d.get\\('description',''\\)\\); print\\(d.get\\('homepage',''\\)\\)\")",
+      "Bash(curl -s \"https://registry.npmjs.org/flowbite/latest\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('version:', d.get\\('version'\\)\\); print\\('main:', d.get\\('main'\\)\\); print\\('files:', d.get\\('files',''\\)[:5] if d.get\\('files'\\) else ''\\)\")",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "Read(//tmp/**)",
+      "Bash(npm pack *)",
+      "Bash(tar -tzf flowbite-react-icons-1.3.1.tgz)",
+      "Bash(tar -xzf flowbite-react-icons-1.3.1.tgz package/dist/esm/icons/outline/index.mjs)",
+      "Bash(npm install *)",
+      "Bash(node -e \"const icons = require\\('flowbite-react-icons/outline'\\); console.log\\(Object.keys\\(icons\\).slice\\(0,5\\)\\)\")",
+      "Bash(./node_modules/.bin/tsc --noEmit)"
+    ]
+  }
+}

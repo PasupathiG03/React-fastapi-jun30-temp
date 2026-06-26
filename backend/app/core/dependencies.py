@@ -19,7 +19,7 @@ def get_db() -> Generator:
         db.close()
 
 
-def get_current_user(
+async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ):
