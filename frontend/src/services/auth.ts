@@ -19,8 +19,24 @@ export async function loginApi(payload: LoginPayload): Promise<TokenResponse> {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err?.detail ?? "Login failed");
+    throw new Error(extractErrorMessage(err));
   }
 
   return res.json();
+}
+
+/** FastAPI returns `detail` as a string (HTTPException) or an array of
+ *  validation errors (422). Normalize both into a readable message. */
+function extractErrorMessage(err: unknown): string {
+  if (err && typeof err === "object" && "detail" in err) {
+    const detail = (err as { detail: unknown }).detail;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail) && detail.length > 0) {
+      const first = detail[0];
+      if (first && typeof first === "object" && "msg" in first) {
+        return String((first as { msg: unknown }).msg);
+      }
+    }
+  }
+  return "Invalid username or password";
 }

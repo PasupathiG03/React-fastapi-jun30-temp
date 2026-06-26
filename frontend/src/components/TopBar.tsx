@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronDown, ChevronLeft, ChevronRight, LogOut } from "lucide-react";
 import { API_BASE_URL } from "@/lib/constants";
-import { getToken } from "@/lib/auth";
+import { clearToken, getToken } from "@/lib/auth";
 
 interface Props {
   collapsed: boolean;
@@ -19,6 +20,9 @@ interface UserInfo {
 
 export default function TopBar({ collapsed, onToggle, loading = false }: Props) {
   const [user, setUser] = useState<UserInfo | null>(null);
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
 
   useEffect(() => {
     const token = getToken();
@@ -30,6 +34,22 @@ export default function TopBar({ collapsed, onToggle, loading = false }: Props) 
       .then((data) => data && setUser(data))
       .catch(() => {});
   }, []);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  function handleLogout() {
+    clearToken();
+    router.push("/login");
+  }
 
   const initials = user?.employee_name
     ? user.employee_name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()
@@ -81,16 +101,38 @@ export default function TopBar({ collapsed, onToggle, loading = false }: Props) 
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-white/20 border border-white/30 flex items-center justify-center text-white text-xs font-bold shrink-0">
-              {initials}
-            </div>
-            <div className="hidden md:block">
-              <p className="text-sm font-medium text-white leading-tight">
-                {user?.employee_name ?? user?.employee_id ?? "User"}
-              </p>
-              <p className="text-xs text-white/60 leading-tight">{user?.employee_id}</p>
-            </div>
+          <div className="relative" ref={menuRef}>
+            {/* Profile trigger */}
+            <button
+              onClick={() => setOpen((o) => !o)}
+              className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-white/10 transition-colors"
+            >
+              <div className="w-8 h-8 rounded-full bg-white/20 border border-white/30 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                {initials}
+              </div>
+              <div className="hidden md:block text-left">
+                <p className="text-sm font-medium text-white leading-tight">
+                  {user?.employee_name ?? user?.employee_id ?? "User"}
+                </p>
+                <p className="text-xs text-white/60 leading-tight">{user?.employee_id}</p>
+              </div>
+              <ChevronDown
+                className={`w-4 h-4 text-white/70 transition-transform ${open ? "rotate-180" : ""}`}
+              />
+            </button>
+
+            {/* Dropdown */}
+            {open && (
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden z-50">
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Logout
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

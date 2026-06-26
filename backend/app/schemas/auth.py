@@ -1,8 +1,10 @@
 from pydantic import BaseModel, field_validator
 import re
 
+# Case-insensitive so users can type "mah001" or "MAH001"
 _EMPLOYEE_ID_RE = re.compile(
-    r'^(MAH[a-zA-Z0-9]+|MNW[a-zA-Z0-9]+|[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)$'
+    r'^(MAH[a-zA-Z0-9]+|MNW[a-zA-Z0-9]+|[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)$',
+    re.IGNORECASE,
 )
 
 
@@ -13,11 +15,15 @@ class LoginRequest(BaseModel):
     @field_validator("employee_id")
     @classmethod
     def validate_employee_id(cls, v: str) -> str:
+        v = v.strip()
         if not _EMPLOYEE_ID_RE.match(v):
             raise ValueError(
                 "Employee ID must start with 'MAH' or 'MNW' followed by "
                 "alphanumeric characters, or be a valid email address."
             )
+        # Normalize MAH/MNW IDs to uppercase so login matches stored value
+        if v[:3].upper() in ("MAH", "MNW"):
+            v = v.upper()
         return v
 
 

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, get_db
@@ -11,9 +12,13 @@ router = APIRouter()
 
 @router.post("/login", response_model=Token)
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
+    # Case-insensitive match so "mah001" finds stored "MAH001"
     user: User | None = (
         db.query(User)
-        .filter(User.employee_id == payload.employee_id, User.is_active == True)
+        .filter(
+            func.lower(User.employee_id) == payload.employee_id.lower(),
+            User.is_active == True,
+        )
         .first()
     )
 

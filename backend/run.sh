@@ -17,11 +17,11 @@ MODE="${1:-dev}"
 case "$MODE" in
   dev)
     echo "[+] Starting FastAPI in development mode (auto-reload)..."
-    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    uvicorn app.main:app --host 0.0.0.0 --port 8107 --reload
     ;;
   prod)
     echo "[+] Starting FastAPI in production mode..."
-    uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+    uvicorn app.main:app --host 0.0.0.0 --port 8107 --workers 4
     ;;
   *)
     echo "Usage: $0 {dev|prod}"
