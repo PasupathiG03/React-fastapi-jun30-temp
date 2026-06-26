@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Reorder } from "framer-motion";
-import { ChevronDown, Plus, Trash2, ToggleLeft, ToggleRight, X, GripVertical, Copy, CheckCircle2 } from "lucide-react";
+import { ChevronDown, Plus, Trash2, ToggleLeft, ToggleRight, X, GripVertical, Copy, CheckCircle2, Download, Upload } from "lucide-react";
 import { Cog } from "flowbite-react-icons/outline";
 import { ICON_MAP, ICON_OPTIONS } from "@/lib/icons";
 import {
@@ -232,6 +232,63 @@ export default function MenuManagementPage() {
     }
   }
 
+  // ── Export menus as JSON ──────────────────────────────────────────────────
+  function handleExport() {
+    const exportData = menus.map(({ name, icon, url, order, is_active }) => ({
+      name,
+      icon,
+      url,
+      order,
+      is_active,
+    }));
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+    const link = window.document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `menu-config-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  // ── Import menus from JSON ────────────────────────────────────────────────
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) throw new Error("Invalid format: expected an array");
+
+      setSubmitting(true);
+      setError("");
+      let imported = 0;
+      for (const item of parsed) {
+        if (!item.name || !item.icon || !item.url) continue;
+        try {
+          const created = await createMenu({
+            name: item.name,
+            icon: item.icon,
+            url: item.url,
+            order: item.order ?? 0,
+          });
+          setMenus((prev) => [...prev, created].sort((a, b) => a.order - b.order || a.id - b.id));
+          imported++;
+        } catch {
+          // skip duplicates / invalid items
+        }
+      }
+      setSuccess(`Successfully imported ${imported} menu item${imported !== 1 ? "s" : ""}`);
+      setTimeout(() => setSuccess(""), 4000);
+      loadMenus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to import JSON");
+    } finally {
+      setSubmitting(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  }
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Header */}
@@ -260,14 +317,42 @@ export default function MenuManagementPage() {
               <p className="text-sm text-gray-500">Add and manage sidebar navigation items</p>
             </div>
           </div>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 text-white rounded-lg text-sm font-medium hover:shadow-md hover:opacity-90 transition-all shadow-sm"
-            style={{ background: "linear-gradient(135deg, #1d55e8, #1235b0)" }}
-          >
-            <Plus className="w-4 h-4" />
-            Add Menu Item
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Hidden file input for import */}
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={handleImport}
+            />
+            {/* Export Button */}
+            <button
+              onClick={handleExport}
+              disabled={menus.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Download className="w-4 h-4 text-gray-500" />
+              Export
+            </button>
+            {/* Import Button */}
+            <button
+              onClick={() => importInputRef.current?.click()}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
+            >
+              <Upload className="w-4 h-4 text-gray-500" />
+              Import
+            </button>
+            {/* Add Menu Item */}
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 text-white rounded-lg text-sm font-medium hover:shadow-md hover:opacity-90 transition-all shadow-sm"
+              style={{ background: "linear-gradient(135deg, #1d55e8, #1235b0)" }}
+            >
+              <Plus className="w-4 h-4" />
+              Add Menu Item
+            </button>
+          </div>
         </div>
       )}
 
