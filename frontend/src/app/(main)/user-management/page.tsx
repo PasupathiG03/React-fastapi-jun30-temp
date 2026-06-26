@@ -129,7 +129,7 @@ export default function UserManagementPage() {
   const paginatedUsers = users.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
+    <div className="p-6 w-full space-y-6">
       {/* Header */}
       {loadingUsers ? (
         <div className="flex items-center justify-between animate-pulse">
