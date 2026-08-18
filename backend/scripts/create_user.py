@@ -1,12 +1,12 @@
 """
 Run from the backend/ directory:
-    python create_user.py
+    python scripts/create_user.py
 """
 
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.core.database import Base, engine, SessionLocal
 from app.core.security import hash_password

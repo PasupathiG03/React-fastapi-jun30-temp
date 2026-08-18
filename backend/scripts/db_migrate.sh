@@ -2,7 +2,8 @@
 
 set -e
 
-BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
+BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$BASE_DIR"
 VENV="$BASE_DIR/env/bin/activate"
 
 if [ ! -f "$VENV" ]; then
