@@ -1,7 +1,7 @@
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.dependencies import get_current_user, get_db, get_superuser
 from app.models.menu import Menu
@@ -25,11 +25,16 @@ def list_menus(
 
 @router.get("/all", response_model=List[MenuOut])
 def list_all_menus(
+    process_id: Optional[int] = None,
     db: Session = Depends(get_db),
     _=Depends(get_superuser),
 ):
-    """Return all menus including inactive ones (superuser only)."""
-    return db.query(Menu).filter(Menu.status == False).order_by(Menu.order, Menu.id).all()
+    """Return all menus including inactive ones (superuser only), optionally
+    scoped to a single process (screens shown per-process in Menu Management)."""
+    query = db.query(Menu).options(joinedload(Menu.process)).filter(Menu.status == False)
+    if process_id is not None:
+        query = query.filter(Menu.process_id == process_id)
+    return query.order_by(Menu.order, Menu.id).all()
 
 
 @router.post("/", response_model=MenuOut, status_code=status.HTTP_201_CREATED)

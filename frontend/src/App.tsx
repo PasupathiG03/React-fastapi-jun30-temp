@@ -5,8 +5,7 @@ import Dashboard from "./pages/Dashboard";
 import UserManagement from "./pages/UserManagement";
 import RoleManagement from "./pages/RoleManagement";
 import MenuManagement from "./pages/MenuManagement";
-import TemplateUpload from "./pages/TemplateUpload";
-import DocsUpload from "./pages/DocsUpload";
+import WorkflowManagement from "./pages/WorkflowManagement";
 
 export default function App() {
   return (
@@ -19,8 +18,7 @@ export default function App() {
         <Route path="/user-management" element={<DashboardLayout><UserManagement /></DashboardLayout>} />
         <Route path="/role-management" element={<DashboardLayout><RoleManagement /></DashboardLayout>} />
         <Route path="/menu-management" element={<DashboardLayout><MenuManagement /></DashboardLayout>} />
-        <Route path="/template-upload" element={<DashboardLayout><TemplateUpload /></DashboardLayout>} />
-        <Route path="/docs-upload" element={<DashboardLayout><DocsUpload /></DashboardLayout>} />
+        <Route path="/workflow-management" element={<DashboardLayout><WorkflowManagement /></DashboardLayout>} />
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

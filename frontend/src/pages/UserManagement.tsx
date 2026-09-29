@@ -19,7 +19,7 @@ export default function UserManagementPage() {
   const [employeeName, setEmployeeName] = useState("");
   const [location, setLocation] = useState("");
   const [roleId, setRoleId] = useState<number | "">("");
-  
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -30,12 +30,10 @@ export default function UserManagementPage() {
 
   async function loadUsers() {
     try {
-      await new Promise(r => setTimeout(r, 600)); // Show skeleton loader
       const [usersData, rolesData] = await Promise.all([
         fetchUsers(),
-        fetchRoles().catch(() => [] as RoleItem[])
+        fetchRoles().catch(() => [] as RoleItem[]),
       ]);
-      setUsers(usersData);
       setUsers(usersData);
       setRoles(rolesData.filter(r => r.is_active)); // Only active roles for assignment
     } catch (err: any) {

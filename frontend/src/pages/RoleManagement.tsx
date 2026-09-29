@@ -25,7 +25,6 @@ export default function RoleManagementPage() {
 
   async function loadRoles() {
     try {
-      await new Promise(r => setTimeout(r, 600)); // Show skeleton loader
       const data = await fetchRoles();
       setRoles(data);
     } catch {

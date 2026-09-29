@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Eye, EyeOff, Loader2, CheckCircle2, User, Lock } from "lucide-react";
+import { Eye, EyeOff, Loader2, CheckCircle2, AlertCircle, User, Lock, type LucideIcon } from "lucide-react";
 import { loginApi } from "@/services/auth";
 import { saveToken } from "@/lib/auth";
 
@@ -10,6 +10,71 @@ const float = (y: number[], duration: number, delay = 0) => ({
   animate: { y },
   transition: { duration, delay, repeat: Infinity, ease: "easeInOut" as const },
 });
+
+interface FloatingFieldProps {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+  autoFocus?: boolean;
+  disabled?: boolean;
+  invalid?: boolean;
+  rightElement?: React.ReactNode;
+}
+
+function FloatingField({
+  id,
+  label,
+  icon: Icon,
+  value,
+  onChange,
+  type = "text",
+  autoFocus,
+  disabled,
+  invalid,
+  rightElement,
+}: FloatingFieldProps) {
+  const filled = value.length > 0;
+  return (
+    <div className="relative mt-2 group">
+      <Icon className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none z-20 transition-colors group-focus-within:text-white/80" />
+      <input
+        id={id}
+        required
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        autoFocus={autoFocus}
+        disabled={disabled}
+        aria-invalid={invalid}
+        className={`w-full bg-transparent pl-11 py-3 text-white placeholder-transparent focus:outline-none relative z-10 disabled:opacity-60 ${rightElement ? "pr-12" : "pr-4"}`}
+        placeholder={label}
+      />
+      <label
+        htmlFor={id}
+        className={`absolute transition-all duration-200 pointer-events-none z-20 font-medium
+          ${filled ? "-top-2.5 left-3 text-xs text-white/90" : "top-3.5 left-11 text-sm text-white/50 group-focus-within:-top-2.5 group-focus-within:left-3 group-focus-within:text-xs group-focus-within:text-white/90"}`}
+      >
+        {label}
+      </label>
+      <fieldset
+        aria-hidden="true"
+        className={`absolute inset-0 rounded-lg border bg-white/10 pointer-events-none transition-all group-focus-within:bg-white/15 m-0 p-0
+          ${invalid ? "border-red-300/70" : "border-white/30 group-focus-within:border-white/80"}`}
+      >
+        <legend
+          className={`invisible h-0 transition-[max-width] duration-300 whitespace-nowrap overflow-hidden
+            ${filled ? "max-w-[65px] ml-2 px-1" : "max-w-0 ml-2 px-0 group-focus-within:max-w-[65px] group-focus-within:px-1"}`}
+        >
+          <span className="text-xs font-medium">{label}</span>
+        </legend>
+      </fieldset>
+      {rightElement}
+    </div>
+  );
+}
 
 export default function LoginPage() {
   const [isVisible, setIsVisible] = useState(false);
@@ -156,80 +221,77 @@ export default function LoginPage() {
 
 
                 <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-                  {/* Username */}
-                  <div className="relative mt-2 group">
-                    <User className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none z-20 transition-colors group-focus-within:text-white/80" />
-                    <input
-                      id="email"
-                      required
-                      type="text"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full bg-transparent pl-11 pr-4 py-3 text-white placeholder-transparent focus:outline-none relative z-10"
-                      placeholder="Username"
-                    />
-                    <label 
-                      htmlFor="email"
-                      className={`absolute transition-all duration-200 pointer-events-none z-20 font-medium
-                        ${email ? '-top-2.5 left-3 text-xs text-white/90' : 'top-3.5 left-11 text-sm text-white/50 group-focus-within:-top-2.5 group-focus-within:left-3 group-focus-within:text-xs group-focus-within:text-white/90'}`}
-                    >
-                      Username
-                    </label>
-                    <fieldset aria-hidden="true" className="absolute inset-0 rounded-lg border border-white/30 bg-white/10 pointer-events-none transition-all group-focus-within:border-white/80 group-focus-within:bg-white/15 m-0 p-0">
-                      <legend className={`invisible h-0 transition-[max-width] duration-300 whitespace-nowrap overflow-hidden
-                        ${email ? 'max-w-[65px] ml-2 px-1' : 'max-w-0 ml-2 px-0 group-focus-within:max-w-[65px] group-focus-within:px-1'}`}>
-                        <span className="text-xs font-medium">Username</span>
-                      </legend>
-                    </fieldset>
-                  </div>
+                  <FloatingField
+                    id="email"
+                    label="Username"
+                    icon={User}
+                    value={email}
+                    onChange={(v) => {
+                      setEmail(v);
+                      if (error) setError(null);
+                    }}
+                    autoFocus
+                    disabled={isLoading}
+                    invalid={!!error}
+                  />
 
-                  {/* Password */}
-                  <div className="relative mt-2 group">
-                    <Lock className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none z-20 transition-colors group-focus-within:text-white/80" />
-                    <input
-                      id="password"
-                      required
-                      type={isVisible ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full bg-transparent pl-11 pr-12 py-3 text-white placeholder-transparent focus:outline-none relative z-10"
-                      placeholder="Password"
-                    />
-                    <label 
-                      htmlFor="password"
-                      className={`absolute transition-all duration-200 pointer-events-none z-20 font-medium
-                        ${password ? '-top-2.5 left-3 text-xs text-white/90' : 'top-3.5 left-11 text-sm text-white/50 group-focus-within:-top-2.5 group-focus-within:left-3 group-focus-within:text-xs group-focus-within:text-white/90'}`}
-                    >
-                      Password
-                    </label>
-                    <fieldset aria-hidden="true" className="absolute inset-0 rounded-lg border border-white/30 bg-white/10 pointer-events-none transition-all group-focus-within:border-white/80 group-focus-within:bg-white/15 m-0 p-0">
-                      <legend className={`invisible h-0 transition-[max-width] duration-300 whitespace-nowrap overflow-hidden
-                        ${password ? 'max-w-[65px] ml-2 px-1' : 'max-w-0 ml-2 px-0 group-focus-within:max-w-[65px] group-focus-within:px-1'}`}>
-                        <span className="text-xs font-medium">Password</span>
-                      </legend>
-                    </fieldset>
-                    <button
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition-colors z-20"
-                      type="button"
-                      onClick={toggleVisibility}
-                      aria-label="toggle password visibility"
-                    >
-                      {isVisible ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
+                  <FloatingField
+                    id="password"
+                    label="Password"
+                    icon={Lock}
+                    type={isVisible ? "text" : "password"}
+                    value={password}
+                    onChange={(v) => {
+                      setPassword(v);
+                      if (error) setError(null);
+                    }}
+                    disabled={isLoading}
+                    invalid={!!error}
+                    rightElement={
+                      <button
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition-colors z-20"
+                        type="button"
+                        onClick={toggleVisibility}
+                        tabIndex={-1}
+                        aria-label={isVisible ? "Hide password" : "Show password"}
+                      >
+                        {isVisible ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                      </button>
+                    }
+                  />
 
                   {/* Error */}
-                  {error && (
-                    <p className="text-sm text-red-300 text-center -mt-1">{error}</p>
-                  )}
+                  <AnimatePresence>
+                    {error && (
+                      <motion.div
+                        role="alert"
+                        aria-live="polite"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto", x: [0, -6, 6, -4, 4, 0] }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ x: { duration: 0.35 } }}
+                        className="flex items-center gap-2 bg-red-500/15 border border-red-300/40 rounded-lg px-3 py-2 -mt-1 overflow-hidden"
+                      >
+                        <AlertCircle className="w-4 h-4 text-red-300 shrink-0" />
+                        <p className="text-sm text-red-200">{error}</p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
                   {/* Sign In */}
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="w-full flex items-center justify-center bg-white hover:bg-white/90 text-[#1d55e8] font-semibold py-3 rounded-lg transition-all hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-80 disabled:cursor-not-allowed shadow-lg mt-2"
+                    className="w-full flex items-center justify-center gap-2 bg-white hover:bg-white/90 text-[#1d55e8] font-semibold py-3 rounded-lg transition-all hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-80 disabled:cursor-not-allowed disabled:hover:translate-y-0 shadow-lg mt-2"
                   >
-                    {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Sign in"}
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Signing in...
+                      </>
+                    ) : (
+                      "Sign in"
+                    )}
                   </button>
 
                   <div className="text-center text-xs text-white/60 mt-4 tracking-wide">

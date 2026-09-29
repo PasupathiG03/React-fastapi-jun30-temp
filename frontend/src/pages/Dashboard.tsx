@@ -1,19 +1,23 @@
 
 import { useEffect, useState } from "react";
-import { FileText, BarChart2, BookOpen, Users, TrendingUp, Clock, ArrowUpRight } from "lucide-react";
+import { BarChart2, Clock, Shield, TrendingUp, UserCheck, Users, Workflow, ArrowUpRight } from "lucide-react";
+import { fetchUsers } from "@/services/user";
+import { fetchRoles } from "@/services/role";
+import { fetchWorkflows } from "@/services/workflow";
 
-const STATS = [
-  { label: "Total Documents", icon: FileText,  iconColor: "#1d55e8", bg: "#eff3fe" },
-  { label: "Total Reports",   icon: BarChart2, iconColor: "#0ea575", bg: "#ecfdf5" },
-  { label: "Templates",       icon: BookOpen,  iconColor: "#f59e0b", bg: "#fffbeb" },
-  { label: "Active Users",    icon: Users,     iconColor: "#8b5cf6", bg: "#f5f3ff" },
-];
+interface Stat {
+  label: string;
+  value: number;
+  icon: typeof Users;
+  iconColor: string;
+  bg: string;
+}
 
 const QUICK_ACTIONS = [
-  { label: "Upload Document", href: "/dashboard/documents" },
-  { label: "Generate Report", href: "/dashboard/reports"   },
-  { label: "New Template",    href: "/dashboard/templates" },
-  { label: "Open Chat",       href: "/dashboard/chat"      },
+  { label: "Manage Users",     href: "/user-management"     },
+  { label: "Manage Roles",     href: "/role-management"     },
+  { label: "Manage Menus",     href: "/menu-management"     },
+  { label: "Manage Workflows", href: "/workflow-management" },
 ];
 
 function StatCardSkeleton() {
@@ -75,45 +79,63 @@ function ActivitySkeleton() {
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<Stat[]>([]);
 
   useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 1200);
-    return () => clearTimeout(t);
+    loadStats();
   }, []);
+
+  async function loadStats() {
+    const [usersResult, rolesResult, workflowsResult] = await Promise.allSettled([
+      fetchUsers(),
+      fetchRoles(),
+      fetchWorkflows(),
+    ]);
+
+    const users = usersResult.status === "fulfilled" ? usersResult.value : [];
+    const roles = rolesResult.status === "fulfilled" ? rolesResult.value : [];
+    const workflows = workflowsResult.status === "fulfilled" ? workflowsResult.value : [];
+
+    setStats([
+      { label: "Total Users", value: users.length, icon: Users, iconColor: "#1d55e8", bg: "#eff3fe" },
+      {
+        label: "Active Users",
+        value: users.filter((u) => u.is_active).length,
+        icon: UserCheck,
+        iconColor: "#0ea575",
+        bg: "#ecfdf5",
+      },
+      { label: "Total Roles", value: roles.length, icon: Shield, iconColor: "#f59e0b", bg: "#fffbeb" },
+      { label: "Total Workflows", value: workflows.length, icon: Workflow, iconColor: "#8b5cf6", bg: "#f5f3ff" },
+    ]);
+    setLoading(false);
+  }
 
   return (
     <div className="space-y-6">
       {/* Welcome */}
-      {loading ? (
-        <div className="rounded-2xl p-6 animate-pulse bg-gray-200">
-          <div className="h-3.5 w-24 bg-gray-300 rounded mb-3" />
-          <div className="h-7 w-52 bg-gray-300 rounded mb-3" />
-          <div className="h-3.5 w-80 bg-gray-300 rounded" />
-        </div>
-      ) : (
-        <div
-          className="rounded-2xl p-6 text-white"
-          style={{ background: "linear-gradient(135deg, #1d55e8 0%, #1235b0 100%)" }}
-        >
-          <p className="text-blue-200 text-sm font-medium mb-1">Welcome back</p>
-          <h2 className="text-2xl font-bold">AI Report Platform</h2>
-          <p className="text-blue-200 text-sm mt-1">
-            Upload documents, generate AI-powered reports, and export with ease.
-          </p>
-        </div>
-      )}
+      <div
+        className="rounded-2xl p-6 text-white"
+        style={{ background: "linear-gradient(135deg, #1d55e8 0%, #1235b0 100%)" }}
+      >
+        <p className="text-blue-200 text-sm font-medium mb-1">Welcome back</p>
+        <h2 className="text-2xl font-bold">Workflow Platform</h2>
+        <p className="text-blue-200 text-sm mt-1">
+          Manage users, roles, menus, and approval workflows from one place.
+        </p>
+      </div>
 
       {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {loading
           ? [...Array(4)].map((_, i) => <StatCardSkeleton key={i} />)
-          : STATS.map(({ label, icon: Icon, iconColor, bg }) => (
+          : stats.map(({ label, value, icon: Icon, iconColor, bg }) => (
               <div key={label} className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm flex items-center gap-4">
                 <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ background: bg }}>
                   <Icon className="w-6 h-6" style={{ color: iconColor }} />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-gray-800">0</p>
+                  <p className="text-2xl font-bold text-gray-800">{value}</p>
                   <p className="text-sm text-gray-500">{label}</p>
                 </div>
               </div>
@@ -162,7 +184,7 @@ export default function DashboardPage() {
                 </div>
                 <p className="text-sm font-medium text-gray-500">No activity yet</p>
                 <p className="text-xs text-gray-400 mt-1">
-                  Upload a document or generate a report to get started.
+                  Activity will show up here as changes are made.
                 </p>
               </div>
             </div>

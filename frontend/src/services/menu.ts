@@ -1,12 +1,16 @@
 import { API_BASE_URL } from "@/lib/constants";
 import { getToken } from "@/lib/auth";
+import type { ProcessItem } from "@/services/process";
 
 export interface MenuItem {
   id: number;
   name: string;
-  icon: string;
+  icon: string | null;
   url: string;
+  group: string | null;
   order: number;
+  process_id: number | null;
+  process?: ProcessItem | null;
   is_active: boolean;
   status: boolean;
   created_at?: string;
@@ -15,9 +19,11 @@ export interface MenuItem {
 
 export interface MenuCreatePayload {
   name: string;
-  icon: string;
+  icon?: string | null;
   url: string;
+  group?: string | null;
   order?: number;
+  process_id: number;
 }
 
 function authHeaders(): Record<string, string> {
@@ -49,8 +55,9 @@ export async function fetchMenus(): Promise<MenuItem[]> {
   return res.json();
 }
 
-export async function fetchAllMenus(): Promise<MenuItem[]> {
-  const res = await fetch(`${API_BASE_URL}/api/menus/all`, {
+export async function fetchAllMenus(processId?: number): Promise<MenuItem[]> {
+  const qs = processId != null ? `?process_id=${processId}` : "";
+  const res = await fetch(`${API_BASE_URL}/api/menus/all${qs}`, {
     headers: authHeaders(),
   });
   if (!res.ok) throw new Error("Failed to fetch menus");

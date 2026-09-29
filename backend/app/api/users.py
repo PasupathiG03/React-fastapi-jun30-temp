@@ -12,6 +12,7 @@ router = APIRouter()
 
 DEFAULT_PASSWORD = "Admin@123#"
 
+
 @router.get("/", response_model=List[UserOut])
 def list_users(
     db: Session = Depends(get_db),
@@ -37,7 +38,7 @@ def create_user(
     
     user_data = payload.model_dump()
     user_data["hashed_password"] = hash_password(DEFAULT_PASSWORD)
-    
+
     user = User(**user_data)
     db.add(user)
     db.commit()
@@ -68,7 +69,7 @@ def update_user(
     update_data = payload.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(user, key, value)
-    
+
     db.commit()
     db.refresh(user)
     return user

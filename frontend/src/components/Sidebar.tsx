@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { LayoutDashboard, LogOut, Users } from "lucide-react";
+import { ChevronDown, ChevronRight, LayoutDashboard, Lock, LogOut, Shield, Users, Workflow } from "lucide-react";
 import { Cog } from "flowbite-react-icons/outline";
 import { clearToken, getToken } from "@/lib/auth";
 import { API_BASE_URL } from "@/lib/constants";
@@ -26,6 +26,26 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
   const [dynamicMenus, setDynamicMenus] = useState<MenuItem[]>([]);
   const [fetching, setFetching] = useState(true);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [accessControlOpen, setAccessControlOpen] = useState(() => {
+    try {
+      const stored = localStorage.getItem("sidebar:accessControlOpen");
+      return stored === null ? true : stored === "true";
+    } catch {
+      return true;
+    }
+  });
+
+  function toggleAccessControl() {
+    setAccessControlOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("sidebar:accessControlOpen", String(next));
+      } catch {
+        // ignore — private/blocked storage just won't persist across reloads
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     const token = getToken();
@@ -51,17 +71,19 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
     href,
     label,
     Icon,
+    indent = false,
   }: {
     href: string;
     label: string;
     Icon: React.ElementType;
+    indent?: boolean;
   }) {
     const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
     return (
       <Link
         to={href}
         title={collapsed ? label : undefined}
-        className={`flex items-center mx-2 px-3 py-2.5 rounded-lg mb-0.5 transition-all text-sm font-medium
+        className={`flex items-center ${indent && !collapsed ? "ml-7 mr-2" : "mx-2"} px-3 py-2.5 rounded-lg mb-0.5 transition-all text-sm font-medium
           ${collapsed ? "justify-center gap-0" : "gap-3"}
           ${
             active
@@ -79,7 +101,7 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
     <aside
       className="relative flex flex-col h-full transition-all duration-300 shrink-0"
       style={{
-        width: collapsed ? 64 : 220,
+        width: collapsed ? 64 : 260,
         background: "#1440c8",
       }}
     >
@@ -220,14 +242,40 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
               );
             })}
 
-            {/* Separator */}
-            {!collapsed && (
-              <div className="mx-4 my-2 border-t border-white/10" />
-            )}
-
-            {/* Static: Menu Management */}
+            {/* Static: Developer-only admin screens (always available, no process/screen setup needed) */}
             {userRole === "Developer" && (
-              <NavLink href="/menu-management" label="Menu Management" Icon={Cog} />
+              <>
+                {collapsed ? (
+                  <>
+                    <NavLink href="/user-management" label="User Management" Icon={Users} />
+                    <NavLink href="/role-management" label="Role Management" Icon={Shield} />
+                  </>
+                ) : (
+                  <div className="mx-2 mb-0.5">
+                    <button
+                      type="button"
+                      onClick={toggleAccessControl}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg w-full text-sm font-medium text-white/80 hover:bg-white/15 hover:text-white transition-all"
+                    >
+                      <Lock className="shrink-0 w-[18px] h-[18px]" />
+                      <span className="flex-1 text-left truncate">Access Control</span>
+                      {accessControlOpen ? (
+                        <ChevronDown className="shrink-0 w-4 h-4" />
+                      ) : (
+                        <ChevronRight className="shrink-0 w-4 h-4" />
+                      )}
+                    </button>
+                    {accessControlOpen && (
+                      <div className="mt-0.5">
+                        <NavLink href="/user-management" label="User Management" Icon={Users} indent />
+                        <NavLink href="/role-management" label="Role Management" Icon={Shield} indent />
+                      </div>
+                    )}
+                  </div>
+                )}
+                <NavLink href="/menu-management" label="Menu Management" Icon={Cog} />
+                <NavLink href="/workflow-management" label="Workflow Management" Icon={Workflow} />
+              </>
             )}
           </>
         )}

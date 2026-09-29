@@ -4,9 +4,12 @@ set -e
 
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$BASE_DIR"
-VENV="$BASE_DIR/env/bin/activate"
 
-if [ ! -f "$VENV" ]; then
+if [ -f "$BASE_DIR/env/bin/activate" ]; then
+  VENV="$BASE_DIR/env/bin/activate"
+elif [ -f "$BASE_DIR/env/Scripts/activate" ]; then
+  VENV="$BASE_DIR/env/Scripts/activate"
+else
   echo "[!] Virtual environment not found at $BASE_DIR/env"
   exit 1
 fi

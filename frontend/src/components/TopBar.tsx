@@ -15,10 +15,12 @@ interface Props {
 interface UserInfo {
   employee_name: string | null;
   employee_id: string;
+  role: { id: number; name: string } | null;
 }
 
 export default function TopBar({ collapsed, onToggle, loading = false }: Props) {
   const [user, setUser] = useState<UserInfo | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [oldPassword, setOldPassword] = useState("");
@@ -32,13 +34,17 @@ export default function TopBar({ collapsed, onToggle, loading = false }: Props) 
 
   useEffect(() => {
     const token = getToken();
-    if (!token) return;
+    if (!token) {
+      setProfileLoading(false);
+      return;
+    }
     fetch(`${API_BASE_URL}/api/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => data && setUser(data))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setProfileLoading(false));
   }, []);
 
   // Close dropdown on outside click
@@ -100,8 +106,8 @@ export default function TopBar({ collapsed, onToggle, loading = false }: Props) 
         boxShadow: "0 4px 12px rgba(18, 53, 176, 0.45)",
       }}
     >
-      {/* Logo section — always 220px, never changes */}
-      <div className="w-[220px] shrink-0 flex items-center justify-center h-full">
+      {/* Logo section — matches Sidebar's expanded width */}
+      <div className="w-[260px] shrink-0 flex items-center justify-center h-full">
         {loading ? (
           <div className="h-8 w-28 bg-white/30 rounded-lg animate-pulse" />
         ) : (
@@ -128,13 +134,9 @@ export default function TopBar({ collapsed, onToggle, loading = false }: Props) 
 
       {/* Content area — fills remaining space */}
       <div className="flex flex-1 items-center justify-end px-6">
-        {loading ? (
+        {loading || profileLoading ? (
           <div className="flex items-center gap-2.5 animate-pulse">
             <div className="w-8 h-8 rounded-full bg-white/30" />
-            <div className="hidden md:flex flex-col gap-1.5">
-              <div className="h-3 w-28 bg-white/30 rounded" />
-              <div className="h-2.5 w-16 bg-white/20 rounded" />
-            </div>
           </div>
         ) : (
           <div className="relative" ref={menuRef}>
@@ -146,12 +148,6 @@ export default function TopBar({ collapsed, onToggle, loading = false }: Props) 
               <div className="w-8 h-8 rounded-full bg-white/20 border border-white/30 flex items-center justify-center text-white text-xs font-bold shrink-0">
                 {initials}
               </div>
-              <div className="hidden md:block text-left">
-                <p className="text-sm font-medium text-white leading-tight">
-                  {user?.employee_name ?? user?.employee_id ?? "User"}
-                </p>
-                <p className="text-xs text-white/60 leading-tight">{user?.employee_id}</p>
-              </div>
               <ChevronDown
                 className={`w-4 h-4 text-white/70 transition-transform ${open ? "rotate-180" : ""}`}
               />
@@ -159,7 +155,25 @@ export default function TopBar({ collapsed, onToggle, loading = false }: Props) 
 
             {/* Dropdown */}
             {open && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden z-50">
+              <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden z-50">
+                <div className="flex items-start gap-2.5 px-4 py-3 border-b border-gray-100">
+                  <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-700 text-xs font-bold shrink-0">
+                    {initials}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 truncate">
+                      {user?.employee_name ?? user?.employee_id ?? "User"}
+                    </p>
+                    {user?.employee_name && (
+                      <p className="text-xs text-gray-500 truncate">{user.employee_id}</p>
+                    )}
+                    {user?.role?.name && (
+                      <span className="inline-block mt-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
+                        {user.role.name}
+                      </span>
+                    )}
+                  </div>
+                </div>
                 <button
                   onClick={() => {
                     setOpen(false);
