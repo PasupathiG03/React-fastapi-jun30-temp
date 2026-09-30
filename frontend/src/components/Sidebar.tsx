@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronDown,
@@ -79,6 +80,102 @@ interface Props {
   loading?: boolean;
 }
 
+interface FlyoutItem {
+  href: string;
+  label: string;
+  Icon: React.ElementType;
+  badge?: number;
+}
+
+// Collapsed sidebar: a group shows as one icon; hovering it opens a panel to the right listing its
+// sub-menus. The panel is fixed-positioned because the nav area clips overflow.
+function FlyoutGroup({
+  label,
+  Icon,
+  active,
+  items,
+}: {
+  label: string;
+  Icon: React.ElementType;
+  active: boolean;
+  items: FlyoutItem[];
+}) {
+  const { pathname } = useLocation();
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; gap: number } | null>(null);
+
+  const show = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) {
+      // The panel starts at the button and its transparent left padding spans the rest of the
+      // sidebar plus a visible gap, so there is no dead zone that would close it mid-move.
+      const edge = btnRef.current?.closest("aside")?.getBoundingClientRect().right ?? r.right;
+      setPos({ top: r.top, left: r.right, gap: edge - r.right + 16 });
+    }
+  };
+  const hide = () => setPos(null);
+
+  // Close after navigating so the panel doesn't linger over the new page.
+  useEffect(hide, [pathname]);
+
+  return (
+    <div className="mx-1 mb-1" onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}>
+      <button
+        ref={btnRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={pos !== null}
+        className={`group flex items-center justify-center px-2 py-2 rounded-xl w-full border border-transparent transition-all duration-200 ${active || pos
+          ? "text-slate-900 dark:text-white bg-slate-100/70 dark:bg-white/[0.06]"
+          : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/70 dark:hover:bg-white/[0.06]"
+          }`}
+      >
+        <span className="flex items-center justify-center w-5 h-5">
+          <Icon className={`w-[18px] h-[18px] ${active ? "text-sky-400 [html:not(.dark)_&]:text-[#0284c7]" : ""}`} />
+        </span>
+      </button>
+      {pos &&
+        createPortal(
+        // The left padding is a transparent bridge so the pointer can cross the gap without closing the panel.
+        <div
+          role="menu"
+          className="fixed z-[1000]"
+          style={{ top: pos.top, left: pos.left, paddingLeft: pos.gap, maxHeight: `calc(100vh - ${pos.top}px - 8px)` }}
+        >
+          <div className="w-60 max-h-[inherit] overflow-y-auto rounded-2xl p-2 shadow-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0c1427]">
+            <p className="px-3 pt-1 pb-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+              {label}
+            </p>
+            {items.map(({ href, label: text, Icon: ItemIcon, badge = 0 }) => {
+              const current = pathname === href || (href !== "/dashboard" && pathname.startsWith(href + "/"));
+              return (
+                <Link
+                  key={href}
+                  to={href}
+                  role="menuitem"
+                  className={`flex items-center gap-3 px-3 py-2 rounded-xl text-[13.5px] font-medium transition-all duration-150 ${current
+                    ? "bg-sky-200 text-sky-800 dark:bg-sky-500/30 dark:text-sky-200"
+                    : "text-slate-600 dark:text-slate-300 hover:text-sky-700 dark:hover:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-500/25 hover:translate-x-0.5 hover:shadow-sm"
+                    }`}
+                >
+                  <ItemIcon className="w-[18px] h-[18px] shrink-0" />
+                  <span className="truncate flex-1">{text}</span>
+                  {badge > 0 && (
+                    <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
+                      {badge > 99 ? "99+" : badge}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
 export default function Sidebar({ collapsed, loading = false }: Props) {
   const location = useLocation();
   const pathname = location.pathname;
@@ -92,41 +189,16 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
   const [roleReady, setRoleReady] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
 
-  const [accessControlOpen, setAccessControlOpen] = useState(() => {
-    try {
-      const stored = localStorage.getItem("sidebar:accessControlOpen");
-      return stored === null ? false : stored === "true";
-    } catch {
-      return false;
-    }
-  });
-
-  const [devMgmtOpen, setDevMgmtOpen] = useState(() => {
-    try {
-      const stored = localStorage.getItem("sidebar:devMgmtOpen");
-      return stored === null ? false : stored === "true";
-    } catch {
-      return false;
-    }
-  });
-
-  function persistToggle(setter: React.Dispatch<React.SetStateAction<boolean>>, key: string) {
-    setter((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(key, String(next));
-      } catch {
-        // ignore
-      }
-      return next;
-    });
-  }
-
-  const toggleAccessControl = () => persistToggle(setAccessControlOpen, "sidebar:accessControlOpen");
-  const toggleDevMgmt = () => persistToggle(setDevMgmtOpen, "sidebar:devMgmtOpen");
-
+  // Expand/collapse choices live only in memory: every group starts closed after a refresh.
+  // The group of the current page is still highlighted via its "active" state.
   const accessActive = pathname.startsWith("/access-control");
   const devMgmtActive = pathname.startsWith("/developer-management");
+  const [accessChoice, setAccessChoice] = useState<boolean | null>(null);
+  const [devChoice, setDevChoice] = useState<boolean | null>(null);
+  const accessControlOpen = accessChoice ?? false;
+  const devMgmtOpen = devChoice ?? false;
+  const toggleAccessControl = () => setAccessChoice(!accessControlOpen);
+  const toggleDevMgmt = () => setDevChoice(!devMgmtOpen);
 
   const [skeletonRows, setSkeletonRows] = useState(() => {
     try {
@@ -178,27 +250,13 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
     };
   })();
 
-  const [processChoice, setProcessChoice] = useState<Record<number, boolean>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem("sidebar:processOpen") ?? "{}");
-    } catch {
-      return {};
-    }
-  });
+  const [processChoice, setProcessChoice] = useState<Record<number, boolean>>({});
 
   const isGroupActive = (items: MenuItem[]) => items.some((i) => pathname === i.url || pathname.startsWith(i.url + "/"));
-  const isProcessOpen = (g: { key: number; items: MenuItem[] }) => processChoice[g.key] ?? isGroupActive(g.items);
+  const isProcessOpen = (g: { key: number; items: MenuItem[] }) => processChoice[g.key] ?? false;
 
   function toggleProcess(g: { key: number; items: MenuItem[] }) {
-    setProcessChoice((prev) => {
-      const next = { ...prev, [g.key]: !isProcessOpen(g) };
-      try {
-        localStorage.setItem("sidebar:processOpen", JSON.stringify(next));
-      } catch {
-        // ignore
-      }
-      return next;
-    });
+    setProcessChoice((prev) => ({ ...prev, [g.key]: !isProcessOpen(g) }));
   }
 
   // Workflow groups: each workflow is a group, its stages (names come from the database) are sub-menus.
@@ -225,17 +283,9 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
   const stagePath = (_w: MyWorkflow, stageId: number) =>
     stageRoutes.find((r) => r.stageId === stageId)?.path ?? `/workflows/stage-${stageId}`;
   const isWorkflowActive = (w: MyWorkflow) => w.stages.some((s) => pathname === stagePath(w, s.id));
-  const isWorkflowOpen = (w: MyWorkflow) => processChoice[-w.id] ?? isWorkflowActive(w);
+  const isWorkflowOpen = (w: MyWorkflow) => processChoice[-w.id] ?? false;
   function toggleWorkflow(w: MyWorkflow) {
-    setProcessChoice((prev) => {
-      const next = { ...prev, [-w.id]: !isWorkflowOpen(w) };
-      try {
-        localStorage.setItem("sidebar:processOpen", JSON.stringify(next));
-      } catch {
-        // ignore
-      }
-      return next;
-    });
+    setProcessChoice((prev) => ({ ...prev, [-w.id]: !isWorkflowOpen(w) }));
   }
 
   useEffect(() => {
@@ -243,15 +293,15 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
     const isDev = userRole === "Developer";
     const adminRows = isDev
       ? collapsed
-        ? 1 + 3 + 1
+        ? 1 + 1 + 1
         : 1 + (devMgmtOpen ? 1 : 0) + 1 + (accessControlOpen ? 3 : 0) + 1
       : 0;
     const menuRows = collapsed
-      ? visibleMenus.length
+      ? menuGroups.entries.length
       : menuGroups.loose.length +
       menuGroups.groups.reduce((n, e) => (e.kind === "group" ? n + 1 + (isProcessOpen(e.group) ? e.group.items.length : 0) : n), 0);
     const workflowRows = collapsed
-      ? myWorkflows.reduce((n, w) => n + w.stages.length, 0)
+      ? myWorkflows.length
       : myWorkflows.reduce((n, w) => n + 1 + (isWorkflowOpen(w) ? w.stages.length : 0), 0);
     const rows = (isDev ? 1 : 0) + menuRows + workflowRows + adminRows;
     setSkeletonRows(rows);
@@ -408,7 +458,12 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
                   </p>
                 )}
                 {collapsed ? (
-                  renderItem("/developer-management/process-screen", "Router Setup", Layers)
+                  <FlyoutGroup
+                    label="Developer Management"
+                    Icon={Sparkles}
+                    active={devMgmtActive}
+                    items={[{ href: "/developer-management/process-screen", label: "Router Setup", Icon: Layers }]}
+                  />
                 ) : (
                   renderGroup(
                     "Developer Management",
@@ -434,8 +489,22 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
 
             {/* Dynamic menus */}
             {collapsed ? (
-              menuGroups.flatOrder.map((item) =>
-                renderItem(item.url, item.name, getScreenIcon(item.name, item.url, item.icon))
+              menuGroups.entries.map((e) =>
+                e.kind === "item" ? (
+                  renderItem(e.item.url, e.item.name, getScreenIcon(e.item.name, e.item.url, e.item.icon))
+                ) : (
+                  <FlyoutGroup
+                    key={e.group.key}
+                    label={e.group.name}
+                    Icon={getProcessIcon(e.group.name)}
+                    active={isGroupActive(e.group.items)}
+                    items={e.group.items.map((i) => ({
+                      href: i.url,
+                      label: i.name,
+                      Icon: getScreenIcon(i.name, i.url, i.icon),
+                    }))}
+                  />
+                )
               )
             ) : (
               <>
@@ -468,9 +537,16 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
 
                 {collapsed ? (
                   <>
-                    {renderItem("/access-control/user-management", "User Management", Users)}
-                    {renderItem("/access-control/role-management", "Role Management", Shield)}
-                    {renderItem("/access-control/menu-access", "Menu Access", ShieldCheck)}
+                    <FlyoutGroup
+                      label="Access Control"
+                      Icon={Lock}
+                      active={accessActive}
+                      items={[
+                        { href: "/access-control/user-management", label: "User Management", Icon: Users },
+                        { href: "/access-control/role-management", label: "Role Management", Icon: Shield },
+                        { href: "/access-control/menu-access", label: "Menu Access", Icon: ShieldCheck },
+                      ]}
+                    />
                     {renderItem("/workflow-management", "Workflow Management", Workflow)}
                   </>
                 ) : (
@@ -503,9 +579,20 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
                   </p>
                 )}
                 {collapsed
-                  ? myWorkflows.flatMap((w) =>
-                    w.stages.map((s) => renderItem(stagePath(w, s.id), `${w.name} - ${s.name}`, getStageIcon(s.stage_type), false, countFor(s.id)))
-                  )
+                  ? myWorkflows.map((w) => (
+                    <FlyoutGroup
+                      key={`wf-${w.id}`}
+                      label={w.name}
+                      Icon={Workflow}
+                      active={isWorkflowActive(w)}
+                      items={w.stages.map((s) => ({
+                        href: stagePath(w, s.id),
+                        label: s.name,
+                        Icon: getStageIcon(s.stage_type),
+                        badge: countFor(s.id),
+                      }))}
+                    />
+                  ))
                   : myWorkflows.map((w) =>
                     renderGroup(
                       w.name,
