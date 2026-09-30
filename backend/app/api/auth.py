@@ -15,20 +15,18 @@ router = APIRouter()
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     # Case-insensitive match so "mah001" finds stored "MAH001"
     user: User | None = (
-        db.query(User)
-        .filter(
-            func.lower(User.employee_id) == payload.employee_id.lower(),
-            User.is_active == True,
-        )
-        .first()
+        db.query(User).filter(func.lower(User.employee_id) == payload.employee_id.lower()).first()
     )
 
-    if not user or not verify_password(payload.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid employee ID or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    def reject(detail: str, code: int = status.HTTP_401_UNAUTHORIZED):
+        return HTTPException(status_code=code, detail=detail, headers={"WWW-Authenticate": "Bearer"})
+
+    if not user:
+        raise reject("Username not found")
+    if not user.is_active:
+        raise reject("This account is inactive. Please contact your administrator.", status.HTTP_403_FORBIDDEN)
+    if not verify_password(payload.password, user.hashed_password):
+        raise reject("Incorrect password")
 
     token = create_access_token(employee_id=user.employee_id)
     return Token(access_token=token)

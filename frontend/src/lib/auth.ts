@@ -10,6 +10,15 @@ export function getToken(): string | null {
 
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
+  // Forget per-session UI state (open sidebar groups, cached menu size) so the next
+  // login starts from a clean sidebar instead of the previous session's layout.
+  try {
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith("sidebar:"))
+      .forEach((k) => localStorage.removeItem(k));
+  } catch {
+    // storage unavailable
+  }
 }
 
 export function isAuthenticated(): boolean {

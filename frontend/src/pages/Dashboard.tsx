@@ -1,12 +1,26 @@
-
 import { useEffect, useState } from "react";
-import { BarChart2, Clock, Layers, LayoutDashboard, Shield, TrendingUp, UserCheck, Users, Workflow, ArrowUpRight } from "lucide-react";
+import { Link } from "react-router-dom";
+import {
+  BarChart2,
+  Inbox,
+  Layers,
+  LayoutDashboard,
+  Shield,
+  TrendingUp,
+  UserCheck,
+  Users,
+  Workflow,
+  ArrowUpRight,
+} from "lucide-react";
 import { fetchUsers } from "@/services/user";
 import { fetchRoles } from "@/services/role";
 import { fetchWorkflows } from "@/services/workflow";
 import { fetchMenus, type MenuItem } from "@/services/menu";
 import { API_BASE_URL } from "@/lib/constants";
 import { getToken } from "@/lib/auth";
+import PageContainer, { PageHeader } from "@/components/PageContainer";
+import { usePending } from "@/context/PendingContext";
+import { useLive } from "@/context/LiveContext";
 
 interface Me {
   employee_name: string | null;
@@ -24,84 +38,34 @@ interface Stat {
 }
 
 const QUICK_ACTIONS = [
-  { label: "Manage Users",     href: "/access-control/user-management"     },
-  { label: "Manage Roles",     href: "/access-control/role-management"     },
-  { label: "Manage Menus",     href: "/menu-management"     },
+  { label: "Manage Users", href: "/access-control/user-management" },
+  { label: "Manage Roles", href: "/access-control/role-management" },
+  { label: "Menu Access", href: "/access-control/menu-access" },
+  { label: "Manage Menus", href: "/developer-management/process-screen" },
   { label: "Manage Workflows", href: "/workflow-management" },
 ];
-
-function StatCardSkeleton() {
-  return (
-    <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm flex items-center gap-4 animate-pulse">
-      <div className="w-12 h-12 rounded-xl bg-gray-200 shrink-0" />
-      <div className="flex-1 space-y-2">
-        <div className="h-7 w-16 bg-gray-200 rounded" />
-        <div className="h-4 w-28 bg-gray-100 rounded" />
-      </div>
-    </div>
-  );
-}
-
-function QuickActionSkeleton() {
-  return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 animate-pulse">
-      {/* header */}
-      <div className="flex items-center gap-2 mb-4">
-        <div className="w-4 h-4 rounded bg-gray-200" />
-        <div className="h-4 w-24 bg-gray-200 rounded" />
-      </div>
-      {/* rows */}
-      <div className="space-y-2">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="flex items-center justify-between px-4 py-3 rounded-lg border border-gray-100">
-            <div className="h-4 w-32 bg-gray-200 rounded" />
-            <div className="h-4 w-4 bg-gray-100 rounded" />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ActivitySkeleton() {
-  return (
-    <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm p-5 animate-pulse">
-      {/* header */}
-      <div className="flex items-center gap-2 mb-4">
-        <div className="w-4 h-4 rounded bg-gray-200" />
-        <div className="h-4 w-28 bg-gray-200 rounded" />
-      </div>
-      {/* rows */}
-      <div className="space-y-3">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="flex items-center gap-3 py-2">
-            <div className="w-8 h-8 rounded-full bg-gray-200 shrink-0" />
-            <div className="flex-1 space-y-1.5">
-              <div className="h-3.5 w-48 bg-gray-200 rounded" />
-              <div className="h-3 w-24 bg-gray-100 rounded" />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<Stat[]>([]);
   const [me, setMe] = useState<Me | null>(null);
   const [menus, setMenus] = useState<MenuItem[]>([]);
+  const { stages: pendingStages, total: pendingTotal, pathFor } = usePending();
+  const { accessVersion } = useLive();
+  const waitingStages = pendingStages.filter((s) => s.count > 0);
   const isAdmin = !!me && (me.is_superuser || me.role?.name === "Developer");
 
   useEffect(() => {
     loadStats();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessVersion]);
 
   async function loadStats() {
     const token = getToken();
     const [meRes, menusRes] = await Promise.allSettled([
-      fetch(`${API_BASE_URL}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => (r.ok ? r.json() : null)),
+      fetch(`${API_BASE_URL}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } }).then((r) =>
+        r.ok ? r.json() : null
+      ),
       fetchMenus(),
     ]);
     const meData: Me | null = meRes.status === "fulfilled" ? meRes.value : null;
@@ -122,34 +86,38 @@ export default function DashboardPage() {
       const workflows = workflowsResult.status === "fulfilled" ? workflowsResult.value : [];
 
       setStats([
-        { label: "Total Users", value: users.length, icon: Users, iconColor: "#1d55e8", bg: "#eff3fe" },
+        { label: "Total Users", value: users.length, icon: Users, iconColor: "#0284c7", bg: "rgba(2, 132, 199, 0.12)" },
         {
           label: "Active Users",
           value: users.filter((u) => u.is_active).length,
           icon: UserCheck,
-          iconColor: "#0ea575",
-          bg: "#ecfdf5",
+          iconColor: "#10b981",
+          bg: "rgba(16, 185, 129, 0.12)",
         },
-        { label: "Total Roles", value: roles.length, icon: Shield, iconColor: "#f59e0b", bg: "#fffbeb" },
-        { label: "Total Workflows", value: workflows.length, icon: Workflow, iconColor: "#8b5cf6", bg: "#f5f3ff" },
+        { label: "Total Roles", value: roles.length, icon: Shield, iconColor: "#f59e0b", bg: "rgba(245, 158, 11, 0.12)" },
+        { label: "Total Workflows", value: workflows.length, icon: Workflow, iconColor: "#8b5cf6", bg: "rgba(139, 92, 246, 0.12)" },
       ]);
     } else {
-      // Regular users only see numbers about what they are allowed to open.
       setStats([
-        { label: "Screens You Can Access", value: myMenus.length, icon: LayoutDashboard, iconColor: "#1d55e8", bg: "#eff3fe" },
+        {
+          label: "Screens You Can Access",
+          value: myMenus.length,
+          icon: LayoutDashboard,
+          iconColor: "#0284c7",
+          bg: "rgba(2, 132, 199, 0.12)",
+        },
         {
           label: "Processes",
           value: new Set(myMenus.map((m) => m.process_id).filter((id) => id != null)).size,
           icon: Layers,
           iconColor: "#8b5cf6",
-          bg: "#f5f3ff",
+          bg: "rgba(139, 92, 246, 0.12)",
         },
       ]);
     }
     setLoading(false);
   }
 
-  // Admins get the built-in admin shortcuts; everyone gets the screens their role can open.
   const quickActions = [
     ...(isAdmin ? QUICK_ACTIONS : []),
     ...menus
@@ -158,94 +126,123 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="space-y-6">
-      {/* Welcome */}
-      <div
-        className="rounded-2xl p-6 text-white"
-        style={{ background: "linear-gradient(135deg, #1d55e8 0%, #1235b0 100%)" }}
-      >
-        <p className="text-blue-200 text-sm font-medium mb-1">
-          Welcome back{me ? `, ${me.employee_name || me.employee_id}` : ""}
-        </p>
-        <h2 className="text-2xl font-bold">Workflow Platform</h2>
-        <p className="text-blue-200 text-sm mt-1">
-          {isAdmin
-            ? "Manage users, roles, menus, and approval workflows from one place."
-            : `Signed in${me?.role ? ` as ${me.role.name}` : ""}. Use the sidebar or the shortcuts below to open your screens.`}
-        </p>
-      </div>
+    <PageContainer>
+      <PageHeader
+        icon={LayoutDashboard}
+        title="Dashboard"
+        subtitle="Overview and quick platform navigation"
+      />
 
-      {/* Stat Cards */}
+      {/* ── Stat Cards ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {loading
-          ? [...Array(4)].map((_, i) => <StatCardSkeleton key={i} />)
+          ? [...Array(4)].map((_, i) => (
+            <div
+              key={i}
+              className="bg-white dark:bg-[#0c1427]/70 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/80 dark:border-white/[0.08] shadow-sm flex items-center gap-4 animate-pulse"
+            >
+              <div className="w-12 h-12 rounded-xl bg-slate-200 dark:bg-white/10 shrink-0" />
+              <div className="flex-1 space-y-2">
+                <div className="h-6 w-16 bg-slate-200 dark:bg-white/10 rounded" />
+                <div className="h-3.5 w-24 bg-slate-100 dark:bg-white/5 rounded" />
+              </div>
+            </div>
+          ))
           : stats.map(({ label, value, icon: Icon, iconColor, bg }) => (
-              <div key={label} className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ background: bg }}>
-                  <Icon className="w-6 h-6" style={{ color: iconColor }} />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-gray-800">{value}</p>
-                  <p className="text-sm text-gray-500">{label}</p>
-                </div>
+            <div
+              key={label}
+              className="bg-white dark:bg-[#0c1427]/70 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/80 dark:border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.02)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.3)] flex items-center gap-4 hover:border-sky-500/40 transition-colors"
+            >
+              <div
+                className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
+                style={{ background: bg }}
+              >
+                <Icon className="w-6 h-6" style={{ color: iconColor }} />
               </div>
-            ))
-        }
-      </div>
-
-      {/* Quick Actions + Recent Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {loading ? (
-          <>
-            <QuickActionSkeleton />
-            <ActivitySkeleton />
-          </>
-        ) : (
-          <>
-            {/* Quick Actions */}
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <TrendingUp className="w-4 h-4 text-gray-400" />
-                <h3 className="font-semibold text-gray-700 text-sm">Quick Actions</h3>
-              </div>
-              <div className="space-y-2">
-                {quickActions.length === 0 && (
-                  <p className="text-sm text-gray-400 py-4 text-center">
-                    No screens assigned to your role yet. Ask an administrator to grant access.
-                  </p>
-                )}
-                {quickActions.map(({ label, href }) => (
-                  <a
-                    key={href}
-                    href={href}
-                    className="flex items-center justify-between px-4 py-3 rounded-lg border border-gray-100 hover:border-blue-200 hover:bg-blue-50 transition-all group"
-                  >
-                    <span className="text-sm font-medium text-gray-700 group-hover:text-blue-700">{label}</span>
-                    <ArrowUpRight className="w-4 h-4 text-gray-400 group-hover:text-blue-600 transition-colors" />
-                  </a>
-                ))}
-              </div>
-            </div>
-
-            {/* Recent Activity */}
-            <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <Clock className="w-4 h-4 text-gray-400" />
-                <h3 className="font-semibold text-gray-700 text-sm">Recent Activity</h3>
-              </div>
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mb-3">
-                  <BarChart2 className="w-7 h-7 text-gray-300" />
-                </div>
-                <p className="text-sm font-medium text-gray-500">No activity yet</p>
-                <p className="text-xs text-gray-400 mt-1">
-                  Activity will show up here as changes are made.
+              <div>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+                  {value}
                 </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{label}</p>
               </div>
             </div>
-          </>
-        )}
+          ))}
       </div>
-    </div>
+
+      {/* ── Quick Actions + Activity ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* Quick Actions */}
+        <div className="bg-white dark:bg-[#0c1427]/70 backdrop-blur-xl rounded-2xl border border-slate-200/80 dark:border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.02)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.3)] p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingUp className="w-4 h-4 text-sky-500" />
+            <h3 className="font-bold text-slate-900 dark:text-white text-sm">Quick Actions</h3>
+          </div>
+          <div className="space-y-2">
+            {quickActions.map(({ label, href }) => (
+              <Link
+                key={href}
+                to={href}
+                className="flex items-center justify-between px-4 py-3 rounded-xl border border-slate-100 dark:border-white/[0.06] hover:border-sky-500/30 dark:hover:border-sky-500/30 bg-slate-50/50 dark:bg-white/[0.02] hover:bg-sky-50/50 dark:hover:bg-sky-500/10 transition-all group"
+              >
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 group-hover:text-sky-600 dark:group-hover:text-sky-400">
+                  {label}
+                </span>
+                <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors" />
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        {/* Work waiting for this user's stages */}
+        <div className="lg:col-span-2 bg-white dark:bg-[#0c1427]/70 backdrop-blur-xl rounded-2xl border border-slate-200/80 dark:border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.02)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.3)] p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Inbox className="w-4 h-4 text-sky-500" />
+              <h3 className="font-bold text-slate-900 dark:text-white text-sm">Work waiting for you</h3>
+            </div>
+            {pendingTotal > 0 && (
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                {pendingTotal} open
+              </span>
+            )}
+          </div>
+
+          {waitingStages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-white/5 flex items-center justify-center mb-2.5 text-slate-400">
+                <BarChart2 className="w-6 h-6" />
+              </div>
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">You are all caught up</p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                Items that reach one of your workflow stages will show up here.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {waitingStages.map((s) => (
+                <Link
+                  key={s.stage_id}
+                  to={pathFor(s.stage_id)}
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-100 dark:border-white/[0.06] hover:border-sky-500/30 bg-slate-50/50 dark:bg-white/[0.02] hover:bg-sky-50/50 dark:hover:bg-sky-500/10 transition-all group"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate group-hover:text-sky-600 dark:group-hover:text-sky-400">
+                      {s.stage_name}
+                    </p>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
+                      {s.workflow_name} · Stage {s.sequence_order}
+                    </p>
+                  </div>
+                  <span className="min-w-[26px] h-6 px-2 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 text-xs font-bold flex items-center justify-center">
+                    {s.count}
+                  </span>
+                  <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors" />
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </PageContainer>
   );
 }

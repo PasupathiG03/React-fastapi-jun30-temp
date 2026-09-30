@@ -1,80 +1,24 @@
-
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Eye, EyeOff, Loader2, CheckCircle2, AlertCircle, User, Lock, type LucideIcon } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  AlertCircle,
+  User,
+  Lock,
+  Sun,
+  Moon,
+  Zap,
+  ShieldCheck,
+  Activity,
+  ArrowRight,
+  Loader2,
+} from "lucide-react";
 import { loginApi } from "@/services/auth";
 import { saveToken } from "@/lib/auth";
-
-const float = (y: number[], duration: number, delay = 0) => ({
-  animate: { y },
-  transition: { duration, delay, repeat: Infinity, ease: "easeInOut" as const },
-});
-
-interface FloatingFieldProps {
-  id: string;
-  label: string;
-  icon: LucideIcon;
-  value: string;
-  onChange: (value: string) => void;
-  type?: string;
-  autoFocus?: boolean;
-  disabled?: boolean;
-  invalid?: boolean;
-  rightElement?: React.ReactNode;
-}
-
-function FloatingField({
-  id,
-  label,
-  icon: Icon,
-  value,
-  onChange,
-  type = "text",
-  autoFocus,
-  disabled,
-  invalid,
-  rightElement,
-}: FloatingFieldProps) {
-  const filled = value.length > 0;
-  return (
-    <div className="relative mt-2 group">
-      <Icon className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none z-20 transition-colors group-focus-within:text-white/80" />
-      <input
-        id={id}
-        required
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        autoFocus={autoFocus}
-        disabled={disabled}
-        aria-invalid={invalid}
-        className={`w-full bg-transparent pl-11 py-3 text-white placeholder-transparent focus:outline-none relative z-10 disabled:opacity-60 ${rightElement ? "pr-12" : "pr-4"}`}
-        placeholder={label}
-      />
-      <label
-        htmlFor={id}
-        className={`absolute transition-all duration-200 pointer-events-none z-20 font-medium
-          ${filled ? "-top-2.5 left-3 text-xs text-white/90" : "top-3.5 left-11 text-sm text-white/50 group-focus-within:-top-2.5 group-focus-within:left-3 group-focus-within:text-xs group-focus-within:text-white/90"}`}
-      >
-        {label}
-      </label>
-      <fieldset
-        aria-hidden="true"
-        className={`absolute inset-0 rounded-lg border bg-white/10 pointer-events-none transition-all group-focus-within:bg-white/15 m-0 p-0
-          ${invalid ? "border-red-300/70" : "border-white/30 group-focus-within:border-white/80"}`}
-      >
-        <legend
-          className={`invisible h-0 transition-[max-width] duration-300 whitespace-nowrap overflow-hidden
-            ${filled ? "max-w-[65px] ml-2 px-1" : "max-w-0 ml-2 px-0 group-focus-within:max-w-[65px] group-focus-within:px-1"}`}
-        >
-          <span className="text-xs font-medium">{label}</span>
-        </legend>
-      </fieldset>
-      {rightElement}
-    </div>
-  );
-}
+import { useTheme } from "@/context/ThemeContext";
 
 export default function LoginPage() {
   const [isVisible, setIsVisible] = useState(false);
@@ -83,6 +27,9 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [capsLock, setCapsLock] = useState(false);
+
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
 
   const toggleVisibility = () => setIsVisible(!isVisible);
@@ -105,223 +52,279 @@ export default function LoginPage() {
 
   return (
     <div
-      className="relative min-h-screen flex items-center justify-center overflow-hidden"
-      style={{ background: "linear-gradient(150deg, #1d55e8 0%, #1440c8 55%, #1235b0 100%)" }}
+      className="relative min-h-screen w-full flex flex-col lg:flex-row items-stretch p-3.5 sm:p-5 transition-colors duration-300 overflow-x-hidden font-sans"
+      style={{
+        background:
+          theme === "dark"
+            ? "radial-gradient(ellipse 65% 45% at 20% 5%, rgba(14, 165, 233, 0.12), transparent 70%), radial-gradient(ellipse 55% 45% at 90% 90%, rgba(2, 132, 199, 0.08), transparent 70%), #070c1e"
+            : "linear-gradient(135deg, #eef4fc 0%, #e2edfd 50%, #d8e7fa 100%)",
+      }}
     >
-      {/* ── Decorative Shapes ── */}
+      {/* ── Top-Right Theme Toggle ── */}
+      <div className="absolute top-5 right-5 sm:top-6 sm:right-6 z-30">
+        <button
+          type="button"
+          onClick={toggleTheme}
+          title={`Switch to ${theme === "dark" ? "Light" : "Dark"} Mode`}
+          className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white bg-white/80 dark:bg-white/5 border border-slate-200/80 dark:border-white/10 shadow-sm backdrop-blur-md transition-all hover:scale-105 cursor-pointer"
+        >
+          {theme === "dark" ? (
+            <Sun className="w-4 h-4 text-amber-400" />
+          ) : (
+            <Moon className="w-4 h-4 text-slate-600" />
+          )}
+        </button>
+      </div>
 
-
-      {/* Top-left small arc */}
+      {/* ── Left Half: Full-height Hero Card ── */}
       <motion.div
-        className="pointer-events-none absolute top-[8%] left-[8%]"
-        {...float([0, -14, 0], 3.5, 0.4)}
+        initial={{ opacity: 0, x: -20 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="relative w-full lg:w-[46%] xl:w-[47%] 2xl:w-[48%] rounded-[28px] sm:rounded-[34px] overflow-hidden bg-gradient-to-br from-[#00d2ff] via-[#0084ff] to-[#0052cc] shadow-[0_20px_50px_rgba(0,198,255,0.28)] dark:shadow-[0_24px_70px_rgba(0,114,255,0.38)] p-8 sm:p-11 xl:p-16 flex flex-col justify-between min-h-[580px] lg:min-h-[calc(100vh-2.5rem)] shrink-0"
       >
-        <svg width="85" height="85" viewBox="0 0 85 85" fill="none">
-          <defs>
-            <linearGradient id="g_arc2" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#6699ff" />
-              <stop offset="100%" stopColor="#1a3ecc" />
-            </linearGradient>
-          </defs>
-          <path d="M 42 8 A 34 34 0 1 1 8 42" stroke="url(#g_arc2)" strokeWidth="14" strokeLinecap="round" fill="none" opacity="0.7" />
-        </svg>
-      </motion.div>
+        {/* Subtle dot grid */}
+        <div
+          className="absolute inset-0 opacity-[0.18] pointer-events-none"
+          style={{
+            backgroundImage: "radial-gradient(rgba(255,255,255,0.9) 1px, transparent 1px)",
+            backgroundSize: "26px 26px",
+            maskImage: "linear-gradient(to bottom right, black, transparent 70%)",
+            WebkitMaskImage: "linear-gradient(to bottom right, black, transparent 70%)",
+          }}
+        />
+        {/* Abstract Floating Circles */}
+        <div className="absolute -top-20 -right-20 w-80 h-80 rounded-full bg-white/[0.08] pointer-events-none" />
+        <div className="absolute top-1/3 -left-24 w-96 h-96 rounded-full bg-white/[0.05] pointer-events-none" />
+        <div className="absolute -bottom-24 -right-16 w-96 h-96 rounded-full bg-white/[0.06] pointer-events-none" />
 
-      {/* Left lower chain links */}
-      <motion.div
-        className="pointer-events-none absolute left-[12%] bottom-[5%] rotate-[18deg]"
-        {...float([0, -22, 0], 5.5, 0.6)}
-      >
-        <svg width="130" height="320" viewBox="0 0 130 320" fill="none">
-          <defs>
-            <linearGradient id="g_bchain" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#6699ff" />
-              <stop offset="100%" stopColor="#1a3ecc" />
-            </linearGradient>
-          </defs>
-          <ellipse cx="65" cy="58" rx="50" ry="32" stroke="url(#g_bchain)" strokeWidth="18" fill="none" opacity="0.65" />
-          <ellipse cx="65" cy="262" rx="50" ry="32" stroke="url(#g_bchain)" strokeWidth="18" fill="none" opacity="0.55" />
-        </svg>
-      </motion.div>
+        {/* Top Brand Header */}
+        <div className="relative z-10">
+          <img
+            src="/assets/logo.png"
+            alt="PULSE"
+            className="h-14 sm:h-16 w-auto object-contain brightness-0 invert"
+          />
+        </div>
 
-      {/* Right upper wave ribbon */}
-      <motion.div
-        className="pointer-events-none absolute right-[15%] top-[10%]"
-        {...float([0, -18, 0], 4.2, 0.3)}
-      >
-        <svg width="130" height="145" viewBox="0 0 130 145" fill="none">
-          <defs>
-            <linearGradient id="g_wave" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#6699ff" />
-              <stop offset="100%" stopColor="#1a3ecc" />
-            </linearGradient>
-          </defs>
-          <path d="M 20 125 C 20 60 62 28 72 68 C 82 108 110 78 110 18" stroke="url(#g_wave)" strokeWidth="24" strokeLinecap="round" fill="none" opacity="0.8" />
-        </svg>
-      </motion.div>
+        {/* Middle Content */}
+        <div className="relative z-10 my-auto py-8 sm:py-10 space-y-6 sm:space-y-8 max-w-2xl w-full">
+          <div className="space-y-3">
+            <h1 className="text-3xl sm:text-4xl xl:text-[44px] font-extrabold text-white leading-[1.15] tracking-tight">
+              Everything your team needs, <br className="hidden sm:inline" />
+              unified in one place
+            </h1>
+            <p className="text-sm sm:text-base text-white/85 leading-relaxed max-w-xl font-normal">
+              Streamline multi-stage workflows, role-based screen security, process lifecycles, and team collaboration on an enterprise-ready architecture.
+            </p>
+          </div>
 
-      {/* Right middle circle */}
-      <motion.div
-        className="pointer-events-none absolute right-[8%] top-[50%]"
-        {...float([0, -16, 0], 4.8, 0.5)}
-      >
-        <svg width="100" height="100" viewBox="0 0 100 100" fill="none">
-          <defs>
-            <linearGradient id="g_rcircle" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#6699ff" />
-              <stop offset="100%" stopColor="#1a3ecc" />
-            </linearGradient>
-          </defs>
-          <ellipse cx="50" cy="50" rx="35" ry="35" stroke="url(#g_rcircle)" strokeWidth="16" fill="none" opacity="0.75" />
-        </svg>
-      </motion.div>
-
-      {/* Bottom-right large rounded rectangle */}
-      <motion.div
-        className="pointer-events-none absolute right-[10%] bottom-[-10%]"
-        {...float([0, -12, 0], 6, 0.5)}
-      >
-        <svg width="270" height="210" viewBox="0 0 270 210" fill="none">
-          <defs>
-            <linearGradient id="g_rect" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#6699ff" />
-              <stop offset="100%" stopColor="#1a3ecc" />
-            </linearGradient>
-          </defs>
-          <rect x="10" y="10" width="250" height="190" rx="45" stroke="url(#g_rect)" strokeWidth="20" fill="url(#g_rect)" fillOpacity="0.25" opacity="0.55" />
-        </svg>
-      </motion.div>
-
-      {/* ── Login Card ── */}
-      <motion.div
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, ease: "easeOut" }}
-        className="relative z-10 w-full max-w-sm mx-4"
-      >
-        <div className="bg-white/10 backdrop-blur-2xl border border-white/20 rounded-2xl px-8 pt-6 pb-8 shadow-[0_20px_60px_0_rgba(0,0,80,0.35)]">
-          <AnimatePresence mode="wait">
-            {!isSuccess ? (
-              <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-
-                {/* Logo */}
-                <div className="flex flex-col items-center justify-center mb-6 gap-4">
-                  <div className="w-[140px]">
-                    <img
-                      src="/assets/logo.png"
-                      alt="Platform Logo"
-                      width={300}
-                      height={100}
-                      className="drop-shadow-lg brightness-0 invert w-full h-auto"
-                    />
-                  </div>
-                  {/* Decorative dash */}
-                  <div className="w-8 h-0.5 bg-white/30 rounded-full" />
-                </div>
-
-
-                <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-                  <FloatingField
-                    id="email"
-                    label="Username"
-                    icon={User}
-                    value={email}
-                    onChange={(v) => {
-                      setEmail(v);
-                      if (error) setError(null);
-                    }}
-                    autoFocus
-                    disabled={isLoading}
-                    invalid={!!error}
-                  />
-
-                  <FloatingField
-                    id="password"
-                    label="Password"
-                    icon={Lock}
-                    type={isVisible ? "text" : "password"}
-                    value={password}
-                    onChange={(v) => {
-                      setPassword(v);
-                      if (error) setError(null);
-                    }}
-                    disabled={isLoading}
-                    invalid={!!error}
-                    rightElement={
-                      <button
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition-colors z-20"
-                        type="button"
-                        onClick={toggleVisibility}
-                        tabIndex={-1}
-                        aria-label={isVisible ? "Hide password" : "Show password"}
-                      >
-                        {isVisible ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                      </button>
-                    }
-                  />
-
-                  {/* Error */}
-                  <AnimatePresence>
-                    {error && (
-                      <motion.div
-                        role="alert"
-                        aria-live="polite"
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto", x: [0, -6, 6, -4, 4, 0] }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{ x: { duration: 0.35 } }}
-                        className="flex items-center gap-2 bg-red-500/15 border border-red-300/40 rounded-lg px-3 py-2 -mt-1 overflow-hidden"
-                      >
-                        <AlertCircle className="w-4 h-4 text-red-300 shrink-0" />
-                        <p className="text-sm text-red-200">{error}</p>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {/* Sign In */}
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full flex items-center justify-center gap-2 bg-white hover:bg-white/90 text-[#1d55e8] font-semibold py-3 rounded-lg transition-all hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-80 disabled:cursor-not-allowed disabled:hover:translate-y-0 shadow-lg mt-2"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        Signing in...
-                      </>
-                    ) : (
-                      "Sign in"
-                    )}
-                  </button>
-
-                  <div className="text-center text-xs text-white/60 mt-4 tracking-wide">
-                    &copy; 2026 MTPL. All rights reserved.
-                  </div>
-                </form>
-              </motion.div>
-            ) : (
+          {/* Feature Pills */}
+          <div className="space-y-3 pt-1 w-full">
+            {[
+              { Icon: Zap, text: "Intelligent Workflow & Pipeline Automation" },
+              { Icon: ShieldCheck, text: "Zero-Trust Role & Permission Matrix" },
+              { Icon: Activity, text: "Real-Time Monitoring & Comprehensive Audit Trails" },
+            ].map(({ Icon, text }, i) => (
               <motion.div
-                key="success"
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ type: "spring", bounce: 0.5 }}
-                className="flex flex-col items-center justify-center py-16 text-center"
+                key={text}
+                initial={{ opacity: 0, x: -16 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.25 + i * 0.12, duration: 0.45, ease: "easeOut" }}
+                className="group flex items-center gap-4 px-5 py-3.5 rounded-2xl bg-white/[0.12] hover:bg-white/[0.2] backdrop-blur-md border border-white/20 hover:border-white/35 transition-all shadow-sm w-full"
               >
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-                  className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-8 shadow-xl"
-                >
-                  <CheckCircle2 className="w-10 h-10 text-emerald-500" />
-                </motion.div>
-                <h2 className="text-3xl font-semibold text-white mb-3">Welcome back!</h2>
-                <p className="text-white/90 text-lg">You have successfully signed in.</p>
+                <div className="w-10 h-10 rounded-xl bg-white/15 group-hover:bg-white/25 flex items-center justify-center shrink-0 text-white shadow-inner transition-colors">
+                  <Icon className="w-5 h-5" />
+                </div>
+                <span className="text-sm sm:text-[15px] font-semibold text-white tracking-wide">{text}</span>
               </motion.div>
-            )}
-          </AnimatePresence>
+            ))}
+          </div>
+        </div>
+
+        {/* Bottom Copyright */}
+        <div className="relative z-10 pt-4">
+          <p className="text-xs sm:text-sm text-white/75 font-normal">
+            &copy; 2026 MTPL. All rights reserved.
+          </p>
         </div>
       </motion.div>
+
+      {/* ── Right Half: Centered Form Column ── */}
+      <div className="flex-1 w-full lg:w-[54%] xl:w-[53%] 2xl:w-[52%] flex flex-col items-center justify-center p-4 sm:p-8 lg:p-12 my-auto">
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+          className="w-full max-w-[440px] flex flex-col shrink-0"
+        >
+          <div className="bg-white/95 dark:bg-[#0c1427]/85 backdrop-blur-2xl border border-slate-200/80 dark:border-white/[0.08] rounded-[28px] p-7 sm:p-10 shadow-[0_12px_45px_rgba(0,0,0,0.06)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.5)] transition-colors duration-200">
+            <AnimatePresence mode="wait">
+              {!isSuccess ? (
+                <motion.div
+                  key="form"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  {/* Card Title & Subtitle */}
+                  <div className="mb-7">
+                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+                      Welcome back
+                    </h2>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                      Sign in to continue to your workspace.
+                    </p>
+                  </div>
+
+                  <form className="space-y-5" onSubmit={handleSubmit}>
+                    {/* Username Field */}
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor="email"
+                        className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
+                      >
+                        Username
+                      </label>
+                      <div className="relative flex items-center rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-white/[0.03] hover:border-slate-300 px-3.5 py-3 focus-within:bg-white dark:focus-within:bg-white/[0.05] focus-within:border-[#0084ff] focus-within:ring-4 focus-within:ring-[#00c6ff]/15 transition-all">
+                        <User className="w-4 h-4 text-slate-400 dark:text-slate-500 mr-3 shrink-0" />
+                        <input
+                          id="email"
+                          type="text"
+                          value={email}
+                          onChange={(e) => {
+                            setEmail(e.target.value);
+                            if (error) setError(null);
+                          }}
+                          placeholder="Enter your username"
+                          className="w-full bg-transparent text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
+                          required
+                          autoFocus
+                          autoComplete="username"
+                          disabled={isLoading}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Password Field */}
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor="password"
+                        className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
+                      >
+                        Password
+                      </label>
+                      <div className="relative flex items-center rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-white/[0.03] hover:border-slate-300 px-3.5 py-3 focus-within:bg-white dark:focus-within:bg-white/[0.05] focus-within:border-[#0084ff] focus-within:ring-4 focus-within:ring-[#00c6ff]/15 transition-all">
+                        <Lock className="w-4 h-4 text-slate-400 dark:text-slate-500 mr-3 shrink-0" />
+                        <input
+                          id="password"
+                          type={isVisible ? "text" : "password"}
+                          value={password}
+                          onChange={(e) => {
+                            setPassword(e.target.value);
+                            if (error) setError(null);
+                          }}
+                          onKeyUp={(e) => setCapsLock(e.getModifierState("CapsLock"))}
+                          onBlur={() => setCapsLock(false)}
+                          placeholder="Enter your password"
+                          className="w-full bg-transparent text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
+                          required
+                          autoComplete="current-password"
+                          disabled={isLoading}
+                        />
+                        <button
+                          type="button"
+                          onClick={toggleVisibility}
+                          className="text-slate-400 hover:text-[#0084ff] dark:hover:text-slate-200 ml-2 transition-colors cursor-pointer"
+                          aria-label={isVisible ? "Hide password" : "Show password"}
+                          title={isVisible ? "Hide password" : "Show password"}
+                        >
+                          {isVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                      {capsLock && (
+                        <p className="flex items-center gap-1.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                          <AlertCircle className="w-3.5 h-3.5" /> Caps Lock is on
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Error Banner */}
+                    <AnimatePresence>
+                      {error && (
+                        <motion.div
+                          role="alert"
+                          initial={{ opacity: 0, height: 0, x: 0 }}
+                          animate={{ opacity: 1, height: "auto", x: [0, -6, 6, -4, 4, 0] }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="flex items-center gap-2 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl px-3.5 py-2.5 text-xs text-red-600 dark:text-red-400 overflow-hidden"
+                        >
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          <p>{error}</p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Submit Button */}
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      className="group w-full py-3 rounded-xl bg-gradient-to-r from-[#00c6ff] to-[#0072ff] hover:from-[#33d2ff] hover:to-[#1a80ff] text-white font-semibold text-sm shadow-[0_6px_20px_rgba(0,132,255,0.4)] transition-all hover:shadow-[0_8px_26px_rgba(0,132,255,0.55)] active:scale-[0.99] disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" /> Signing in...
+                        </>
+                      ) : (
+                        <>
+                          Sign In
+                          <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                        </>
+                      )}
+                    </button>
+
+                    {/* Helper text */}
+                    <p className="text-center text-xs text-slate-500 dark:text-slate-400">
+                      Need access? Contact your administrator.
+                    </p>
+                  </form>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="success"
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ type: "spring", bounce: 0.5 }}
+                  className="flex flex-col items-center justify-center py-12 text-center"
+                >
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ delay: 0.15, type: "spring", stiffness: 200 }}
+                    className="w-16 h-16 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mb-5 shadow-sm"
+                  >
+                    <CheckCircle2 className="w-9 h-9" />
+                  </motion.div>
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-1.5">
+                    Welcome back!
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    You have successfully signed in.
+                  </p>
+                  <p className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-3">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Redirecting to your dashboard...
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Under-Card Security Note */}
+          <p className="text-center text-[11px] text-slate-400 dark:text-slate-500 mt-4 font-normal">
+            Protected by secure authentication. Never share your password.
+          </p>
+        </motion.div>
+      </div>
     </div>
   );
 }

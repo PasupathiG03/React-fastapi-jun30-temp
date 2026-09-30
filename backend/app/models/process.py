@@ -10,6 +10,7 @@ class Process(AuditMixin, Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(150), unique=True, nullable=False)
     description = Column(String(500), nullable=True)
+    order = Column(Integer, default=1, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
 
     def __repr__(self) -> str:

@@ -1,22 +1,78 @@
-
-import { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
-import { ChevronDown, Layers, LayoutDashboard, ShieldCheck, Lock, LogOut, Shield, Users, Workflow } from "lucide-react";
+import {
+  ChevronDown,
+  Layers,
+  LayoutDashboard,
+  ShieldCheck,
+  Lock,
+  LogOut,
+  Shield,
+  Users,
+  Workflow,
+  Sparkles,
+} from "lucide-react";
 import { Cog } from "flowbite-react-icons/outline";
 import { clearToken, getToken } from "@/lib/auth";
 import { API_BASE_URL } from "@/lib/constants";
 import { ICON_MAP } from "@/lib/icons";
 import { fetchMenus, type MenuItem } from "@/services/menu";
+import { fetchMyStages, type MyWorkflow } from "@/services/workflow";
+import PulseLogo from "@/components/PulseLogo";
+import { usePending } from "@/context/PendingContext";
+import { useLive } from "@/context/LiveContext";
+import { buildStageRoutes } from "@/lib/slug";
+import { getStageIcon } from "@/lib/stageIcons";
 
-const float = (y: number[], duration: number, delay = 0) => ({
-  animate: { y },
-  transition: { duration, delay, repeat: Infinity, ease: "easeInOut" as const },
-});
+const STATIC_ADMIN_URLS = [
+  "/dashboard",
+  "/access-control/user-management",
+  "/access-control/role-management",
+  "/access-control/menu-access",
+  "/developer-management/process-screen",
+  "/workflow-management",
+];
 
-// Screens the Developer already gets from the hard-coded admin section below;
-// hide their database copies so they are not listed twice.
-const STATIC_ADMIN_URLS = ["/dashboard", "/access-control/user-management", "/access-control/role-management", "/access-control/menu-access", "/menu-management", "/workflow-management"];
+export function getProcessIcon(name: string): React.ElementType {
+  const n = name.trim().toLowerCase();
+  if (n.includes("workflow")) return Workflow;
+  if (n.includes("access") || n.includes("admin")) return Lock;
+  if (n.includes("developer") || n.includes("dev")) return Sparkles;
+  if (n.includes("user") || n.includes("employee")) return Users;
+  if (n.includes("role") || n.includes("permission")) return Shield;
+  if (n.includes("dashboard")) return LayoutDashboard;
+  return Layers;
+}
+
+// The built-in admin screens always use the same icons as the hard-coded Developer menu, so a user
+// who sees them from the database gets exactly the same look (the stored icon key can point at a
+// different icon set, which made the two differ).
+const BUILT_IN_SCREEN_ICONS: Record<string, React.ElementType> = {
+  "/access-control/user-management": Users,
+  "/access-control/role-management": Shield,
+  "/access-control/menu-access": ShieldCheck,
+  "/developer-management/process-screen": Layers,
+  "/workflow-management": Workflow,
+  "/dashboard": LayoutDashboard,
+};
+
+export function getScreenIcon(name: string, url: string, iconKey?: string | null): React.ElementType {
+  const builtIn = BUILT_IN_SCREEN_ICONS[url.trim().toLowerCase()];
+  if (builtIn) return builtIn;
+  if (iconKey && ICON_MAP[iconKey]) return ICON_MAP[iconKey];
+
+  const lowerName = name.trim().toLowerCase();
+  const lowerUrl = url.trim().toLowerCase();
+
+  if (lowerUrl.includes("user-management") || lowerName.includes("user")) return Users;
+  if (lowerUrl.includes("role-management") || lowerName.includes("role")) return Shield;
+  if (lowerUrl.includes("menu-access") || lowerName.includes("access") || lowerName.includes("permission")) return ShieldCheck;
+  if (lowerUrl.includes("workflow") || lowerName.includes("workflow")) return Workflow;
+  if (lowerUrl.includes("process-screen") || lowerName.includes("process") || lowerName.includes("screen")) return Layers;
+  if (lowerUrl.includes("dashboard") || lowerName.includes("dashboard")) return LayoutDashboard;
+
+  return Cog;
+}
 
 interface Props {
   collapsed: boolean;
@@ -27,25 +83,30 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
   const location = useLocation();
   const pathname = location.pathname;
   const navigate = useNavigate();
+
+  const { countFor } = usePending();
+  const { accessVersion } = useLive();
   const [dynamicMenus, setDynamicMenus] = useState<MenuItem[]>([]);
+  const [myWorkflows, setMyWorkflows] = useState<MyWorkflow[]>([]);
   const [fetching, setFetching] = useState(true);
   const [roleReady, setRoleReady] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
+
   const [accessControlOpen, setAccessControlOpen] = useState(() => {
     try {
       const stored = localStorage.getItem("sidebar:accessControlOpen");
-      return stored === null ? true : stored === "true";
+      return stored === null ? false : stored === "true";
     } catch {
-      return true;
+      return false;
     }
   });
 
-  const [menuMgmtOpen, setMenuMgmtOpen] = useState(() => {
+  const [devMgmtOpen, setDevMgmtOpen] = useState(() => {
     try {
-      const stored = localStorage.getItem("sidebar:menuMgmtOpen");
-      return stored === null ? true : stored === "true";
+      const stored = localStorage.getItem("sidebar:devMgmtOpen");
+      return stored === null ? false : stored === "true";
     } catch {
-      return true;
+      return false;
     }
   });
 
@@ -55,99 +116,68 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
       try {
         localStorage.setItem(key, String(next));
       } catch {
-        // ignore — private/blocked storage just won't persist across reloads
+        // ignore
       }
       return next;
     });
   }
 
-  const toggleMenuMgmt = () => persistToggle(setMenuMgmtOpen, "sidebar:menuMgmtOpen");
   const toggleAccessControl = () => persistToggle(setAccessControlOpen, "sidebar:accessControlOpen");
+  const toggleDevMgmt = () => persistToggle(setDevMgmtOpen, "sidebar:devMgmtOpen");
+
   const accessActive = pathname.startsWith("/access-control");
-  const menuMgmtActive = pathname.startsWith("/menu-management");
-  const focusRing = "focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60";
+  const devMgmtActive = pathname.startsWith("/developer-management");
 
-  /** Collapsible main menu: icon chip, label, rotating chevron, animated sub-menu. */
-  function renderGroup(
-    label: string,
-    Icon: React.ElementType,
-    open: boolean,
-    active: boolean,
-    onToggle: () => void,
-    children: React.ReactNode,
-    key?: React.Key
-  ) {
-    return (
-      <div key={key} className="mx-3 mb-1">
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={open}
-          title={label}
-          className={`group flex items-center gap-3 px-3 py-2 rounded-xl w-full text-[13.5px] font-medium border transition-all duration-200 ${focusRing} ${
-            active
-              ? "text-white bg-white/10 border-white/15"
-              : "border-transparent text-white/80 hover:bg-white/10 hover:border-white/10 hover:text-white"
-          }`}
-        >
-          <span
-            className={`shrink-0 flex items-center justify-center w-8 h-8 -ml-1 rounded-lg transition-colors ${
-              active ? "bg-white/20" : "bg-white/5 group-hover:bg-white/10"
-            }`}
-          >
-            <Icon className="w-[18px] h-[18px]" />
-          </span>
-          <span className="flex-1 text-left truncate">{label}</span>
-          <ChevronDown className={`shrink-0 w-4 h-4 text-white/60 transition-transform duration-300 ${open ? "" : "-rotate-90"}`} />
-        </button>
-        <div
-          className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
-        >
-          <div className="overflow-hidden">
-            <div className="mt-1 ml-[22px] pl-3 border-l border-white/15 space-y-0.5">{children}</div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Remember how many rows the sidebar rendered last time so the loading skeleton
-  // matches it (a fixed count made the skeleton look nothing like the real menu).
   const [skeletonRows, setSkeletonRows] = useState(() => {
     try {
       const n = Number(localStorage.getItem("sidebar:rowCount"));
-      return n >= 1 && n <= 20 ? n : 3;
+      return n >= 1 && n <= 20 ? n : 4;
     } catch {
-      return 3;
+      return 4;
     }
   });
 
   const visibleMenus =
     userRole === "Developer" ? dynamicMenus.filter((m) => !STATIC_ADMIN_URLS.includes(m.url)) : dynamicMenus;
 
-  // Each process is a main menu; the screens the user may open are its sub-menus.
-  // A process with no permitted screens simply does not appear.
+  // Main menus in the order set on each process (screens without a process come first).
+  type MenuEntry =
+    | { kind: "item"; order: number; item: MenuItem }
+    | { kind: "group"; order: number; group: { key: number; name: string; items: MenuItem[] } };
+
   const menuGroups = (() => {
-    const groups: { key: number; name: string; items: MenuItem[] }[] = [];
-    const loose: MenuItem[] = [];
+    const groups: { key: number; name: string; order: number; items: MenuItem[] }[] = [];
+    const entries: MenuEntry[] = [];
     for (const m of visibleMenus) {
       if (m.process_id == null) {
-        loose.push(m);
+        entries.push({ kind: "item", order: 0, item: m });
         continue;
       }
       let g = groups.find((x) => x.key === m.process_id);
       if (!g) {
-        g = { key: m.process_id, name: m.process?.name ?? "Process", items: [] };
+        g = { key: m.process_id, name: m.process?.name ?? "Process", order: m.process?.order ?? 9999, items: [] };
         groups.push(g);
       }
       g.items.push(m);
     }
-    return { groups, loose };
+    // A process whose only screen has the same name (e.g. process "Workflow Management" containing the
+    // screen "Workflow Management") would show a pointless group with one identical sub-menu.
+    // Show that screen as a single top-level item instead.
+    const sameName = (g: { name: string; items: MenuItem[] }) =>
+      g.items.length === 1 && g.items[0].name.trim().toLowerCase() === g.name.trim().toLowerCase();
+    for (const g of groups) {
+      entries.push(sameName(g) ? { kind: "item", order: g.order, item: g.items[0] } : { kind: "group", order: g.order, group: g });
+    }
+    entries.sort((a, b) => a.order - b.order);
+    const flatOrder = entries.flatMap((e) => (e.kind === "item" ? [e.item] : e.group.items));
+    return {
+      entries,
+      flatOrder,
+      loose: entries.filter((e) => e.kind === "item"),
+      groups: entries.filter((e) => e.kind === "group"),
+    };
   })();
 
-  // Explicit open/closed choices per process, persisted (the sidebar remounts on every
-  // page change, so plain state would reset). With no choice yet, a process is open only
-  // while one of its screens is the current page.
   const [processChoice, setProcessChoice] = useState<Record<number, boolean>>(() => {
     try {
       return JSON.parse(localStorage.getItem("sidebar:processOpen") ?? "{}");
@@ -155,8 +185,10 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
       return {};
     }
   });
-  const isGroupActive = (items: MenuItem[]) => items.some((i) => pathname === i.url || pathname.startsWith(i.url));
+
+  const isGroupActive = (items: MenuItem[]) => items.some((i) => pathname === i.url || pathname.startsWith(i.url + "/"));
   const isProcessOpen = (g: { key: number; items: MenuItem[] }) => processChoice[g.key] ?? isGroupActive(g.items);
+
   function toggleProcess(g: { key: number; items: MenuItem[] }) {
     setProcessChoice((prev) => {
       const next = { ...prev, [g.key]: !isProcessOpen(g) };
@@ -169,21 +201,66 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
     });
   }
 
+  // Workflow groups: each workflow is a group, its stages (names come from the database) are sub-menus.
+  // Addresses come from this component's own workflow list (not from the pending-counts request), so
+  // every stage always has its own unique address. Using a shared fallback like "/dashboard" while the
+  // other request was still loading gave all stages the same React key and duplicated the rows.
+  const stageRoutes = useMemo(
+    () =>
+      buildStageRoutes(
+        myWorkflows.flatMap((w) =>
+          w.stages.map((s) => ({
+            workflow_id: w.id,
+            workflow_name: w.name,
+            stage_id: s.id,
+            stage_name: s.name,
+            stage_type: s.stage_type,
+            sequence_order: s.sequence_order,
+            count: 0,
+          }))
+        )
+      ),
+    [myWorkflows]
+  );
+  const stagePath = (_w: MyWorkflow, stageId: number) =>
+    stageRoutes.find((r) => r.stageId === stageId)?.path ?? `/workflows/stage-${stageId}`;
+  const isWorkflowActive = (w: MyWorkflow) => w.stages.some((s) => pathname === stagePath(w, s.id));
+  const isWorkflowOpen = (w: MyWorkflow) => processChoice[-w.id] ?? isWorkflowActive(w);
+  function toggleWorkflow(w: MyWorkflow) {
+    setProcessChoice((prev) => {
+      const next = { ...prev, [-w.id]: !isWorkflowOpen(w) };
+      try {
+        localStorage.setItem("sidebar:processOpen", JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }
+
   useEffect(() => {
     if (fetching || !roleReady) return;
     const isDev = userRole === "Developer";
-    const adminRows = isDev ? (collapsed ? 3 : 1 + (accessControlOpen ? 3 : 0)) + 2 : 0;
+    const adminRows = isDev
+      ? collapsed
+        ? 1 + 3 + 1
+        : 1 + (devMgmtOpen ? 1 : 0) + 1 + (accessControlOpen ? 3 : 0) + 1
+      : 0;
     const menuRows = collapsed
       ? visibleMenus.length
-      : menuGroups.loose.length + menuGroups.groups.reduce((n, g) => n + 1 + (isProcessOpen(g) ? g.items.length : 0), 0);
-    const rows = (isDev ? 1 : 0) + menuRows + adminRows;
+      : menuGroups.loose.length +
+      menuGroups.groups.reduce((n, e) => (e.kind === "group" ? n + 1 + (isProcessOpen(e.group) ? e.group.items.length : 0) : n), 0);
+    const workflowRows = collapsed
+      ? myWorkflows.reduce((n, w) => n + w.stages.length, 0)
+      : myWorkflows.reduce((n, w) => n + 1 + (isWorkflowOpen(w) ? w.stages.length : 0), 0);
+    const rows = (isDev ? 1 : 0) + menuRows + workflowRows + adminRows;
     setSkeletonRows(rows);
     try {
       localStorage.setItem("sidebar:rowCount", String(rows));
     } catch {
       // ignore
     }
-  }, [fetching, roleReady, userRole, visibleMenus.length, menuGroups.groups.length, processChoice, pathname, collapsed, accessControlOpen]);
+  }, [fetching, roleReady, userRole, visibleMenus.length, menuGroups.groups.length, myWorkflows, processChoice, pathname, collapsed, accessControlOpen]);
 
   useEffect(() => {
     const token = getToken();
@@ -191,305 +268,279 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
       fetch(`${API_BASE_URL}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => data && setUserRole(data.role?.name))
-        .catch(() => {})
+        .catch(() => { })
         .finally(() => setRoleReady(true));
     } else {
       setRoleReady(true);
     }
 
+    fetchMyStages()
+      .then(setMyWorkflows)
+      .catch(() => { });
+
     fetchMenus()
       .then(setDynamicMenus)
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setFetching(false));
-  }, []);
+  }, [accessVersion]);
 
   function handleLogout() {
     clearToken();
     navigate("/login");
   }
 
-  function NavLink({
-    href,
-    label,
-    Icon,
-    indent = false,
-  }: {
-    href: string;
-    label: string;
-    Icon: React.ElementType;
-    indent?: boolean;
-  }) {
-    const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
+  const renderItem = (href: string, label: string, Icon: React.ElementType, indent = false, badge = 0) => {
+    const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href + "/"));
 
     return (
       <Link
+        key={href}
         to={href}
         title={label}
         aria-current={active ? "page" : undefined}
-        className={`group relative flex items-center ${indent && !collapsed ? "ml-2 mr-0" : "mx-3"} px-3 py-2 rounded-xl mb-1 transition-all duration-200 text-[13.5px] border ${focusRing}
-          ${collapsed ? "justify-center gap-0" : "gap-3"}
-          ${
-            active
-              ? "font-semibold text-white border-white/30 bg-gradient-to-r from-white/25 to-white/5 backdrop-blur-xl shadow-[0_8px_20px_-8px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.4)]"
-              : "font-medium border-transparent text-white/80 hover:bg-white/10 hover:border-white/10 hover:text-white"
+        className={`group relative flex items-center ${indent && !collapsed ? "ml-1" : "mx-1"} px-3 py-2 rounded-xl mb-1 transition-all duration-200 text-[13.5px] border ${collapsed ? "justify-center gap-0 px-2" : "gap-3"
+          } ${active
+            ? "font-medium text-white dark:text-white bg-sky-500/15 border-sky-500/30 dark:bg-sky-500/20 dark:border-sky-500/30 text-[#0284c7] light:bg-[#e0f2fe] light:text-[#0284c7] light:border-transparent dark:shadow-[0_0_15px_rgba(14,165,233,0.15)] [html:not(.dark)_&]:bg-[#e0f2fe] [html:not(.dark)_&]:text-[#0284c7] [html:not(.dark)_&]:border-transparent [html:not(.dark)_&]:font-semibold"
+            : "font-medium border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/70 dark:hover:bg-white/[0.06]"
           }`}
       >
-        {active && (
-          <span className={`absolute ${indent && !collapsed ? "left-0" : "-left-3"} top-1/2 -translate-y-1/2 h-6 w-1 rounded-r-full bg-white shadow-[0_0_12px_rgba(255,255,255,1)]`} />
-        )}
         <span
-          className={`relative shrink-0 flex items-center justify-center w-8 h-8 ${collapsed ? "" : "-ml-1"} rounded-lg transition-all duration-200 ${
-            active ? "bg-white text-[#1440c8] shadow-md" : "bg-white/5 group-hover:bg-white/10"
-          }`}
+          className={`shrink-0 flex items-center justify-center w-5 h-5 transition-colors ${active
+              ? "text-sky-400 [html:not(.dark)_&]:text-[#0284c7]"
+              : "text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white"
+            }`}
         >
           <Icon className="w-[18px] h-[18px]" />
         </span>
-        {!collapsed && <span className="relative truncate flex-1">{label}</span>}
+        {!collapsed && <span className="truncate flex-1">{label}</span>}
+        {badge > 0 && (
+          <span
+            className={`min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center ${collapsed ? "absolute -top-1 -right-1 ring-2 ring-white dark:ring-[#0c1427]" : ""
+              }`}
+          >
+            {badge > 99 ? "99+" : badge}
+          </span>
+        )}
       </Link>
     );
-  }
+  };
+
+  const renderGroup = (
+    label: string,
+    Icon: React.ElementType,
+    open: boolean,
+    active: boolean,
+    onToggle: () => void,
+    children: React.ReactNode,
+    key?: React.Key
+  ) => {
+    return (
+      <div key={key} className="mx-1 mb-1">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          title={label}
+          className={`group flex items-center gap-3 px-3 py-2 rounded-xl w-full text-[13.5px] font-medium border transition-all duration-200 ${active
+              ? "text-slate-900 dark:text-white border-transparent bg-slate-100/60 dark:bg-white/[0.04]"
+              : "border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/70 dark:hover:bg-white/[0.06]"
+            }`}
+        >
+          <span className="shrink-0 flex items-center justify-center w-5 h-5 text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white">
+            <Icon className="w-[18px] h-[18px]" />
+          </span>
+          <span className="flex-1 text-left truncate">{label}</span>
+          <ChevronDown
+            className={`shrink-0 w-3.5 h-3.5 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${open ? "" : "-rotate-90"
+              }`}
+          />
+        </button>
+        <div
+          className={`grid transition-[grid-template-rows] duration-200 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+            }`}
+        >
+          <div className="overflow-hidden">
+            <div className="mt-0.5 ml-4 pl-2.5 border-l border-slate-200 dark:border-white/10 space-y-0.5">
+              {children}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <aside
-      className="relative flex flex-col h-full transition-all duration-300 shrink-0"
+      className={`h-full shrink-0 flex flex-col justify-between rounded-[24px] transition-all duration-300 bg-white dark:bg-[#0c1427] border border-slate-200/80 dark:border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.03)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.5)] p-3 select-none`}
       style={{
-        width: collapsed ? 76 : 272,
-        background: "#1440c8",
+        width: collapsed ? 76 : 260,
       }}
     >
-      {/* ── Floating shapes ── */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <motion.div className="absolute -top-4 -right-4" {...float([0, -10, 0], 3.5, 0.4)}>
-          <svg width="90" height="90" viewBox="0 0 85 85" fill="none">
-            <defs>
-              <linearGradient id="sb_g1" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#6699ff" />
-                <stop offset="100%" stopColor="#1a3ecc" />
-              </linearGradient>
-            </defs>
-            <path
-              d="M 42 8 A 34 34 0 1 1 8 42"
-              stroke="url(#sb_g1)"
-              strokeWidth="13"
-              strokeLinecap="round"
-              fill="none"
-              opacity="0.55"
-            />
-          </svg>
-        </motion.div>
-
-        <motion.div
-          className="absolute left-1/2 -translate-x-1/2"
-          style={{ top: "35%" }}
-          {...float([0, -12, 0], 4.8, 0.5)}
-        >
-          <svg width="110" height="110" viewBox="0 0 100 100" fill="none">
-            <defs>
-              <linearGradient id="sb_g2" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#6699ff" />
-                <stop offset="100%" stopColor="#1a3ecc" />
-              </linearGradient>
-            </defs>
-            <ellipse
-              cx="50"
-              cy="50"
-              rx="38"
-              ry="38"
-              stroke="url(#sb_g2)"
-              strokeWidth="14"
-              fill="none"
-              opacity="0.3"
-            />
-          </svg>
-        </motion.div>
-
-        <motion.div
-          className="absolute -bottom-8 -left-6"
-          {...float([0, -10, 0], 6, 0.5)}
-        >
-          <svg width="160" height="130" viewBox="0 0 270 210" fill="none">
-            <defs>
-              <linearGradient id="sb_g3" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#6699ff" />
-                <stop offset="100%" stopColor="#1a3ecc" />
-              </linearGradient>
-            </defs>
-            <rect
-              x="10"
-              y="10"
-              width="250"
-              height="190"
-              rx="45"
-              stroke="url(#sb_g3)"
-              strokeWidth="18"
-              fill="url(#sb_g3)"
-              fillOpacity="0.15"
-              opacity="0.4"
-            />
-          </svg>
-        </motion.div>
-
-        <motion.div
-          className="absolute -right-4 rotate-[18deg]"
-          style={{ top: "52%" }}
-          {...float([0, -16, 0], 5.5, 0.6)}
-        >
-          <svg width="70" height="160" viewBox="0 0 130 320" fill="none">
-            <defs>
-              <linearGradient id="sb_g4" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#6699ff" />
-                <stop offset="100%" stopColor="#1a3ecc" />
-              </linearGradient>
-            </defs>
-            <ellipse
-              cx="65"
-              cy="58"
-              rx="50"
-              ry="32"
-              stroke="url(#sb_g4)"
-              strokeWidth="16"
-              fill="none"
-              opacity="0.4"
-            />
-            <ellipse
-              cx="65"
-              cy="262"
-              rx="50"
-              ry="32"
-              stroke="url(#sb_g4)"
-              strokeWidth="16"
-              fill="none"
-              opacity="0.3"
-            />
-          </svg>
-        </motion.div>
+      {/* ── Top Logo ── */}
+      <div className="w-full px-2 py-2 flex items-center justify-center">
+        <PulseLogo collapsed={collapsed} />
       </div>
+      {/* Underline: fades out at both ends in the template colours */}
+      <div className="mx-3 mt-1 mb-3 h-px bg-gradient-to-r from-transparent via-[#0084ff]/40 to-transparent" />
 
-      {/* ── Nav Items ── */}
-      <nav className="relative z-10 flex-1 py-4 overflow-y-auto overflow-x-hidden [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.25)_transparent]">
-        {(loading || fetching || !roleReady) ? (
-          <div className="mx-2 animate-pulse space-y-1">
+      {/* ── Nav Items Scroll Area ── */}
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden space-y-1">
+        {loading || fetching || !roleReady ? (
+          <div className="space-y-2 py-2 px-1">
             {Array.from({ length: skeletonRows }, (_, i) => (
               <div
                 key={i}
-                className={`flex items-center px-3 py-2.5 rounded-xl gap-3 ${
-                  collapsed ? "justify-center" : ""
-                }`}
+                className={`flex items-center px-3 py-2 rounded-xl gap-3 animate-pulse bg-slate-100/60 dark:bg-white/[0.03] ${collapsed ? "justify-center" : ""
+                  }`}
               >
-                <div className="w-[18px] h-[18px] rounded bg-white/30 shrink-0" />
-                {!collapsed && <div className="h-3.5 bg-white/20 rounded" style={{ width: `${55 + ((i * 37) % 35)}%` }} />}
+                <div className="w-5 h-5 rounded-md bg-slate-200 dark:bg-white/10 shrink-0" />
+                {!collapsed && (
+                  <div
+                    className="h-3.5 bg-slate-200 dark:bg-white/10 rounded"
+                    style={{ width: `${50 + ((i * 35) % 40)}%` }}
+                  />
+                )}
               </div>
             ))}
           </div>
         ) : (
           <>
-            {!collapsed && userRole === "Developer" && (
-              <p className="px-6 pt-1 pb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/50">
-                Main Menu
-              </p>
-            )}
-            {/* Hard-coded menus are Developer-only; everyone else only sees the screens
-                their role was granted in Menu Access (a Dashboard screen included). */}
-            {userRole === "Developer" && <NavLink href="/dashboard" label="Dashboard" Icon={LayoutDashboard} />}
-
-            {/* Dynamic menus: process = main menu, screens = sub-menus */}
-            {collapsed
-              ? visibleMenus.map((item) => (
-                  <NavLink key={item.id} href={item.url} label={item.name} Icon={ICON_MAP[item.icon ?? ""] ?? Cog} />
-                ))
-              : (
-                <>
-                  {menuGroups.loose.map((item) => (
-                    <NavLink key={item.id} href={item.url} label={item.name} Icon={ICON_MAP[item.icon ?? ""] ?? Cog} />
-                  ))}
-                  {menuGroups.groups.map((g) =>
-                    renderGroup(
-                      g.name,
-                      Layers,
-                      isProcessOpen(g),
-                      isGroupActive(g.items),
-                      () => toggleProcess(g),
-                      g.items.map((item) => (
-                        <NavLink key={item.id} href={item.url} label={item.name} Icon={ICON_MAP[item.icon ?? ""] ?? Cog} indent />
-                      )),
-                      g.key
-                    )
-                  )}
-                </>
-              )}
-
-            {/* Static: Developer-only admin screens (always available, no process/screen setup needed) */}
+            {/* Developer Management: always first for Developers */}
             {userRole === "Developer" && (
               <>
-                {collapsed ? (
-                  <div className="mx-5 my-2 border-t border-white/15" />
-                ) : (
-                  <p className="flex items-center gap-3 px-6 pt-4 pb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/50">
-                    Administration
-                    <span className="flex-1 border-t border-white/15" />
+                {!collapsed && (
+                  <p className="px-3 pt-1 pb-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                    Developer
                   </p>
                 )}
                 {collapsed ? (
-                  <>
-                    <NavLink href="/access-control/user-management" label="User Management" Icon={Users} />
-                    <NavLink href="/access-control/role-management" label="Role Management" Icon={Shield} />
-                    <NavLink href="/access-control/menu-access" label="Menu Access" Icon={ShieldCheck} />
-                  </>
-                ) : (
-                  renderGroup(
-                    "Access Control",
-                    Lock,
-                    accessControlOpen,
-                    accessActive,
-                    toggleAccessControl,
-                    <>
-                      <NavLink href="/access-control/user-management" label="User Management" Icon={Users} indent />
-                      <NavLink href="/access-control/role-management" label="Role Management" Icon={Shield} indent />
-                      <NavLink href="/access-control/menu-access" label="Menu Access" Icon={ShieldCheck} indent />
-                    </>
-                  )
-                )}
-                {collapsed ? (
-                  <NavLink href="/menu-management" label="Process & Screen" Icon={Cog} />
+                  renderItem("/developer-management/process-screen", "Router Setup", Layers)
                 ) : (
                   renderGroup(
                     "Developer Management",
-                    Cog,
-                    menuMgmtOpen,
-                    menuMgmtActive,
-                    toggleMenuMgmt,
-                    <NavLink href="/menu-management" label="Process & Screen" Icon={Layers} indent />
+                    Sparkles,
+                    devMgmtOpen,
+                    devMgmtActive,
+                    toggleDevMgmt,
+                    renderItem("/developer-management/process-screen", "Router Setup", Layers, true)
                   )
                 )}
-                <NavLink href="/workflow-management" label="Workflow Management" Icon={Workflow} />
+              </>
+            )}
+
+            {/* Main menu section */}
+            {!collapsed && (userRole === "Developer" || menuGroups.entries.length > 0) && (
+              <p className="px-3 pt-1 pb-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                Main menu
+              </p>
+            )}
+
+            {userRole === "Developer" &&
+              renderItem("/dashboard", "Dashboard", LayoutDashboard)}
+
+            {/* Dynamic menus */}
+            {collapsed ? (
+              menuGroups.flatOrder.map((item) =>
+                renderItem(item.url, item.name, getScreenIcon(item.name, item.url, item.icon))
+              )
+            ) : (
+              <>
+                {menuGroups.entries.map((e) =>
+                  e.kind === "item"
+                    ? renderItem(e.item.url, e.item.name, getScreenIcon(e.item.name, e.item.url, e.item.icon))
+                    : renderGroup(
+                      e.group.name,
+                      getProcessIcon(e.group.name),
+                      isProcessOpen(e.group),
+                      isGroupActive(e.group.items),
+                      () => toggleProcess(e.group),
+                      e.group.items.map((item) =>
+                        renderItem(item.url, item.name, getScreenIcon(item.name, item.url, item.icon), true)
+                      ),
+                      e.group.key
+                    )
+                )}
+              </>
+            )}
+
+            {/* Administration section */}
+            {userRole === "Developer" && (
+              <>
+                {!collapsed && (
+                  <p className="px-3 pt-3 pb-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                    Administration
+                  </p>
+                )}
+
+                {collapsed ? (
+                  <>
+                    {renderItem("/access-control/user-management", "User Management", Users)}
+                    {renderItem("/access-control/role-management", "Role Management", Shield)}
+                    {renderItem("/access-control/menu-access", "Menu Access", ShieldCheck)}
+                    {renderItem("/workflow-management", "Workflow Management", Workflow)}
+                  </>
+                ) : (
+                  <>
+                    {renderGroup(
+                      "Access Control",
+                      Lock,
+                      accessControlOpen,
+                      accessActive,
+                      toggleAccessControl,
+                      <>
+                        {renderItem("/access-control/user-management", "User Management", Users, true)}
+                        {renderItem("/access-control/role-management", "Role Management", Shield, true)}
+                        {renderItem("/access-control/menu-access", "Menu Access", ShieldCheck, true)}
+                      </>
+                    )}
+
+                    {renderItem("/workflow-management", "Workflow Management", Workflow)}
+                  </>
+                )}
+              </>
+            )}
+
+            {/* Workflow stages the user's role may open */}
+            {myWorkflows.length > 0 && (
+              <>
+                {!collapsed && (
+                  <p className="px-3 pt-3 pb-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                    Workflows
+                  </p>
+                )}
+                {collapsed
+                  ? myWorkflows.flatMap((w) =>
+                    w.stages.map((s) => renderItem(stagePath(w, s.id), `${w.name} - ${s.name}`, getStageIcon(s.stage_type), false, countFor(s.id)))
+                  )
+                  : myWorkflows.map((w) =>
+                    renderGroup(
+                      w.name,
+                      Workflow,
+                      isWorkflowOpen(w),
+                      isWorkflowActive(w),
+                      () => toggleWorkflow(w),
+                      w.stages.map((s) => renderItem(stagePath(w, s.id), s.name, getStageIcon(s.stage_type), true, countFor(s.id))),
+                      `wf-${w.id}`
+                    )
+                  )}
               </>
             )}
           </>
         )}
       </nav>
 
-      {/* ── Logout ── */}
-      <div className="relative z-10 p-3 border-t border-white/15 bg-white/5 backdrop-blur-md">
-        {(loading || fetching || !roleReady) ? (
-          <div
-            className={`flex items-center mx-2 px-3 py-2.5 gap-3 animate-pulse ${
-              collapsed ? "justify-center" : ""
+      {/* ── Logout Button at Bottom ── */}
+      <div className="pt-2 border-t border-slate-200/80 dark:border-white/[0.08]">
+        <button
+          type="button"
+          onClick={handleLogout}
+          title={collapsed ? "Logout" : undefined}
+          className={`flex items-center px-3 py-2.5 rounded-xl w-full text-[13.5px] font-medium transition-all duration-200 border border-slate-200/90 dark:border-slate-800 bg-slate-50/50 dark:bg-[#0e172e]/60 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-200 dark:hover:border-rose-900/50 hover:bg-rose-50/50 dark:hover:bg-rose-500/10 ${collapsed ? "justify-center gap-0" : "gap-3"
             }`}
-          >
-            <div className="w-[18px] h-[18px] rounded bg-white/30 shrink-0" />
-            {!collapsed && <div className="h-3.5 w-12 bg-white/20 rounded" />}
-          </div>
-        ) : (
-          <button
-            onClick={handleLogout}
-            title={collapsed ? "Logout" : undefined}
-            className={`flex items-center px-3 py-2.5 rounded-xl w-full text-sm font-medium text-white/80 bg-white/10 border border-white/15 backdrop-blur-md hover:bg-red-500/30 hover:border-red-300/40 hover:text-white transition-all
-              ${collapsed ? "justify-center gap-0" : "gap-3"}`}
-          >
-            <LogOut className="shrink-0 w-[18px] h-[18px]" />
-            {!collapsed && <span>Logout</span>}
-          </button>
-        )}
+        >
+          <LogOut className="shrink-0 w-4 h-4" />
+          {!collapsed && <span>Logout</span>}
+        </button>
       </div>
     </aside>
   );

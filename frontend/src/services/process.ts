@@ -5,6 +5,7 @@ export interface ProcessItem {
   id: number;
   name: string;
   description: string | null;
+  order: number;
   is_active: boolean;
   created_at?: string;
   creator?: { employee_id: string; employee_name?: string | null };
@@ -13,6 +14,7 @@ export interface ProcessItem {
 export interface ProcessCreatePayload {
   name: string;
   description?: string | null;
+  order?: number;
   is_active?: boolean;
 }
 

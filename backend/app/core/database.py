@@ -38,3 +38,45 @@ def _set_audit_user(session, flush_context, instances):
     for obj in session.dirty:
         if isinstance(obj, AuditMixin):
             obj.updated_by_id = user_id
+
+
+# ---------------------------------------------------------------------------
+# Live updates: after a commit that changed menus / permissions / workflows / work items, tell every
+# open browser (see app/core/events.py) so it can refresh itself without a manual page reload.
+# ---------------------------------------------------------------------------
+
+# table name -> kind of change ("access" = structure and permissions, "work" = items moving)
+_LIVE_TABLES = {
+    "menus": "access",
+    "processes": "access",
+    "workflows": "access",
+    "workflow_stages": "access",
+    "role_menu_access": "access",
+    "roles": "access",
+    "users": "access",
+    "workflow_items": "work",
+    "workflow_item_history": "work",
+}
+
+
+@event.listens_for(SessionLocal, "before_flush")
+def _remember_live_changes(session, flush_context, instances):
+    kinds = session.info.setdefault("live_kinds", set())
+    for obj in list(session.new) + list(session.dirty) + list(session.deleted):
+        kind = _LIVE_TABLES.get(getattr(obj, "__tablename__", None))
+        if kind:
+            kinds.add(kind)
+
+
+@event.listens_for(SessionLocal, "after_commit")
+def _publish_live_changes(session):
+    kinds = session.info.pop("live_kinds", None)
+    if kinds:
+        from app.core.events import publish
+
+        publish(set(kinds))
+
+
+@event.listens_for(SessionLocal, "after_rollback")
+def _forget_live_changes(session):
+    session.info.pop("live_kinds", None)

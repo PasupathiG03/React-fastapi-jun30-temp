@@ -1,9 +1,9 @@
-
 import { useEffect, useState } from "react";
 import { Shield, Plus, Trash2, ToggleLeft, ToggleRight, X, Edit2 } from "lucide-react";
 import { RoleItem, fetchRoles, createRole, updateRole, deleteRole, RoleCreatePayload } from "@/services/role";
 import { createPortal } from "react-dom";
 import { TablePagination, TableToolbar } from "@/components/DataTableControls";
+import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { useTableData } from "@/hooks/useTableData";
 import { exportToCsv } from "@/lib/exportData";
 
@@ -125,67 +125,51 @@ export default function RoleManagementPage() {
   }
 
   return (
-    <div className="p-6 w-full space-y-6">
+    <PageContainer>
       {/* Header */}
       {loadingRoles ? (
         <div className="flex items-center justify-between animate-pulse">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gray-200 shrink-0" />
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-slate-200 dark:bg-white/10 shrink-0" />
             <div className="space-y-2">
-              <div className="h-5 w-48 bg-gray-200 rounded" />
-              <div className="h-3.5 w-64 bg-gray-100 rounded" />
+              <div className="h-5 w-48 bg-slate-200 dark:bg-white/10 rounded" />
+              <div className="h-3.5 w-64 bg-slate-100 dark:bg-white/5 rounded" />
             </div>
           </div>
-          <div className="w-36 h-9 bg-gray-200 rounded-lg shrink-0" />
+          <div className="w-32 h-10 bg-slate-200 dark:bg-white/10 rounded-xl shrink-0" />
         </div>
       ) : (
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: "linear-gradient(135deg, #1d55e8, #1235b0)" }}
+        <PageHeader
+          icon={Shield}
+          title="Role Management"
+          subtitle="Create and configure system roles"
+          actions={
+            <button
+              onClick={() => handleOpenModal()}
+              className="group relative flex items-center gap-2 px-4 py-2.5 text-white rounded-xl text-xs font-semibold bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-[0_0_15px_rgba(14,165,233,0.3)] transition-all"
             >
-              <Shield className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">Role Management</h1>
-              <p className="text-sm text-gray-500">Create and configure system roles</p>
-            </div>
-          </div>
-          <button
-            onClick={() => handleOpenModal()}
-            className="group relative flex items-center gap-2 px-4 py-2 text-white rounded-lg text-sm font-medium hover:shadow-md hover:opacity-90 transition-all shadow-sm"
-            style={{ background: "linear-gradient(135deg, #1d55e8, #1235b0)" }}
-          >
-            <Plus className="w-4 h-4" />
-            Add Role
-            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2.5 py-1 bg-gray-900 text-white text-xs rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-              Create a new role
-            </span>
-          </button>
-        </div>
+              <Plus className="w-4 h-4" />
+              Add Role
+            </button>
+          }
+        />
       )}
 
       {/* Create/Edit Form Modal */}
       {isModalOpen && typeof document !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-2xl w-full max-w-lg overflow-visible">
-            <div
-              className="px-6 py-4 border-b border-gray-100 flex items-center justify-between rounded-t-2xl"
-              style={{
-                background: "linear-gradient(135deg, rgba(29,85,232,0.06), rgba(18,53,176,0.04))",
-              }}
-            >
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white dark:bg-[#0c1427] rounded-2xl border border-slate-200 dark:border-white/10 shadow-2xl w-full max-w-lg overflow-visible">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between rounded-t-2xl bg-slate-50/50 dark:bg-white/[0.02]">
               <div className="flex items-center gap-2">
-                {editId ? <Edit2 className="w-4 h-4 text-blue-600" /> : <Plus className="w-4 h-4 text-blue-600" />}
-                <h2 className="text-sm font-semibold text-gray-800">
+                {editId ? <Edit2 className="w-4 h-4 text-sky-500" /> : <Plus className="w-4 h-4 text-sky-500" />}
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white">
                   {editId ? "Edit Role" : "Add New Role"}
                 </h2>
               </div>
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -195,33 +179,32 @@ export default function RoleManagementPage() {
               <div className="p-6 space-y-5 overflow-visible">
                 {/* Role Name */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                    Role Name <span className="text-red-500">*</span>
+                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
+                    Role Name <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g. Content Editor"
-                    className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 text-xs text-slate-800 dark:text-slate-200 bg-slate-50/50 dark:bg-[#0e1a38] placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/30 transition-colors"
                   />
                 </div>
 
                 {/* Feedback */}
                 {error && (
-                  <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-red-50 border border-red-100 text-sm text-red-600">
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-600 dark:text-red-400">
                     {error}
                   </div>
                 )}
               </div>
 
               {/* Action buttons */}
-              <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-end shrink-0 rounded-b-2xl">
+              <div className="px-6 py-4 bg-slate-50/50 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end shrink-0 rounded-b-2xl">
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-60 shadow-sm hover:shadow-md hover:opacity-90"
-                  style={{ background: "linear-gradient(135deg, #1d55e8, #1235b0)" }}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 transition-all disabled:opacity-60 shadow-sm"
                 >
                   {editId ? <Edit2 className="w-4 h-4" /> : <Plus className="w-5 h-5" />}
                   {submitting ? "Saving..." : editId ? "Save Changes" : "Add Role"}
@@ -235,23 +218,23 @@ export default function RoleManagementPage() {
 
       {/* Success Message Banner */}
       {success && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-green-50 border border-green-100 text-sm text-green-700 shadow-sm">
+        <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-xs text-emerald-700 dark:text-emerald-400 shadow-sm">
           ✓ {success}
         </div>
       )}
 
       {/* Roles List */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-[#0c1427]/70 backdrop-blur-xl rounded-[22px] border border-slate-200/80 dark:border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.03)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.4)] overflow-hidden transition-colors duration-200">
         {loadingRoles ? (
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between animate-pulse">
-            <div className="h-4 w-32 bg-gray-200 rounded" />
-            <div className="h-3 w-12 bg-gray-100 rounded" />
+          <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.06] flex items-center justify-between animate-pulse">
+            <div className="h-4 w-32 bg-slate-200 dark:bg-white/10 rounded" />
+            <div className="h-3 w-12 bg-slate-100 dark:bg-white/5 rounded" />
           </div>
         ) : (
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-800">Roles</h2>
+          <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.06] flex items-center justify-between gap-4">
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">Roles</h2>
             <div className="flex items-center gap-4">
-              <span className="text-xs text-gray-400">{roles.length} role{roles.length !== 1 ? "s" : ""}</span>
+              <span className="text-xs text-slate-400">{roles.length} role{roles.length !== 1 ? "s" : ""}</span>
               <TableToolbar
                 query={table.query}
                 onQueryChange={table.setQuery}
@@ -264,59 +247,61 @@ export default function RoleManagementPage() {
         )}
 
         {loadingRoles ? (
-          <div className="divide-y divide-gray-50 animate-pulse">
+          <div className="divide-y divide-slate-100 dark:divide-white/[0.04] animate-pulse">
             {[1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="flex items-center gap-4 px-6 py-4">
                 <div className="w-8 shrink-0 flex justify-center">
-                  <div className="w-3 h-4 bg-gray-100 rounded" />
+                  <div className="w-3 h-4 bg-slate-200 dark:bg-white/10 rounded" />
                 </div>
-                <div className="w-9 h-9 rounded-lg bg-gray-100 shrink-0" />
+                <div className="w-9 h-9 rounded-xl bg-slate-200 dark:bg-white/10 shrink-0" />
                 <div className="flex-1 space-y-2 py-1">
-                  <div className="h-3.5 w-32 bg-gray-200 rounded" />
-                  <div className="h-3 w-48 bg-gray-100 rounded" />
+                  <div className="h-3.5 w-32 bg-slate-200 dark:bg-white/10 rounded" />
+                  <div className="h-3 w-48 bg-slate-100 dark:bg-white/5 rounded" />
                 </div>
-                <div className="h-6 w-16 bg-green-50 rounded-full shrink-0" />
-                <div className="w-5 h-5 bg-gray-100 rounded-full shrink-0" />
-                <div className="w-4 h-4 bg-gray-100 rounded shrink-0" />
+                <div className="h-6 w-16 bg-slate-100 dark:bg-white/5 rounded-full shrink-0" />
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="w-5 h-5 bg-slate-100 dark:bg-white/5 rounded shrink-0" />
+                  <div className="w-5 h-5 bg-slate-100 dark:bg-white/5 rounded shrink-0" />
+                </div>
               </div>
             ))}
           </div>
         ) : roles.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+          <div className="flex flex-col items-center justify-center py-12 text-slate-400 dark:text-slate-500">
             <Shield className="w-8 h-8 mb-2 opacity-30" />
             <p className="text-sm">No roles found</p>
             <p className="text-xs mt-0.5">Add your first role above</p>
           </div>
         ) : (
           <div className="flex flex-col">
-            <ul className="divide-y divide-gray-50 m-0 p-0">
+            <ul className="divide-y divide-slate-100 dark:divide-white/[0.04] m-0 p-0">
               {table.paged.map((role, index) => (
-                <li key={role.id} className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50/50 transition-colors bg-white">
+                <li key={role.id} className="flex items-center gap-4 px-6 py-3.5 hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors bg-white dark:bg-transparent">
                   
                   {/* S.No */}
-                  <div className="w-8 shrink-0 text-sm font-medium text-gray-400 text-center">
+                  <div className="w-8 shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500 text-center">
                     {(table.page - 1) * table.pageSize + index + 1}
                   </div>
 
                   {/* Icon */}
                   <div
-                    className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                    className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
                     style={{
                       background: role.is_active
-                        ? "linear-gradient(135deg, rgba(29,85,232,0.12), rgba(18,53,176,0.08))"
-                        : "rgba(0,0,0,0.04)",
+                        ? "rgba(14, 165, 233, 0.15)"
+                        : "rgba(148, 163, 184, 0.1)",
                     }}
                   >
-                    <Shield className={`w-4 h-4 ${role.is_active ? "text-blue-600" : "text-gray-400"}`} />
+                    <Shield className={`w-4 h-4 ${role.is_active ? "text-sky-500" : "text-slate-400"}`} />
                   </div>
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-semibold truncate ${role.is_active ? "text-gray-800" : "text-gray-400"}`}>
+                    <p className={`text-xs font-bold truncate ${role.is_active ? "text-slate-800 dark:text-slate-200" : "text-slate-400 dark:text-slate-500"}`}>
                       {role.name}
                     </p>
                     {role.created_at && (
-                      <p className="text-[10px] text-gray-400 mt-1">
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
                         Added by {role.creator?.employee_name || role.creator?.employee_id || "System"} on {new Date(role.created_at).toLocaleDateString()}
                       </p>
                     )}
@@ -324,10 +309,10 @@ export default function RoleManagementPage() {
 
                   {/* Status badge */}
                   <span
-                    className={`text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ${
+                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
                       role.is_active
-                        ? "bg-green-100 text-green-700"
-                        : "bg-gray-100 text-gray-500"
+                        ? "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400"
+                        : "bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400"
                     }`}
                   >
                     {role.is_active ? "Active" : "Inactive"}
@@ -336,43 +321,37 @@ export default function RoleManagementPage() {
                   {/* Actions */}
                   <button
                     onClick={() => handleOpenModal(role)}
-                    className="relative group text-gray-400 hover:text-blue-600 transition-colors shrink-0 mx-2"
+                    className="text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 transition-colors shrink-0 mx-1.5"
+                    title="Edit role"
                   >
                     <Edit2 className="w-4 h-4" />
-                    <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2 py-1 bg-gray-900 text-white text-[10px] font-medium rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                      Edit role
-                    </span>
                   </button>
 
                   <button
                     onClick={() => handleToggleStatus(role)}
-                    className="relative group text-gray-400 hover:text-blue-600 transition-colors shrink-0"
+                    className="text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 transition-colors shrink-0"
+                    title={role.is_active ? "Deactivate" : "Activate"}
                   >
                     {role.is_active ? (
-                      <ToggleRight className="w-5 h-5 text-blue-600" />
+                      <ToggleRight className="w-5 h-5 text-sky-500" />
                     ) : (
                       <ToggleLeft className="w-5 h-5" />
                     )}
-                    <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2 py-1 bg-gray-900 text-white text-[10px] font-medium rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                      {role.is_active ? "Deactivate" : "Activate"}
-                    </span>
                   </button>
 
                   <button
                     onClick={() => handleDelete(role)}
-                    className="relative group text-gray-300 hover:text-red-500 transition-colors shrink-0 ml-2"
+                    className="text-slate-300 dark:text-slate-600 hover:text-rose-500 transition-colors shrink-0 ml-1.5"
+                    title="Delete role"
                   >
                     <Trash2 className="w-4 h-4" />
-                    <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2 py-1 bg-gray-900 text-white text-[10px] font-medium rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                      Delete role
-                    </span>
                   </button>
                 </li>
               ))}
             </ul>
             
             {table.filtered.length === 0 && (
-              <div className="py-10 text-center text-sm text-gray-400">No results match your search</div>
+              <div className="py-10 text-center text-xs text-slate-400">No results match your search</div>
             )}
             <TablePagination
               page={table.page}
@@ -390,29 +369,29 @@ export default function RoleManagementPage() {
       {itemToDelete && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
           <div 
-            className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity"
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
             onClick={() => setItemToDelete(null)}
           />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col p-6">
-            <div className="flex flex-col items-center text-center">
-              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-4">
-                <Trash2 className="w-6 h-6 text-red-600" />
-              </div>
-              <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Role?</h3>
-              <p className="text-sm text-gray-500 mb-6">
-                Are you sure you want to permanently delete <span className="font-semibold text-gray-800">{itemToDelete.name}</span>? This action cannot be undone.
-              </p>
+          <div className="relative bg-white dark:bg-[#0c1427] rounded-2xl border border-slate-200 dark:border-white/10 shadow-2xl p-6 max-w-sm w-full z-10 text-center">
+            <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-6 h-6" />
             </div>
-            <div className="flex gap-3 w-full">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">Delete Role?</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
+              Are you sure you want to permanently delete <span className="font-semibold text-slate-800 dark:text-slate-200">{itemToDelete.name}</span>? This action cannot be undone.
+            </p>
+            <div className="flex items-center justify-center gap-3">
               <button
+                type="button"
                 onClick={() => setItemToDelete(null)}
-                className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleDeleteConfirm}
-                className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-sm"
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-rose-500 hover:bg-rose-600 transition-colors shadow-sm"
               >
                 Delete
               </button>
@@ -421,6 +400,6 @@ export default function RoleManagementPage() {
         </div>,
         document.body
       )}
-    </div>
+    </PageContainer>
   );
 }

@@ -1,6 +1,7 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db, get_superuser, get_current_user
@@ -16,7 +17,7 @@ def list_processes(
     current_user=Depends(get_current_user),
 ):
     """List all active processes."""
-    return db.query(Process).filter(Process.is_active == True).order_by(Process.name).all()
+    return db.query(Process).filter(Process.is_active == True).order_by(Process.order, Process.name).all()
 
 
 @router.post("/", response_model=ProcessOut, status_code=status.HTTP_201_CREATED)
@@ -33,7 +34,10 @@ def create_process(
             detail="A process with this name already exists",
         )
 
-    process = Process(**payload.model_dump())
+    data = payload.model_dump()
+    if data.get("order") is None:
+        data["order"] = (db.query(func.max(Process.order)).scalar() or 0) + 1
+    process = Process(**data)
     db.add(process)
     db.commit()
     db.refresh(process)
