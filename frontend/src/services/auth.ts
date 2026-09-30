@@ -5,12 +5,13 @@ export interface LoginPayload {
   password: string;
 }
 
-export interface TokenResponse {
-  access_token: string;
-  token_type: string;
+export interface LoginResult {
+  message: string;
+  idle_minutes: number;
+  expires_in_minutes: number;
 }
 
-export async function loginApi(payload: LoginPayload): Promise<TokenResponse> {
+export async function loginApi(payload: LoginPayload): Promise<LoginResult> {
   const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -47,13 +48,10 @@ export interface ChangePasswordPayload {
   confirm_password: string;
 }
 
-export async function changePasswordApi(payload: ChangePasswordPayload, token: string): Promise<void> {
+export async function changePasswordApi(payload: ChangePasswordPayload): Promise<void> {
   const res = await fetch(`${API_BASE_URL}/api/auth/change-password`, {
     method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 

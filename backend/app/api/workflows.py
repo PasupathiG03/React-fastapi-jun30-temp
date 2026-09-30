@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.dependencies import get_current_user, get_db, get_superuser
+from app.core.dependencies import WORKFLOW_SCREEN, get_current_user, get_db, require_screen
 from app.models.role import Role
 from app.models.workflow import Workflow, WorkflowItem, WorkflowItemHistory, WorkflowStage
 from app.schemas.workflow import (
@@ -79,7 +79,7 @@ def my_stages(
 @router.get("/", response_model=List[WorkflowDetailOut])
 def list_workflows(
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    _=Depends(require_screen(WORKFLOW_SCREEN)),
 ):
     """List every workflow with its stages nested, so the UI can
     render each workflow's stages inline without a follow-up request."""
@@ -130,7 +130,7 @@ def pending_by_stage(
 def create_workflow(
     payload: WorkflowCreate,
     db: Session = Depends(get_db),
-    _=Depends(get_superuser),
+    _=Depends(require_screen(WORKFLOW_SCREEN)),
 ):
     existing = db.query(Workflow).filter(Workflow.name == payload.name).first()
     if existing:
@@ -149,7 +149,7 @@ def create_workflow(
 def get_workflow(
     workflow_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    _=Depends(require_screen(WORKFLOW_SCREEN)),
 ):
     workflow = (
         db.query(Workflow)
@@ -167,7 +167,7 @@ def update_workflow(
     workflow_id: int,
     payload: WorkflowUpdate,
     db: Session = Depends(get_db),
-    _=Depends(get_superuser),
+    _=Depends(require_screen(WORKFLOW_SCREEN)),
 ):
     workflow = _get_workflow_or_404(db, workflow_id)
 
@@ -194,7 +194,7 @@ def update_workflow(
 def delete_workflow(
     workflow_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_superuser),
+    _=Depends(require_screen(WORKFLOW_SCREEN)),
 ):
     workflow = _get_workflow_or_404(db, workflow_id)
     db.delete(workflow)
@@ -212,7 +212,7 @@ def create_stage(
     workflow_id: int,
     payload: StageCreate,
     db: Session = Depends(get_db),
-    _=Depends(get_superuser),
+    _=Depends(require_screen(WORKFLOW_SCREEN)),
 ):
     _get_workflow_or_404(db, workflow_id)
     data = payload.model_dump(exclude={"role_ids"})
@@ -230,7 +230,7 @@ def update_stage(
     stage_id: int,
     payload: StageUpdate,
     db: Session = Depends(get_db),
-    _=Depends(get_superuser),
+    _=Depends(require_screen(WORKFLOW_SCREEN)),
 ):
     _get_workflow_or_404(db, workflow_id)
     stage = db.query(WorkflowStage).filter(
@@ -286,7 +286,7 @@ def delete_stage(
     workflow_id: int,
     stage_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_superuser),
+    _=Depends(require_screen(WORKFLOW_SCREEN)),
 ):
     _get_workflow_or_404(db, workflow_id)
     stage = db.query(WorkflowStage).filter(
@@ -441,11 +441,13 @@ def item_history(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    """Movement log of an item. Allowed for Developers and for roles assigned to any stage of its workflow."""
+    """Movement log of an item. Allowed for Developers and for roles that can open a stage the item has been in."""
     item = db.query(WorkflowItem).filter(WorkflowItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
-    if not any(_user_can_open(current_user, s) for s in item.workflow.stages):
+    # Allowed when the user can open the stage the item is at now, or one it has passed through.
+    touched = {h.from_stage_id for h in item.history} | {h.to_stage_id for h in item.history} | {item.current_stage_id}
+    if not any(_user_can_open(current_user, s) for s in item.workflow.stages if s.id in touched):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this item")
     return [
         ItemHistoryOut(

@@ -16,7 +16,7 @@ export default function RoleManagementPage() {
 
   // Form state
   const [name, setName] = useState("");
-  
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -158,8 +158,8 @@ export default function RoleManagementPage() {
       {/* Create/Edit Form Modal */}
       {isModalOpen && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white dark:bg-[#0c1427] rounded-2xl border border-slate-200 dark:border-white/10 shadow-2xl w-full max-w-lg overflow-visible">
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between rounded-t-2xl bg-slate-50/50 dark:bg-white/[0.02]">
+          <div className="glass-modal rounded-2xl w-full max-w-lg overflow-visible">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between rounded-t-2xl bg-white/30 dark:bg-white/[0.02]">
               <div className="flex items-center gap-2">
                 {editId ? <Edit2 className="w-4 h-4 text-sky-500" /> : <Plus className="w-4 h-4 text-sky-500" />}
                 <h2 className="text-sm font-bold text-slate-900 dark:text-white">
@@ -187,7 +187,7 @@ export default function RoleManagementPage() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g. Content Editor"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 text-xs text-slate-800 dark:text-slate-200 bg-slate-50/50 dark:bg-[#0e1a38] placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/30 transition-colors"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 text-xs text-slate-800 dark:text-slate-200 glass-field placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/30 transition-colors"
                   />
                 </div>
 
@@ -200,7 +200,7 @@ export default function RoleManagementPage() {
               </div>
 
               {/* Action buttons */}
-              <div className="px-6 py-4 bg-slate-50/50 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end shrink-0 rounded-b-2xl">
+              <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end shrink-0 rounded-b-2xl">
                 <button
                   type="submit"
                   disabled={submitting}
@@ -224,7 +224,7 @@ export default function RoleManagementPage() {
       )}
 
       {/* Roles List */}
-      <div className="bg-white dark:bg-[#0c1427]/70 backdrop-blur-xl rounded-[22px] border border-slate-200/80 dark:border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.03)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.4)] overflow-hidden transition-colors duration-200">
+      <div className="glass-card rounded-[22px] overflow-hidden">
         {loadingRoles ? (
           <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.06] flex items-center justify-between animate-pulse">
             <div className="h-4 w-32 bg-slate-200 dark:bg-white/10 rounded" />
@@ -276,8 +276,8 @@ export default function RoleManagementPage() {
           <div className="flex flex-col">
             <ul className="divide-y divide-slate-100 dark:divide-white/[0.04] m-0 p-0">
               {table.paged.map((role, index) => (
-                <li key={role.id} className="flex items-center gap-4 px-6 py-3.5 hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors bg-white dark:bg-transparent">
-                  
+                <li key={role.id} className="flex items-center gap-4 px-6 py-3.5 hover:bg-white/35 dark:hover:bg-white/[0.02] transition-colors bg-white dark:bg-transparent">
+
                   {/* S.No */}
                   <div className="w-8 shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500 text-center">
                     {(table.page - 1) * table.pageSize + index + 1}
@@ -309,11 +309,10 @@ export default function RoleManagementPage() {
 
                   {/* Status badge */}
                   <span
-                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
-                      role.is_active
+                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${role.is_active
                         ? "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400"
                         : "bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400"
-                    }`}
+                      }`}
                   >
                     {role.is_active ? "Active" : "Inactive"}
                   </span>
@@ -349,7 +348,7 @@ export default function RoleManagementPage() {
                 </li>
               ))}
             </ul>
-            
+
             {table.filtered.length === 0 && (
               <div className="py-10 text-center text-xs text-slate-400">No results match your search</div>
             )}
@@ -368,11 +367,11 @@ export default function RoleManagementPage() {
       {/* Delete Confirmation Modal */}
       {itemToDelete && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-          <div 
+          <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
             onClick={() => setItemToDelete(null)}
           />
-          <div className="relative bg-white dark:bg-[#0c1427] rounded-2xl border border-slate-200 dark:border-white/10 shadow-2xl p-6 max-w-sm w-full z-10 text-center">
+          <div className="relative glass-modal rounded-2xl p-6 max-w-sm w-full z-10 text-center">
             <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto mb-4">
               <Trash2 className="w-6 h-6" />
             </div>

@@ -13,7 +13,7 @@ import {
   Bell,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/constants";
-import { clearToken, getToken } from "@/lib/auth";
+import { isAuthenticated, logout } from "@/lib/auth";
 import { changePasswordApi } from "@/services/auth";
 import { useTheme } from "@/context/ThemeContext";
 import { usePending } from "@/context/PendingContext";
@@ -52,14 +52,11 @@ export default function TopBar({ onToggle, loading = false }: Props) {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
+    if (!isAuthenticated()) {
       setProfileLoading(false);
       return;
     }
-    fetch(`${API_BASE_URL}/api/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    fetch(`${API_BASE_URL}/api/auth/me`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => data && setUser(data))
       .catch(() => { })
@@ -81,16 +78,12 @@ export default function TopBar({ onToggle, loading = false }: Props) {
   }, []);
 
   function handleLogout() {
-    clearToken();
-    navigate("/login");
+    logout().finally(() => navigate("/login"));
   }
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
     setPasswordError("");
-    const token = getToken();
-    if (!token) return;
-
     if (newPassword !== confirmPassword) {
       setPasswordError("New passwords do not match.");
       return;
@@ -103,8 +96,7 @@ export default function TopBar({ onToggle, loading = false }: Props) {
           old_password: oldPassword,
           new_password: newPassword,
           confirm_password: confirmPassword,
-        },
-        token
+        }
       );
       setShowPasswordModal(false);
       setOldPassword("");
@@ -172,7 +164,7 @@ export default function TopBar({ onToggle, loading = false }: Props) {
   })();
 
   return (
-    <header className="relative z-40 h-14 w-full shrink-0 flex items-center justify-between px-4 rounded-2xl bg-white/90 dark:bg-[#0c1427]/85 backdrop-blur-xl border border-slate-200/80 dark:border-white/[0.08] shadow-[0_4px_20px_rgba(0,0,0,0.03)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.4)] transition-colors duration-200">
+    <header className="relative z-40 h-14 w-full shrink-0 flex items-center justify-between px-4 rounded-2xl glass-panel transition-colors duration-200">
       {/* Left: Hamburger menu + Breadcrumbs */}
       <div className="flex items-center gap-3 min-w-0">
         <button
@@ -193,8 +185,8 @@ export default function TopBar({ onToggle, loading = false }: Props) {
               )}
               <span
                 className={`truncate ${crumb.isLast
-                    ? "font-semibold text-slate-900 dark:text-white"
-                    : "font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 cursor-default"
+                  ? "font-semibold text-slate-900 dark:text-white"
+                  : "font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 cursor-default"
                   }`}
               >
                 {crumb.label}
@@ -238,7 +230,7 @@ export default function TopBar({ onToggle, loading = false }: Props) {
           </button>
 
           {bellOpen && (
-            <div className="absolute right-0 top-10 w-80 bg-white dark:bg-[#0c1427] rounded-2xl border border-slate-200 dark:border-white/10 shadow-xl z-50 overflow-hidden">
+            <div className="absolute right-0 top-10 w-80 glass-menu rounded-2xl z-50 overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-100 dark:border-white/[0.08]">
                 <p className="text-sm font-semibold text-slate-800 dark:text-white">Waiting for you</p>
                 <p className="text-[11px] text-slate-400 dark:text-slate-500">
@@ -257,7 +249,7 @@ export default function TopBar({ onToggle, loading = false }: Props) {
                         setBellOpen(false);
                         navigate(pathFor(s.stage_id));
                       }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-white/40 dark:hover:bg-white/5 transition-colors cursor-pointer"
                     >
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate">{s.stage_name}</p>
@@ -294,8 +286,8 @@ export default function TopBar({ onToggle, loading = false }: Props) {
 
             {/* Dropdown */}
             {open && (
-              <div className="absolute right-0 top-full mt-2 w-60 bg-white dark:bg-[#0c1427] rounded-2xl shadow-2xl border border-slate-200/80 dark:border-white/10 overflow-hidden z-50">
-                <div className="flex items-start gap-2.5 px-4 py-3 border-b border-slate-100 dark:border-white/10 bg-slate-50/50 dark:bg-white/[0.02]">
+              <div className="absolute right-0 top-full mt-2 w-60 glass-menu rounded-2xl overflow-hidden z-50">
+                <div className="flex items-start gap-2.5 px-4 py-3 border-b border-slate-100 dark:border-white/10 bg-white/30 dark:bg-white/[0.02]">
                   <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00d2ff] to-[#0072ff] text-white text-xs font-bold flex items-center justify-center shrink-0 shadow-sm">
                     {initials}
                   </div>
@@ -320,7 +312,7 @@ export default function TopBar({ onToggle, loading = false }: Props) {
                     setOpen(false);
                     setShowPasswordModal(true);
                   }}
-                  className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors border-b border-slate-100 dark:border-white/10"
+                  className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-white/40 dark:hover:bg-white/5 transition-colors border-b border-slate-100 dark:border-white/10"
                 >
                   <Key className="w-4 h-4 text-slate-400" />
                   Change Password
@@ -344,7 +336,7 @@ export default function TopBar({ onToggle, loading = false }: Props) {
         createPortal(
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div
-              className="bg-white dark:bg-[#0c1427] border border-slate-200 dark:border-white/10 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl transform transition-all p-6"
+              className="glass-modal rounded-2xl w-full max-w-sm overflow-hidden transform p-6"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-5">
@@ -376,7 +368,7 @@ export default function TopBar({ onToggle, loading = false }: Props) {
                     type="password"
                     value={oldPassword}
                     onChange={(e) => setOldPassword(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 transition-all"
+                    className="w-full px-3 py-2 glass-field border border-slate-200 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 transition-all"
                     placeholder="Enter current password"
                     required
                   />
@@ -390,7 +382,7 @@ export default function TopBar({ onToggle, loading = false }: Props) {
                     type="password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 transition-all"
+                    className="w-full px-3 py-2 glass-field border border-slate-200 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 transition-all"
                     placeholder="Enter new password"
                     required
                   />
@@ -404,12 +396,12 @@ export default function TopBar({ onToggle, loading = false }: Props) {
                     type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 transition-all"
+                    className="w-full px-3 py-2 glass-field border border-slate-200 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 transition-all"
                     placeholder="Confirm new password"
                     required
                   />
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-2 leading-tight">
-                    Must be at least 6 characters and contain an alphabet letter and a symbol.
+                    Must be at least 10 characters and contain a letter, a number and a symbol.
                   </p>
                 </div>
 

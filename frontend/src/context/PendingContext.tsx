@@ -27,7 +27,7 @@ interface PendingValue {
 const PendingContext = createContext<PendingValue>({
   stages: [],
   total: 0,
-  refresh: async () => {},
+  refresh: async () => { },
   countFor: () => 0,
   ready: false,
   pathFor: () => "/dashboard",
@@ -126,7 +126,7 @@ export function PendingProvider({ children }: { children: React.ReactNode }) {
           <div
             key={t.id}
             role="status"
-            className="flex items-start gap-3 rounded-2xl border border-sky-200 dark:border-sky-500/30 bg-white dark:bg-[#0c1427] shadow-xl p-3.5"
+            className="flex items-start gap-3 rounded-2xl border border-sky-200 dark:border-sky-500/30 glass-menu p-3.5"
           >
             <span className="w-8 h-8 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
               <Bell className="w-4 h-4" />

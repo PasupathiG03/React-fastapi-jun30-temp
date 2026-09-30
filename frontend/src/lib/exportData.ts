@@ -4,7 +4,10 @@ export interface ExportColumn<T> {
 }
 
 function escapeCell(v: string | number | boolean | null | undefined): string {
-  const s = v == null ? "" : String(v);
+  let s = v == null ? "" : String(v);
+  // A cell starting with = + - @ (or a tab/CR) is run as a formula when the file is opened in Excel.
+  // A leading apostrophe makes it plain text. Real numbers are left alone.
+  if (typeof v !== "number" && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

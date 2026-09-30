@@ -92,6 +92,12 @@ class User(AuditMixin, Base):
     is_superuser = Column(Boolean(), default=False, nullable=False)
     role_id = Column(Integer, ForeignKey("roles.id", ondelete="SET NULL"), nullable=True)
 
+    # Brute-force protection and session revocation
+    failed_attempts = Column(Integer, default=0, nullable=False, server_default="0")
+    locked_until = Column(DateTime(timezone=True), nullable=True)
+    # Bumped on password change, logout and deactivation; tokens carrying an older number stop working.
+    token_version = Column(Integer, default=0, nullable=False, server_default="0")
+
     role = relationship("Role", foreign_keys="[User.role_id]")
 
     # Self-referential relationships — use string form so SQLAlchemy

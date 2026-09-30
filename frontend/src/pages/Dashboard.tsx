@@ -17,7 +17,6 @@ import { fetchRoles } from "@/services/role";
 import { fetchWorkflows } from "@/services/workflow";
 import { fetchMenus, type MenuItem } from "@/services/menu";
 import { API_BASE_URL } from "@/lib/constants";
-import { getToken } from "@/lib/auth";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { usePending } from "@/context/PendingContext";
 import { useLive } from "@/context/LiveContext";
@@ -61,9 +60,8 @@ export default function DashboardPage() {
   }, [accessVersion]);
 
   async function loadStats() {
-    const token = getToken();
     const [meRes, menusRes] = await Promise.allSettled([
-      fetch(`${API_BASE_URL}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } }).then((r) =>
+      fetch(`${API_BASE_URL}/api/auth/me`).then((r) =>
         r.ok ? r.json() : null
       ),
       fetchMenus(),
@@ -139,7 +137,7 @@ export default function DashboardPage() {
           ? [...Array(4)].map((_, i) => (
             <div
               key={i}
-              className="bg-white dark:bg-[#0c1427]/70 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/80 dark:border-white/[0.08] shadow-sm flex items-center gap-4 animate-pulse"
+              className="glass-card rounded-2xl p-5 flex items-center gap-4 animate-pulse"
             >
               <div className="w-12 h-12 rounded-xl bg-slate-200 dark:bg-white/10 shrink-0" />
               <div className="flex-1 space-y-2">
@@ -151,7 +149,7 @@ export default function DashboardPage() {
           : stats.map(({ label, value, icon: Icon, iconColor, bg }) => (
             <div
               key={label}
-              className="bg-white dark:bg-[#0c1427]/70 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/80 dark:border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.02)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.3)] flex items-center gap-4 hover:border-sky-500/40 transition-colors"
+              className="glass-card glass-lift rounded-2xl p-5 flex items-center gap-4 hover:border-sky-500/40"
             >
               <div
                 className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
@@ -172,7 +170,7 @@ export default function DashboardPage() {
       {/* ── Quick Actions + Activity ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Quick Actions */}
-        <div className="bg-white dark:bg-[#0c1427]/70 backdrop-blur-xl rounded-2xl border border-slate-200/80 dark:border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.02)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.3)] p-5">
+        <div className="glass-card rounded-2xl p-5">
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp className="w-4 h-4 text-sky-500" />
             <h3 className="font-bold text-slate-900 dark:text-white text-sm">Quick Actions</h3>
@@ -182,7 +180,7 @@ export default function DashboardPage() {
               <Link
                 key={href}
                 to={href}
-                className="flex items-center justify-between px-4 py-3 rounded-xl border border-slate-100 dark:border-white/[0.06] hover:border-sky-500/30 dark:hover:border-sky-500/30 bg-slate-50/50 dark:bg-white/[0.02] hover:bg-sky-50/50 dark:hover:bg-sky-500/10 transition-all group"
+                className="flex items-center justify-between px-4 py-3 rounded-xl border border-slate-100 dark:border-white/[0.06] hover:border-sky-500/30 dark:hover:border-sky-500/30 bg-white/30 dark:bg-white/[0.02] hover:bg-sky-50/50 dark:hover:bg-sky-500/10 transition-all group"
               >
                 <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 group-hover:text-sky-600 dark:group-hover:text-sky-400">
                   {label}
@@ -194,7 +192,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Work waiting for this user's stages */}
-        <div className="lg:col-span-2 bg-white dark:bg-[#0c1427]/70 backdrop-blur-xl rounded-2xl border border-slate-200/80 dark:border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.02)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.3)] p-5">
+        <div className="lg:col-span-2 glass-card rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Inbox className="w-4 h-4 text-sky-500" />
@@ -223,7 +221,7 @@ export default function DashboardPage() {
                 <Link
                   key={s.stage_id}
                   to={pathFor(s.stage_id)}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-100 dark:border-white/[0.06] hover:border-sky-500/30 bg-slate-50/50 dark:bg-white/[0.02] hover:bg-sky-50/50 dark:hover:bg-sky-500/10 transition-all group"
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-100 dark:border-white/[0.06] hover:border-sky-500/30 bg-white/30 dark:bg-white/[0.02] hover:bg-sky-50/50 dark:hover:bg-sky-500/10 transition-all group"
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate group-hover:text-sky-600 dark:group-hover:text-sky-400">

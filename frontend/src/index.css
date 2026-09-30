@@ -60,3 +60,262 @@ input:-webkit-autofill:focus {
   -webkit-text-fill-color: #ffffff;
   caret-color: #ffffff;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Glassmorphism
+   Only colours that are already in the app are used, as translucent layers:
+   white (light surfaces), #0c1427 / #0e1a38 (dark surfaces), and the brand blue #0072ff for shadows.
+   Blur is limited to the large surfaces (cards, sidebar, top bar, modals, menus); small controls inside
+   them are only translucent, so the page stays fast.
+   ══════════════════════════════════════════════════════════════════════════ */
+@layer components {
+  /* Page-level cards and tables */
+  .glass-card {
+    background: rgba(255, 255, 255, 0.62);
+    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    backdrop-filter: blur(18px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.75);
+    box-shadow: 0 8px 32px rgba(0, 114, 255, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+    transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+  }
+  .dark .glass-card {
+    /* frosted navy with a soft brand-cyan sheen in the top-left corner, like light catching the glass */
+    background:
+      linear-gradient(135deg, rgba(0, 198, 255, 0.11) 0%, rgba(255, 255, 255, 0.05) 38%, rgba(255, 255, 255, 0.025) 100%),
+      rgba(20, 32, 62, 0.5);
+    -webkit-backdrop-filter: blur(22px) saturate(150%);
+    backdrop-filter: blur(22px) saturate(150%);
+    border-color: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.015);
+  }
+
+  /* Sidebar and top bar */
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.7);
+    -webkit-backdrop-filter: blur(20px) saturate(170%);
+    backdrop-filter: blur(20px) saturate(170%);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    box-shadow: 0 8px 32px rgba(0, 114, 255, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  }
+  .dark .glass-panel {
+    background:
+      linear-gradient(135deg, rgba(0, 198, 255, 0.10) 0%, rgba(255, 255, 255, 0.04) 45%, rgba(255, 255, 255, 0.02) 100%),
+      rgba(14, 24, 50, 0.56);
+    -webkit-backdrop-filter: blur(24px) saturate(150%);
+    backdrop-filter: blur(24px) saturate(150%);
+    border-color: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  }
+
+  /* Dialogs: a little more opaque so text stays easy to read over the dimmed page */
+  .glass-modal {
+    background: rgba(255, 255, 255, 0.93);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    backdrop-filter: blur(24px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 24px 64px rgba(0, 114, 255, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+    animation: glass-modal-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .dark .glass-modal {
+    background:
+      linear-gradient(135deg, rgba(0, 198, 255, 0.10) 0%, rgba(255, 255, 255, 0.04) 45%, rgba(255, 255, 255, 0.02) 100%),
+      rgba(16, 26, 54, 0.92);
+    border-color: rgba(255, 255, 255, 0.14);
+    box-shadow: 0 28px 70px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  }
+
+  /* Dropdowns, select lists, toasts */
+  .glass-menu {
+    background: rgba(255, 255, 255, 0.96);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 16px 40px rgba(0, 114, 255, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+    animation: glass-pop-in 0.15s ease-out;
+    transform-origin: top right;
+  }
+  .dark .glass-menu {
+    background:
+      linear-gradient(135deg, rgba(0, 198, 255, 0.09) 0%, rgba(255, 255, 255, 0.04) 50%, rgba(255, 255, 255, 0.02) 100%),
+      rgba(16, 26, 54, 0.96);
+    border-color: rgba(255, 255, 255, 0.14);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  }
+
+  /* Text inputs: translucent, no blur (they already sit on a blurred surface) */
+  .glass-field {
+    background: rgba(255, 255, 255, 0.5);
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05);
+    transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .glass-field:focus,
+  .glass-field:focus-within {
+    background: rgba(255, 255, 255, 0.85);
+  }
+  .dark .glass-field {
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+  .dark .glass-field:focus,
+  .dark .glass-field:focus-within {
+    background: rgba(255, 255, 255, 0.09);
+  }
+
+  /* Secondary (non-gradient) buttons */
+  .glass-btn {
+    background: rgba(255, 255, 255, 0.55);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    transition: background-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+  }
+  .glass-btn:not(:disabled):hover {
+    background: rgba(255, 255, 255, 0.85);
+    box-shadow: 0 4px 14px rgba(0, 114, 255, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  }
+  .glass-btn:not(:disabled):active {
+    transform: translateY(1px);
+  }
+  .dark .glass-btn {
+    background: rgba(255, 255, 255, 0.07);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+  .dark .glass-btn:not(:disabled):hover {
+    background: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+
+  /* Cards that react to the pointer */
+  .glass-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 40px rgba(0, 114, 255, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  }
+  .dark .glass-lift:hover {
+    box-shadow: 0 16px 46px rgba(0, 114, 255, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  }
+}
+
+@keyframes glass-modal-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes glass-pop-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Gradient (primary) buttons get a small lift and press */
+button:where([class*="bg-gradient-to-r"]):not(:disabled) {
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+button:where([class*="bg-gradient-to-r"]):not(:disabled):hover {
+  transform: translateY(-1px);
+}
+button:where([class*="bg-gradient-to-r"]):not(:disabled):active {
+  transform: translateY(0);
+}
+
+/* Clear keyboard focus everywhere, in the brand blue */
+:where(a, button, [role="button"], [tabindex]):focus-visible {
+  outline: 2px solid rgba(0, 132, 255, 0.75);
+  outline-offset: 2px;
+}
+
+/* Soft brand-colour glow behind the pages, so the glass has something to blur */
+.app-ambient {
+  position: relative;
+  isolation: isolate; /* keeps the glow behind the content of this page only */
+}
+.app-ambient::before,
+.app-ambient::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  border-radius: 9999px;
+  pointer-events: none;
+  filter: blur(80px);
+}
+.app-ambient::before {
+  width: 42vw;
+  height: 42vw;
+  top: -14vw;
+  right: -8vw;
+  background: rgba(0, 198, 255, 0.22);
+}
+.app-ambient::after {
+  width: 38vw;
+  height: 38vw;
+  bottom: -16vw;
+  left: 18vw;
+  background: rgba(0, 114, 255, 0.16);
+}
+.dark .app-ambient::before,
+.dark .app-ambient::after {
+  filter: none; /* soft radial gradients instead of a blurred shape: smoother and cheaper */
+  border-radius: 0;
+}
+.dark .app-ambient::before {
+  width: 70vw;
+  height: 46vw;
+  top: -14vw;
+  left: 8vw;
+  right: auto;
+  background: radial-gradient(ellipse at center, rgba(0, 198, 255, 0.22) 0%, rgba(0, 198, 255, 0.08) 42%, transparent 70%);
+}
+.dark .app-ambient::after {
+  width: 64vw;
+  height: 64vw;
+  right: -16vw;
+  bottom: -22vw;
+  left: auto;
+  background: radial-gradient(circle at center, rgba(0, 114, 255, 0.34) 0%, rgba(0, 114, 255, 0.12) 45%, transparent 70%);
+}
+
+/* When the browser cannot blur, make the glass more opaque so text stays readable */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-card { background: rgba(255, 255, 255, 0.92); }
+  .glass-panel { background: rgba(255, 255, 255, 0.95); }
+  .glass-modal, .glass-menu { background: rgba(255, 255, 255, 0.98); }
+  .dark .glass-card { background: rgba(12, 20, 39, 0.92); }
+  .dark .glass-panel { background: rgba(12, 20, 39, 0.95); }
+  .dark .glass-modal, .dark .glass-menu { background: rgba(12, 20, 39, 0.98); }
+}
+
+/* Respect the "reduce motion" setting */
+@media (prefers-reduced-motion: reduce) {
+  .glass-modal, .glass-menu { animation: none; }
+  .glass-lift:hover, button:where([class*="bg-gradient-to-r"]):not(:disabled):hover { transform: none; }
+  * { scroll-behavior: auto !important; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Loading skeletons
+   Every placeholder in the app is a grey block inside an `animate-pulse` container. On glass those blocks were
+   almost invisible, so they get a clearly visible base tone and a soft moving shimmer (theme greys only).
+   This is unlayered on purpose: it must win over the utility classes on each block.
+   ══════════════════════════════════════════════════════════════════════════ */
+.animate-pulse {
+  animation: none;
+}
+:is(.animate-pulse, .animate-pulse *):is([class*="bg-slate-200"], [class*="bg-slate-100"]) {
+  background-color: rgba(148, 163, 184, 0.3);
+  background-image: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.65) 50%, transparent 100%);
+  background-size: 60% 100%;
+  background-repeat: no-repeat;
+  background-position: -100% 0;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+.dark :is(.animate-pulse, .animate-pulse *):is([class*="bg-slate-200"], [class*="bg-slate-100"]),
+.dark :is(.animate-pulse, .animate-pulse *):is([class*="dark:bg-white/10"], [class*="dark:bg-white/5"], [class*="dark:bg-white/20"]) {
+  background-color: rgba(255, 255, 255, 0.09);
+  background-image: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.12) 50%, transparent 100%);
+  background-size: 60% 100%;
+  background-repeat: no-repeat;
+  background-position: -100% 0;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  from { background-position: -100% 0; }
+  to { background-position: 200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.animate-pulse, .animate-pulse *) { animation: none !important; }
+}

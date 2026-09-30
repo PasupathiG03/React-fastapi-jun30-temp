@@ -52,12 +52,12 @@ function ConfirmDialog({
 }) {
   return createPortal(
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="bg-white dark:bg-[#0c1427] rounded-2xl border border-slate-200 dark:border-white/10 shadow-2xl w-full max-w-md overflow-hidden">
+      <div className="glass-modal rounded-2xl w-full max-w-md overflow-hidden">
         <div className="p-6 space-y-3">
           <h3 className="text-base font-bold text-slate-900 dark:text-white">{title}</h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{message}</p>
         </div>
-        <div className="px-6 py-4 bg-slate-50/50 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3">
+        <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3">
           <button
             type="button"
             onClick={onCancel}
@@ -68,11 +68,10 @@ function ConfirmDialog({
           <button
             type="button"
             onClick={onConfirm}
-            className={`px-4 py-2 text-xs font-semibold rounded-xl text-white transition-all shadow-sm cursor-pointer ${
-              danger
+            className={`px-4 py-2 text-xs font-semibold rounded-xl text-white transition-all shadow-sm cursor-pointer ${danger
                 ? "bg-rose-600 hover:bg-rose-500 shadow-rose-600/30"
                 : "bg-sky-500 hover:bg-sky-400 shadow-sky-500/30"
-            }`}
+              }`}
           >
             {confirmText}
           </button>
@@ -122,8 +121,8 @@ function WorkflowFormModal({
 
   return createPortal(
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="bg-white dark:bg-[#0c1427] rounded-2xl border border-slate-200 dark:border-white/10 shadow-2xl w-full max-w-md overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between bg-slate-50/50 dark:bg-white/[0.02]">
+      <div className="glass-modal rounded-2xl w-full max-w-md overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between bg-white/30 dark:bg-white/[0.02]">
           <h2 className="text-sm font-bold text-slate-900 dark:text-white">
             {editing ? "Rename Workflow" : "New Workflow"}
           </h2>
@@ -148,7 +147,7 @@ function WorkflowFormModal({
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Standard Review Workflow"
                 autoFocus
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-colors"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 glass-field text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-colors"
               />
             </div>
 
@@ -159,7 +158,7 @@ function WorkflowFormModal({
             )}
           </div>
 
-          <div className="px-6 py-4 bg-slate-50/50 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 rounded-b-2xl">
+          <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 rounded-b-2xl">
             <button
               type="button"
               onClick={onClose}
@@ -226,8 +225,8 @@ function StageFormModal({
 
   return createPortal(
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="bg-white dark:bg-[#0c1427] rounded-2xl border border-slate-200 dark:border-white/10 shadow-2xl w-full max-w-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between bg-slate-50/50 dark:bg-white/[0.02]">
+      <div className="glass-modal rounded-2xl w-full max-w-lg overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between bg-white/30 dark:bg-white/[0.02]">
           <div>
             <h2 className="text-sm font-bold text-slate-900 dark:text-white">
               {editing ? `Edit Stage: ${editing.name}` : "Add New Stage"}
@@ -258,7 +257,7 @@ function StageFormModal({
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Client Review"
                   autoFocus
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-colors"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 glass-field text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-colors"
                 />
               </div>
 
@@ -285,7 +284,7 @@ function StageFormModal({
                 value={sequenceOrder}
                 onChange={(e) => setSequenceOrder(Number(e.target.value))}
                 min={1}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-colors"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 glass-field text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-colors"
               />
               <p className="text-[11px] text-slate-400 dark:text-slate-500">
                 Stages execute sequentially in order (1, 2, 3...).
@@ -299,11 +298,11 @@ function StageFormModal({
             )}
           </div>
 
-          <div className="px-6 py-4 bg-slate-50/50 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 rounded-b-2xl">
+          <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 rounded-b-2xl">
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
+              className="px-5 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 glass-btn border border-slate-200 dark:border-white/10 transition-colors cursor-pointer"
             >
               Cancel
             </button>
@@ -400,16 +399,15 @@ function CreateWorkflowWizardModal({
 
   return createPortal(
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="bg-white dark:bg-[#0c1427] rounded-2xl border border-slate-200 dark:border-white/10 shadow-2xl w-full max-w-xl overflow-hidden">
+      <div className="glass-modal rounded-2xl w-full max-w-xl overflow-hidden">
         {/* Wizard Header with Steps */}
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between bg-slate-50/50 dark:bg-white/[0.02]">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between bg-white/30 dark:bg-white/[0.02]">
           <div className="flex items-center gap-3">
             <span
-              className={`w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center transition-colors ${
-                step === 1
+              className={`w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center transition-colors ${step === 1
                   ? "bg-sky-500 text-white shadow-sm"
                   : "bg-emerald-500 text-white"
-              }`}
+                }`}
             >
               {step === 1 ? "1" : "✓"}
             </span>
@@ -447,7 +445,7 @@ function CreateWorkflowWizardModal({
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Standard Review Workflow"
                   autoFocus
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-colors"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 glass-field text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-colors"
                 />
               </div>
 
@@ -458,7 +456,7 @@ function CreateWorkflowWizardModal({
               )}
             </div>
 
-            <div className="px-6 py-4 bg-slate-50/50 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 rounded-b-2xl">
+            <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 rounded-b-2xl">
               <button
                 type="button"
                 onClick={onClose}
@@ -493,7 +491,7 @@ function CreateWorkflowWizardModal({
                       return (
                         <div
                           key={stage.id}
-                          className="flex items-center gap-3 bg-slate-50 dark:bg-white/[0.03] rounded-xl border border-slate-200/80 dark:border-white/[0.06] px-3.5 py-2.5"
+                          className="flex items-center gap-3 bg-white/40 dark:bg-white/[0.03] rounded-xl border border-slate-200/80 dark:border-white/[0.06] px-3.5 py-2.5"
                         >
                           <span className="w-6 h-6 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 text-xs font-bold flex items-center justify-center shrink-0">
                             {stage.sequence_order}
@@ -527,7 +525,7 @@ function CreateWorkflowWizardModal({
                       onChange={(e) => setStageName(e.target.value)}
                       placeholder="e.g. Client Review"
                       autoFocus
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-colors"
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 glass-field text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-colors"
                     />
                   </div>
 
@@ -574,7 +572,7 @@ function CreateWorkflowWizardModal({
               </form>
             </div>
 
-            <div className="px-6 py-4 bg-slate-50/50 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-between rounded-b-2xl">
+            <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-between rounded-b-2xl">
               <span className="text-xs text-slate-400 dark:text-slate-500">
                 {addedStages.length} {addedStages.length === 1 ? "stage" : "stages"} created
               </span>
@@ -692,11 +690,11 @@ export default function WorkflowManagementPage() {
         w.id !== workflow.id
           ? w
           : {
-              ...w,
-              stages: editing
-                ? w.stages.map((s) => (s.id === saved.id ? saved : s))
-                : [...w.stages, saved].sort((a, b) => a.sequence_order - b.sequence_order),
-            }
+            ...w,
+            stages: editing
+              ? w.stages.map((s) => (s.id === saved.id ? saved : s))
+              : [...w.stages, saved].sort((a, b) => a.sequence_order - b.sequence_order),
+          }
       )
     );
     setStageModal(null);
@@ -755,7 +753,7 @@ export default function WorkflowManagementPage() {
           {[1, 2, 3].map((i) => (
             <div
               key={i}
-              className="bg-white dark:bg-[#0c1427]/70 backdrop-blur-xl rounded-[22px] border border-slate-200/80 dark:border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.02)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.3)] p-5 space-y-4 animate-pulse"
+              className="glass-card rounded-[22px] p-5 space-y-4 animate-pulse"
             >
               {/* Card Header Skeleton */}
               <div className="flex items-center gap-3">
@@ -772,7 +770,7 @@ export default function WorkflowManagementPage() {
                 {[1, 2].map((s) => (
                   <div
                     key={s}
-                    className="relative flex items-center gap-2.5 bg-slate-50/70 dark:bg-white/[0.02] rounded-xl border border-slate-200/80 dark:border-white/[0.06] pl-4 pr-2.5 py-2.5 overflow-hidden"
+                    className="relative flex items-center gap-2.5 bg-white/40 dark:bg-white/[0.02] rounded-xl border border-slate-200/80 dark:border-white/[0.06] pl-4 pr-2.5 py-2.5 overflow-hidden"
                   >
                     <span className="absolute left-0 top-0 bottom-0 w-1 bg-slate-200 dark:bg-white/10" />
                     <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-white/10 shrink-0" />
@@ -786,7 +784,7 @@ export default function WorkflowManagementPage() {
                 ))}
 
                 {/* Add Stage dashed placeholder */}
-                <div className="w-full h-11 rounded-xl border-2 border-dashed border-slate-200/80 dark:border-white/[0.08] bg-slate-50/30 dark:bg-white/[0.01] flex items-center justify-center gap-2">
+                <div className="w-full h-11 rounded-xl border-2 border-dashed border-slate-200/80 dark:border-white/[0.08] bg-white/20 dark:bg-white/[0.01] flex items-center justify-center gap-2">
                   <div className="w-3.5 h-3.5 rounded bg-slate-200 dark:bg-white/10" />
                   <div className="h-3 w-20 bg-slate-200 dark:bg-white/10 rounded" />
                 </div>
@@ -795,7 +793,7 @@ export default function WorkflowManagementPage() {
           ))}
         </div>
       ) : workflows.length === 0 ? (
-        <div className="bg-white dark:bg-[#0c1427]/70 backdrop-blur-xl rounded-[22px] border border-slate-200/80 dark:border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.03)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.4)] p-12 flex flex-col items-center justify-center text-center gap-2">
+        <div className="glass-card rounded-[22px] p-12 flex flex-col items-center justify-center text-center gap-2">
           <WorkflowIcon className="w-10 h-10 text-slate-300 dark:text-slate-600" />
           <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">No workflows yet</p>
           <p className="text-xs text-slate-400 dark:text-slate-500">Create one to start defining stages.</p>
@@ -805,17 +803,16 @@ export default function WorkflowManagementPage() {
           {workflows.map((w) => (
             <div
               key={w.id}
-              className="bg-white dark:bg-[#0c1427]/70 backdrop-blur-xl rounded-[22px] border border-slate-200/80 dark:border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.02)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.3)] p-5 space-y-4 hover:border-sky-500/40 transition-colors"
+              className="glass-card glass-lift rounded-[22px] p-5 space-y-4 hover:border-sky-500/40"
             >
               {/* Card Header */}
               <div className="flex items-center gap-3">
                 <h2 className="text-base font-bold text-slate-900 dark:text-white truncate">{w.name}</h2>
                 <span
-                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
-                    w.is_active
+                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${w.is_active
                       ? "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400"
                       : "bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400"
-                  }`}
+                    }`}
                 >
                   {w.is_active ? "● Active" : "Inactive"}
                 </span>
@@ -828,19 +825,19 @@ export default function WorkflowManagementPage() {
                     <MoreVertical className="w-4 h-4" />
                   </button>
                   {openMenuId === w.id && (
-                    <div className="absolute right-0 top-9 w-44 bg-white dark:bg-[#0c1427] rounded-xl border border-slate-200 dark:border-white/10 shadow-xl py-1.5 z-20">
+                    <div className="absolute right-0 top-9 w-44 glass-menu rounded-xl py-1.5 z-20">
                       <button
                         onClick={() => {
                           setEditingWorkflow(w);
                           setOpenMenuId(null);
                         }}
-                        className="w-full flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer"
+                        className="w-full flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-white/40 dark:hover:bg-white/5 cursor-pointer"
                       >
                         <Edit2 className="w-3.5 h-3.5" /> Rename
                       </button>
                       <button
                         onClick={() => handleToggleActive(w)}
-                        className="w-full flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer"
+                        className="w-full flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-white/40 dark:hover:bg-white/5 cursor-pointer"
                       >
                         <WorkflowIcon className="w-3.5 h-3.5" />
                         {w.is_active ? "Deactivate" : "Activate"}
@@ -880,7 +877,7 @@ export default function WorkflowManagementPage() {
                     return (
                       <div
                         key={stage.id}
-                        className="group relative flex items-center gap-2.5 bg-slate-50/70 dark:bg-white/[0.03] hover:bg-slate-100/70 dark:hover:bg-white/[0.06] rounded-xl border border-slate-200/80 dark:border-white/[0.06] pl-4 pr-2.5 py-2.5 overflow-hidden transition-colors"
+                        className="group relative flex items-center gap-2.5 bg-white/40 dark:bg-white/[0.03] hover:bg-slate-100/70 dark:hover:bg-white/[0.06] rounded-xl border border-slate-200/80 dark:border-white/[0.06] pl-4 pr-2.5 py-2.5 overflow-hidden transition-colors"
                       >
                         <span className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-[#00c6ff] to-[#0072ff]" />
                         <span className="w-6 h-6 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 text-xs font-bold flex items-center justify-center shrink-0">

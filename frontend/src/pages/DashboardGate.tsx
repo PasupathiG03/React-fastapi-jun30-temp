@@ -1,13 +1,13 @@
-import { lazy, useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { Lock } from "lucide-react";
 import { API_BASE_URL } from "@/lib/constants";
-import { getToken } from "@/lib/auth";
 import { fetchMenus, type MenuItem } from "@/services/menu";
 import { fetchMyStages } from "@/services/workflow";
 import { buildStageRoutes } from "@/lib/slug";
 import { useLive } from "@/context/LiveContext";
 import PageContainer from "@/components/PageContainer";
+import DashboardSkeleton from "@/components/DashboardSkeleton";
 
 const Dashboard = lazy(() => import("./Dashboard"));
 
@@ -28,9 +28,8 @@ export default function DashboardGate() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const token = getToken();
       const [meRes, menusRes, stagesRes] = await Promise.allSettled([
-        fetch(`${API_BASE_URL}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } }).then((r) =>
+        fetch(`${API_BASE_URL}/api/auth/me`).then((r) =>
           r.ok ? r.json() : null
         ),
         fetchMenus(),
@@ -74,13 +73,17 @@ export default function DashboardGate() {
     };
   }, [accessVersion]);
 
-  if (decision.kind === "loading") return null;
-  if (decision.kind === "dashboard") return <Dashboard />;
+  if (decision.kind === "loading") return <DashboardSkeleton />;
+  if (decision.kind === "dashboard") return (
+      <Suspense fallback={<DashboardSkeleton />}>
+        <Dashboard />
+      </Suspense>
+    );
   if (decision.kind === "redirect") return <Navigate to={decision.to} replace />;
 
   return (
     <PageContainer>
-      <div className="bg-white dark:bg-[#0c1427]/70 rounded-[22px] border border-slate-200/80 dark:border-white/[0.08] p-12 flex flex-col items-center text-center gap-2">
+      <div className="glass-card rounded-[22px] p-12 flex flex-col items-center text-center gap-2">
         <Lock className="w-10 h-10 text-slate-300 dark:text-slate-600" />
         <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">No screens are assigned to your role yet</p>
         <p className="text-xs text-slate-400 dark:text-slate-500 max-w-sm">

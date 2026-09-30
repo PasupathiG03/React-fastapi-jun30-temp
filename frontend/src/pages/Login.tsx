@@ -17,7 +17,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { loginApi } from "@/services/auth";
-import { saveToken } from "@/lib/auth";
+import { markSignedIn, takeLogoutReason } from "@/lib/auth";
 import { useTheme } from "@/context/ThemeContext";
 
 export default function LoginPage() {
@@ -28,6 +28,8 @@ export default function LoginPage() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [capsLock, setCapsLock] = useState(false);
+  // Why the user landed here (session ended), shown once above the form.
+  const [logoutReason] = useState(() => takeLogoutReason());
 
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
@@ -39,8 +41,8 @@ export default function LoginPage() {
     setError(null);
     setIsLoading(true);
     try {
-      const { access_token } = await loginApi({ employee_id: email, password });
-      saveToken(access_token);
+      const session = await loginApi({ employee_id: email, password }); // the server sets the HttpOnly session cookie
+      markSignedIn(session.idle_minutes, session.expires_in_minutes);
       setIsSuccess(true);
       setTimeout(() => navigate("/dashboard"), 800);
     } catch (err: unknown) {
@@ -52,7 +54,7 @@ export default function LoginPage() {
 
   return (
     <div
-      className="relative min-h-screen w-full flex flex-col lg:flex-row items-stretch p-3.5 sm:p-5 transition-colors duration-300 overflow-x-hidden font-sans"
+      className="app-ambient relative min-h-screen w-full flex flex-col lg:flex-row items-stretch p-3.5 sm:p-5 transition-colors duration-300 overflow-x-hidden font-sans"
       style={{
         background:
           theme === "dark"
@@ -158,7 +160,7 @@ export default function LoginPage() {
           transition={{ duration: 0.5, ease: "easeOut" }}
           className="w-full max-w-[440px] flex flex-col shrink-0"
         >
-          <div className="bg-white/95 dark:bg-[#0c1427]/85 backdrop-blur-2xl border border-slate-200/80 dark:border-white/[0.08] rounded-[28px] p-7 sm:p-10 shadow-[0_12px_45px_rgba(0,0,0,0.06)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.5)] transition-colors duration-200">
+          <div className="glass-panel rounded-[28px] p-7 sm:p-10 transition-colors duration-200">
             <AnimatePresence mode="wait">
               {!isSuccess ? (
                 <motion.div
@@ -168,7 +170,7 @@ export default function LoginPage() {
                   exit={{ opacity: 0 }}
                 >
                   {/* Card Title & Subtitle */}
-                  <div className="mb-7">
+                  <div className="mb-7 text-center">
                     <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
                       Welcome back
                     </h2>
@@ -176,6 +178,20 @@ export default function LoginPage() {
                       Sign in to continue to your workspace.
                     </p>
                   </div>
+
+                  {logoutReason && (
+                    <div
+                      role="status"
+                      className="mb-5 flex items-start gap-2 rounded-xl border border-amber-200 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-700 dark:text-amber-300"
+                    >
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
+                      <p>
+                        {logoutReason === "idle"
+                          ? "You were signed out because you were inactive for a while. Please sign in again."
+                          : "Your session has expired. Please sign in again."}
+                      </p>
+                    </div>
+                  )}
 
                   <form className="space-y-5" onSubmit={handleSubmit}>
                     {/* Username Field */}
@@ -186,7 +202,7 @@ export default function LoginPage() {
                       >
                         Username
                       </label>
-                      <div className="relative flex items-center rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-white/[0.03] hover:border-slate-300 px-3.5 py-3 focus-within:bg-white dark:focus-within:bg-white/[0.05] focus-within:border-[#0084ff] focus-within:ring-4 focus-within:ring-[#00c6ff]/15 transition-all">
+                      <div className="relative flex items-center rounded-xl border border-slate-200 dark:border-white/10 glass-field hover:border-slate-300 px-3.5 py-3 focus-within:bg-white dark:focus-within:bg-white/[0.05] focus-within:border-[#0084ff] focus-within:ring-4 focus-within:ring-[#00c6ff]/15 transition-all">
                         <User className="w-4 h-4 text-slate-400 dark:text-slate-500 mr-3 shrink-0" />
                         <input
                           id="email"
@@ -214,7 +230,7 @@ export default function LoginPage() {
                       >
                         Password
                       </label>
-                      <div className="relative flex items-center rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-white/[0.03] hover:border-slate-300 px-3.5 py-3 focus-within:bg-white dark:focus-within:bg-white/[0.05] focus-within:border-[#0084ff] focus-within:ring-4 focus-within:ring-[#00c6ff]/15 transition-all">
+                      <div className="relative flex items-center rounded-xl border border-slate-200 dark:border-white/10 glass-field hover:border-slate-300 px-3.5 py-3 focus-within:bg-white dark:focus-within:bg-white/[0.05] focus-within:border-[#0084ff] focus-within:ring-4 focus-within:ring-[#00c6ff]/15 transition-all">
                         <Lock className="w-4 h-4 text-slate-400 dark:text-slate-500 mr-3 shrink-0" />
                         <input
                           id="password"

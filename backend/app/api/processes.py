@@ -14,7 +14,7 @@ router = APIRouter()
 @router.get("/", response_model=List[ProcessOut])
 def list_processes(
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    _=Depends(get_superuser),
 ):
     """List all active processes."""
     return db.query(Process).filter(Process.is_active == True).order_by(Process.order, Process.name).all()

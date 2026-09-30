@@ -94,7 +94,7 @@ export default function MenuAccessPage() {
       )}
 
       {/* ── Main Content Card ── */}
-      <div className="bg-white dark:bg-[#0c1427]/70 backdrop-blur-xl rounded-[22px] border border-slate-200/80 dark:border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.03)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.4)] overflow-hidden transition-colors duration-200">
+      <div className="glass-card rounded-[22px] overflow-hidden">
         {/* Card Header: Screens & Process Select */}
         <div className="relative z-20 px-6 py-4 border-b border-slate-100 dark:border-white/[0.06] flex items-center justify-between gap-4">
           <h2 className="text-base font-bold text-slate-900 dark:text-white">{isWorkflow ? "Stages" : "Screens"}</h2>
@@ -107,7 +107,7 @@ export default function MenuAccessPage() {
                 ...processes.map((p) => ({ value: `p:${p.id}`, label: p.name })),
                 ...workflows.map((w) => ({ value: `w:${w.id}`, label: `Workflow: ${w.name}` })),
               ]}
-              placeholder={processes.length + workflows.length === 0 ? "Nothing to show" : "Select"}
+              placeholder={loading && !target ? "Loading..." : processes.length + workflows.length === 0 ? "Nothing to show" : "Select"}
               className="w-64"
               size="sm"
             />
@@ -118,31 +118,29 @@ export default function MenuAccessPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
-              <tr className="text-left text-xs font-semibold text-slate-500 dark:text-slate-400 border-b border-slate-200/90 dark:border-white/[0.08] bg-slate-50/75 dark:bg-white/[0.02]">
+              <tr className="text-left text-xs font-semibold text-slate-500 dark:text-slate-400 border-b border-slate-200/90 dark:border-white/[0.08] bg-white/45 dark:bg-white/[0.02]">
                 <th className="px-6 py-3.5 font-semibold border-r border-slate-200/90 dark:border-white/[0.08]">
                   {isWorkflow ? "Stage" : "Screen"}
                 </th>
                 {orderedRoles.length > 0
                   ? orderedRoles.map((r, idx) => (
-                      <th
-                        key={r.id}
-                        className={`px-6 py-3.5 text-center font-semibold whitespace-nowrap border-r border-slate-200/90 dark:border-white/[0.08] ${
-                          idx === orderedRoles.length - 1 ? "border-r-0" : ""
+                    <th
+                      key={r.id}
+                      className={`px-6 py-3.5 text-center font-semibold whitespace-nowrap border-r border-slate-200/90 dark:border-white/[0.08] ${idx === orderedRoles.length - 1 ? "border-r-0" : ""
                         }`}
-                      >
-                        {r.name}
-                      </th>
-                    ))
+                    >
+                      {r.name}
+                    </th>
+                  ))
                   : [1, 2, 3, 4].map((i, idx) => (
-                      <th
-                        key={i}
-                        className={`px-6 py-3.5 text-center font-semibold whitespace-nowrap border-r border-slate-200/90 dark:border-white/[0.08] ${
-                          idx === 3 ? "border-r-0" : ""
+                    <th
+                      key={i}
+                      className={`px-6 py-3.5 text-center font-semibold whitespace-nowrap border-r border-slate-200/90 dark:border-white/[0.08] ${idx === 3 ? "border-r-0" : ""
                         }`}
-                      >
-                        <div className="h-3.5 w-16 mx-auto bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
-                      </th>
-                    ))}
+                    >
+                      <div className="h-3.5 w-16 mx-auto bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
+                    </th>
+                  ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200/90 dark:divide-white/[0.06]">
@@ -158,9 +156,8 @@ export default function MenuAccessPage() {
                     {(orderedRoles.length > 0 ? orderedRoles : [1, 2, 3, 4]).map((item, idx, arr) => (
                       <td
                         key={typeof item === "number" ? item : item.id}
-                        className={`px-6 py-4 text-center border-r border-slate-200/90 dark:border-white/[0.08] ${
-                          idx === arr.length - 1 ? "border-r-0" : ""
-                        }`}
+                        className={`px-6 py-4 text-center border-r border-slate-200/90 dark:border-white/[0.08] ${idx === arr.length - 1 ? "border-r-0" : ""
+                          }`}
                       >
                         <div className="w-4 h-4 mx-auto bg-slate-200 dark:bg-white/10 rounded" />
                       </td>
@@ -181,7 +178,7 @@ export default function MenuAccessPage() {
                 matrix.screens.map((s) => (
                   <tr
                     key={s.id}
-                    className="hover:bg-slate-50/70 dark:hover:bg-white/[0.02] transition-colors"
+                    className="hover:bg-white/40 dark:hover:bg-white/[0.02] transition-colors"
                   >
                     <td className="px-6 py-4 font-semibold text-slate-800 dark:text-slate-200 border-r border-slate-200/90 dark:border-white/[0.08]">
                       {s.name}
@@ -189,9 +186,8 @@ export default function MenuAccessPage() {
                     {orderedRoles.map((r, idx) => (
                       <td
                         key={r.id}
-                        className={`px-6 py-4 text-center border-r border-slate-200/90 dark:border-white/[0.08] ${
-                          idx === orderedRoles.length - 1 ? "border-r-0" : ""
-                        }`}
+                        className={`px-6 py-4 text-center border-r border-slate-200/90 dark:border-white/[0.08] ${idx === orderedRoles.length - 1 ? "border-r-0" : ""
+                          }`}
                       >
                         <div className="flex items-center justify-center">
                           <CustomCheckbox
@@ -211,7 +207,7 @@ export default function MenuAccessPage() {
         </div>
 
         {/* Footer Note */}
-        <div className="px-6 py-3.5 border-t border-slate-100 dark:border-white/[0.06] bg-slate-50/40 dark:bg-white/[0.01]">
+        <div className="px-6 py-3.5 border-t border-slate-100 dark:border-white/[0.06] bg-white/25 dark:bg-white/[0.01]">
           <p className="text-xs text-slate-400 dark:text-slate-500">
             Note: The <span className="font-semibold text-slate-700 dark:text-slate-300">Developer</span> role has full access to all screens and stages by default and is not shown in this matrix.
           </p>

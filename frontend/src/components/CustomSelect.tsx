@@ -151,12 +151,11 @@ export function CustomSelect<T extends string | number = string | number>({
         aria-label={ariaLabel || placeholder}
         className={`w-full flex items-center justify-between gap-2.5 font-medium transition-all duration-150 cursor-pointer select-none text-left
           ${sizeClasses}
-          ${
-            disabled
-              ? "opacity-50 cursor-not-allowed bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-400"
-              : isOpen
-              ? "border-sky-500/80 dark:border-sky-400/80 ring-2 ring-sky-500/20 bg-white dark:bg-[#0c1427] text-slate-900 dark:text-white shadow-sm"
-              : "border border-slate-200/90 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20 bg-white dark:bg-[#0c1427]/70 hover:bg-slate-50/80 dark:hover:bg-[#0e1a38] text-slate-800 dark:text-slate-200 shadow-sm"
+          ${disabled
+            ? "opacity-50 cursor-not-allowed bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-400"
+            : isOpen
+              ? "border-sky-500/80 dark:border-sky-400/80 ring-2 ring-sky-500/20 glass-field text-slate-900 dark:text-white"
+              : "border border-slate-200/90 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20 glass-field hover:bg-white/70 dark:hover:bg-[#0e1a38] text-slate-800 dark:text-slate-200"
           }
           ${buttonClassName}
         `}
@@ -172,9 +171,8 @@ export function CustomSelect<T extends string | number = string | number>({
         </div>
 
         <ChevronDown
-          className={`shrink-0 text-slate-400 dark:text-slate-400 transition-transform duration-200 ${chevronSizes} ${
-            isOpen ? "rotate-180 text-sky-500 dark:text-sky-400" : ""
-          }`}
+          className={`shrink-0 text-slate-400 dark:text-slate-400 transition-transform duration-200 ${chevronSizes} ${isOpen ? "rotate-180 text-sky-500 dark:text-sky-400" : ""
+            }`}
         />
       </button>
 
@@ -183,13 +181,12 @@ export function CustomSelect<T extends string | number = string | number>({
         <div
           ref={menuRef}
           role="listbox"
-          className={`absolute left-0 right-0 z-50 min-w-full w-max max-w-[min(100vw-2rem,24rem)] py-1.5 rounded-xl border shadow-xl backdrop-blur-xl animate-in fade-in-0 zoom-in-95 duration-100
-            ${
-              openUpward
-                ? "bottom-full mb-1.5 origin-bottom"
-                : "top-full mt-1.5 origin-top"
+          className={`absolute left-0 right-0 z-50 min-w-full w-max max-w-[min(100vw-2rem,24rem)] py-1.5 rounded-xl
+            ${openUpward
+              ? "bottom-full mb-1.5 origin-bottom"
+              : "top-full mt-1.5 origin-top"
             }
-            bg-white/95 dark:bg-[#0c1427]/95 border-slate-200/90 dark:border-white/10 shadow-[0_12px_36px_rgba(0,0,0,0.12)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.6)]
+            glass-menu
             ${dropdownClassName}
           `}
         >
@@ -216,10 +213,9 @@ export function CustomSelect<T extends string | number = string | number>({
                     }}
                     className={`w-full flex items-center justify-between gap-3 rounded-lg text-left transition-colors cursor-pointer select-none
                       ${itemPadding}
-                      ${
-                        option.disabled
-                          ? "opacity-40 cursor-not-allowed text-slate-400"
-                          : isSelected
+                      ${option.disabled
+                        ? "opacity-40 cursor-not-allowed text-slate-400"
+                        : isSelected
                           ? "bg-sky-50 dark:bg-sky-500/15 text-sky-600 dark:text-sky-300 font-semibold"
                           : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.07] hover:text-slate-900 dark:hover:text-white font-medium"
                       }

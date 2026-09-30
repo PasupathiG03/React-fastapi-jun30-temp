@@ -1,5 +1,4 @@
 import { API_BASE_URL } from "@/lib/constants";
-import { getToken } from "@/lib/auth";
 
 export type StageType = "production" | "qc" | "qa";
 
@@ -55,11 +54,8 @@ export interface WorkflowDetail extends WorkflowItem {
 }
 
 function authHeaders(): Record<string, string> {
-  const token = getToken();
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
+  // The session travels in an HttpOnly cookie (see lib/api.ts); no token is handled here.
+  return { "Content-Type": "application/json" };
 }
 
 function extractDetail(err: unknown): string {
