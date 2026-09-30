@@ -4,13 +4,15 @@ import { Users, Plus, Trash2, ToggleLeft, ToggleRight, X, Edit2, ShieldAlert } f
 import { UserItem, fetchUsers, createUser, updateUser, deleteUser, UserCreatePayload } from "@/services/user";
 import { RoleItem, fetchRoles } from "@/services/role";
 import { createPortal } from "react-dom";
+import { TablePagination, TableToolbar } from "@/components/DataTableControls";
+import { useTableData } from "@/hooks/useTableData";
+import { exportToCsv } from "@/lib/exportData";
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState<UserItem[]>([]);
   const [roles, setRoles] = useState<RoleItem[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
   const [editId, setEditId] = useState<number | null>(null);
   const [itemToDelete, setItemToDelete] = useState<UserItem | null>(null);
 
@@ -127,9 +129,20 @@ export default function UserManagementPage() {
     }
   }
 
-  const ITEMS_PER_PAGE = 10;
-  const totalPages = Math.ceil(users.length / ITEMS_PER_PAGE);
-  const paginatedUsers = users.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const table = useTableData(users, (u) =>
+    [u.employee_id, u.employee_name, u.location, u.role?.name, u.is_active ? "active" : "inactive"].filter(Boolean).join(" ")
+  );
+
+  function handleExport() {
+    exportToCsv("users", [
+      { header: "Employee ID", value: (u) => u.employee_id },
+      { header: "Name", value: (u) => u.employee_name },
+      { header: "Location", value: (u) => u.location },
+      { header: "Role", value: (u) => u.role?.name },
+      { header: "Status", value: (u) => (u.is_active ? "Active" : "Inactive") },
+      { header: "Created At", value: (u) => u.created_at },
+    ], table.filtered);
+  }
 
   return (
     <div className="p-6 w-full space-y-6">
@@ -320,8 +333,17 @@ export default function UserManagementPage() {
           </div>
         ) : (
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-800">Existing Users</h2>
-            <span className="text-xs text-gray-400">{users.length} user{users.length !== 1 ? "s" : ""}</span>
+            <h2 className="text-sm font-semibold text-gray-800">Users</h2>
+            <div className="flex items-center gap-4">
+              <span className="text-xs text-gray-400">{users.length} user{users.length !== 1 ? "s" : ""}</span>
+              <TableToolbar
+                query={table.query}
+                onQueryChange={table.setQuery}
+                onExport={handleExport}
+                exportDisabled={table.filtered.length === 0}
+                placeholder="Search users..."
+              />
+            </div>
           </div>
         )}
 
@@ -353,12 +375,12 @@ export default function UserManagementPage() {
         ) : (
           <div className="flex flex-col">
             <ul className="divide-y divide-gray-50 m-0 p-0">
-              {paginatedUsers.map((user, index) => (
+              {table.paged.map((user, index) => (
                 <li key={user.id} className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50/50 transition-colors bg-white">
                   
                   {/* S.No */}
                   <div className="w-8 shrink-0 text-sm font-medium text-gray-400 text-center">
-                    {(currentPage - 1) * ITEMS_PER_PAGE + index + 1}
+                    {(table.page - 1) * table.pageSize + index + 1}
                   </div>
 
                   {/* Icon */}
@@ -439,30 +461,17 @@ export default function UserManagementPage() {
               ))}
             </ul>
             
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/50">
-                <span className="text-sm text-gray-500">
-                  Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, users.length)} of {users.length} entries
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-blue-600 disabled:opacity-50 disabled:hover:bg-white disabled:hover:text-gray-600 transition-colors shadow-sm"
-                  >
-                    Previous
-                  </button>
-                  <button
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                    className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-blue-600 disabled:opacity-50 disabled:hover:bg-white disabled:hover:text-gray-600 transition-colors shadow-sm"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
+            {table.filtered.length === 0 && (
+              <div className="py-10 text-center text-sm text-gray-400">No results match your search</div>
             )}
+            <TablePagination
+              page={table.page}
+              pageSize={table.pageSize}
+              totalPages={table.totalPages}
+              totalItems={table.filtered.length}
+              onPageChange={table.setPage}
+              onPageSizeChange={table.setPageSize}
+            />
           </div>
         )}
       </div>

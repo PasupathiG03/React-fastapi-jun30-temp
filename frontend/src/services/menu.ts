@@ -7,7 +7,6 @@ export interface MenuItem {
   name: string;
   icon: string | null;
   url: string;
-  group: string | null;
   order: number;
   process_id: number | null;
   process?: ProcessItem | null;
@@ -21,7 +20,6 @@ export interface MenuCreatePayload {
   name: string;
   icon?: string | null;
   url: string;
-  group?: string | null;
   order?: number;
   process_id: number;
 }

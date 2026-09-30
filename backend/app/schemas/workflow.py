@@ -2,58 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.models.workflow import StageType
 from app.schemas.base import CreatorOut
-
-
-# ── Stage ────────────────────────────────────────────────────────────────
-
-class StageCreate(BaseModel):
-    name: str = Field(..., max_length=150)
-    stage_type: StageType = StageType.PRODUCTION
-    sequence_order: int = 0
-
-    @field_validator("name")
-    @classmethod
-    def validate_name(cls, v: str) -> str:
-        v = v.strip()
-        if not v:
-            raise ValueError("Stage name cannot be empty")
-        return v
-
-
-class StageUpdate(BaseModel):
-    name: str | None = Field(None, max_length=150)
-    stage_type: StageType | None = None
-    sequence_order: int | None = None
-
-
-class StageOut(BaseModel):
-    id: int
-    level_id: int
-    name: str
-    stage_type: StageType
-    sequence_order: int
-    created_at: datetime | None = None
-    creator: CreatorOut | None = None
-
-    model_config = {"from_attributes": True}
-
-
-# ── Level ────────────────────────────────────────────────────────────────
-
-class LevelCreate(BaseModel):
-    pass
-
-
-class LevelOut(BaseModel):
-    id: int
-    workflow_id: int
-    order: int
-    stages: list[StageOut] = []
-    created_at: datetime | None = None
-
-    model_config = {"from_attributes": True}
 
 
 # ── Workflow ─────────────────────────────────────────────────────────────
@@ -93,7 +42,3 @@ class WorkflowOut(BaseModel):
     creator: CreatorOut | None = None
 
     model_config = {"from_attributes": True}
-
-
-class WorkflowDetailOut(WorkflowOut):
-    levels: list[LevelOut] = []

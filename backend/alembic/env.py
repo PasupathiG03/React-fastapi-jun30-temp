@@ -16,6 +16,7 @@ import app.models.role   # noqa: F401
 import app.models.process  # noqa: F401
 import app.models.menu   # noqa: F401
 import app.models.workflow  # noqa: F401
+import app.models.access  # noqa: F401
 
 config = context.config
 

@@ -6,13 +6,13 @@ from app.core.database import SessionLocal
 from app.core.logger import logger
 from app.models.menu import Menu
 from app.models.process import Process
-from app.api import auth, menu, users, roles, processes, workflows
+from app.api import access, auth, menu, users, roles, processes, workflows
 
-DEFAULT_PROCESS = {"name": "Administration", "code": "admin", "description": "Core system administration screens"}
+DEFAULT_PROCESS = {"name": "Administration", "description": "Core system administration screens"}
 
 DEFAULT_MENUS = [
-    {"name": "User Management", "icon": "Users", "url": "/user-management", "order": 1},
-    {"name": "Role Management", "icon": "Shield", "url": "/role-management", "order": 2},
+    {"name": "User Management", "icon": "Users", "url": "/access-control/user-management", "order": 1},
+    {"name": "Role Management", "icon": "Shield", "url": "/access-control/role-management", "order": 2},
 ]
 
 app = FastAPI(
@@ -36,6 +36,7 @@ app.include_router(menu.router, prefix="/api/menus", tags=["Menus"])
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
 app.include_router(roles.router, prefix="/api/roles", tags=["Roles"])
 app.include_router(processes.router, prefix="/api/processes", tags=["Processes"])
+app.include_router(access.router, prefix="/api/access", tags=["Access"])
 app.include_router(workflows.router, prefix="/api/workflows", tags=["Workflows"])
 
 
@@ -53,7 +54,7 @@ def seed_default_menus():
     try:
         if db.query(Menu).first() is not None:
             return
-        process = db.query(Process).filter(Process.code == DEFAULT_PROCESS["code"]).first()
+        process = db.query(Process).filter(Process.name == DEFAULT_PROCESS["name"]).first()
         if process is None:
             process = Process(**DEFAULT_PROCESS, is_active=True)
             db.add(process)

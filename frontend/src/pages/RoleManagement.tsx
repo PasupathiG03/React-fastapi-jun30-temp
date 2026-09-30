@@ -3,12 +3,14 @@ import { useEffect, useState } from "react";
 import { Shield, Plus, Trash2, ToggleLeft, ToggleRight, X, Edit2 } from "lucide-react";
 import { RoleItem, fetchRoles, createRole, updateRole, deleteRole, RoleCreatePayload } from "@/services/role";
 import { createPortal } from "react-dom";
+import { TablePagination, TableToolbar } from "@/components/DataTableControls";
+import { useTableData } from "@/hooks/useTableData";
+import { exportToCsv } from "@/lib/exportData";
 
 export default function RoleManagementPage() {
   const [roles, setRoles] = useState<RoleItem[]>([]);
   const [loadingRoles, setLoadingRoles] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
   const [editId, setEditId] = useState<number | null>(null);
   const [itemToDelete, setItemToDelete] = useState<RoleItem | null>(null);
 
@@ -109,9 +111,18 @@ export default function RoleManagementPage() {
     }
   }
 
-  const ITEMS_PER_PAGE = 10;
-  const totalPages = Math.ceil(roles.length / ITEMS_PER_PAGE);
-  const paginatedRoles = roles.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const table = useTableData(roles, (r) =>
+    [r.name, r.description, r.is_active ? "active" : "inactive"].filter(Boolean).join(" ")
+  );
+
+  function handleExport() {
+    exportToCsv("roles", [
+      { header: "Role", value: (r) => r.name },
+      { header: "Description", value: (r) => r.description },
+      { header: "Status", value: (r) => (r.is_active ? "Active" : "Inactive") },
+      { header: "Created At", value: (r) => r.created_at },
+    ], table.filtered);
+  }
 
   return (
     <div className="p-6 w-full space-y-6">
@@ -238,8 +249,17 @@ export default function RoleManagementPage() {
           </div>
         ) : (
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-800">Existing Roles</h2>
-            <span className="text-xs text-gray-400">{roles.length} role{roles.length !== 1 ? "s" : ""}</span>
+            <h2 className="text-sm font-semibold text-gray-800">Roles</h2>
+            <div className="flex items-center gap-4">
+              <span className="text-xs text-gray-400">{roles.length} role{roles.length !== 1 ? "s" : ""}</span>
+              <TableToolbar
+                query={table.query}
+                onQueryChange={table.setQuery}
+                onExport={handleExport}
+                exportDisabled={table.filtered.length === 0}
+                placeholder="Search roles..."
+              />
+            </div>
           </div>
         )}
 
@@ -270,12 +290,12 @@ export default function RoleManagementPage() {
         ) : (
           <div className="flex flex-col">
             <ul className="divide-y divide-gray-50 m-0 p-0">
-              {paginatedRoles.map((role, index) => (
+              {table.paged.map((role, index) => (
                 <li key={role.id} className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50/50 transition-colors bg-white">
                   
                   {/* S.No */}
                   <div className="w-8 shrink-0 text-sm font-medium text-gray-400 text-center">
-                    {(currentPage - 1) * ITEMS_PER_PAGE + index + 1}
+                    {(table.page - 1) * table.pageSize + index + 1}
                   </div>
 
                   {/* Icon */}
@@ -351,30 +371,17 @@ export default function RoleManagementPage() {
               ))}
             </ul>
             
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/50">
-                <span className="text-sm text-gray-500">
-                  Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, roles.length)} of {roles.length} entries
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-blue-600 disabled:opacity-50 disabled:hover:bg-white disabled:hover:text-gray-600 transition-colors shadow-sm"
-                  >
-                    Previous
-                  </button>
-                  <button
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                    className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-blue-600 disabled:opacity-50 disabled:hover:bg-white disabled:hover:text-gray-600 transition-colors shadow-sm"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
+            {table.filtered.length === 0 && (
+              <div className="py-10 text-center text-sm text-gray-400">No results match your search</div>
             )}
+            <TablePagination
+              page={table.page}
+              pageSize={table.pageSize}
+              totalPages={table.totalPages}
+              totalItems={table.filtered.length}
+              onPageChange={table.setPage}
+              onPageSizeChange={table.setPageSize}
+            />
           </div>
         )}
       </div>

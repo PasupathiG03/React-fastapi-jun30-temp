@@ -4,7 +4,6 @@ import { getToken } from "@/lib/auth";
 export interface ProcessItem {
   id: number;
   name: string;
-  code: string;
   description: string | null;
   is_active: boolean;
   created_at?: string;
@@ -13,7 +12,6 @@ export interface ProcessItem {
 
 export interface ProcessCreatePayload {
   name: string;
-  code: string;
   description?: string | null;
   is_active?: boolean;
 }

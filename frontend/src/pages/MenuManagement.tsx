@@ -2,6 +2,9 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2, X, Edit2, Cog, Layers } from "lucide-react";
 import { createPortal } from "react-dom";
+import { TablePagination, TableToolbar } from "@/components/DataTableControls";
+import { useTableData } from "@/hooks/useTableData";
+import { exportToCsv } from "@/lib/exportData";
 import {
   createProcess,
   deleteProcess,
@@ -59,28 +62,20 @@ interface ProcessModalProps {
 
 function ProcessModal({ editing, onClose, onSaved }: ProcessModalProps) {
   const [name, setName] = useState(editing?.name ?? "");
-  const [code, setCode] = useState(editing?.code ?? "");
-  const [codeEdited, setCodeEdited] = useState(!!editing);
   const [description, setDescription] = useState(editing?.description ?? "");
   const [isActive, setIsActive] = useState(editing?.is_active ?? true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (!codeEdited) setCode(name ? toSlug(name) : "");
-  }, [name, codeEdited]);
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     if (!name.trim()) return setError("Process Name is required");
-    if (!code.trim()) return setError("Code is required");
 
     setSubmitting(true);
     try {
       const payload: ProcessCreatePayload = {
         name: name.trim(),
-        code: code.trim(),
         description: description.trim() || null,
         is_active: isActive,
       };
@@ -111,7 +106,7 @@ function ProcessModal({ editing, onClose, onSaved }: ProcessModalProps) {
 
         <form onSubmit={handleSubmit} className="flex flex-col">
           <div className="p-6 space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-gray-600">
                   Process Name <span className="text-red-500">*</span>
@@ -123,22 +118,6 @@ function ProcessModal({ editing, onClose, onSaved }: ProcessModalProps) {
                   placeholder="Enter process name"
                   className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
                 />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-gray-600">
-                  Code <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={code}
-                  onChange={(e) => {
-                    setCode(e.target.value);
-                    setCodeEdited(true);
-                  }}
-                  placeholder="Enter code"
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm text-gray-800 placeholder-gray-400 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
-                />
-                <p className="text-xs text-gray-400">A stable, short identifier — letters, numbers, and hyphens.</p>
               </div>
             </div>
 
@@ -193,17 +172,17 @@ function ProcessModal({ editing, onClose, onSaved }: ProcessModalProps) {
 
 interface ScreenModalProps {
   processId: number;
+  nextOrder: number;
   editing: MenuItem | null;
   onClose: () => void;
   onSaved: (menu: MenuItem) => void;
 }
 
-function ScreenModal({ processId, editing, onClose, onSaved }: ScreenModalProps) {
+function ScreenModal({ processId, nextOrder, editing, onClose, onSaved }: ScreenModalProps) {
   const [name, setName] = useState(editing?.name ?? "");
   const [route, setRoute] = useState(editing?.url ?? "");
   const [routeEdited, setRouteEdited] = useState(!!editing);
-  const [group, setGroup] = useState(editing?.group ?? "");
-  const [order, setOrder] = useState(editing?.order ?? 0);
+  const [order, setOrder] = useState(Math.max(1, editing?.order ?? nextOrder));
   const [isActive, setIsActive] = useState(editing?.is_active ?? true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -223,7 +202,6 @@ function ScreenModal({ processId, editing, onClose, onSaved }: ScreenModalProps)
       const payload: MenuCreatePayload = {
         name: name.trim(),
         url: route.trim(),
-        group: group.trim() || null,
         order,
         process_id: processId,
       };
@@ -265,7 +243,7 @@ function ScreenModal({ processId, editing, onClose, onSaved }: ScreenModalProps)
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Leave Approval"
+                  placeholder="e.g. Sales Dashboard"
                   className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
                 />
               </div>
@@ -280,18 +258,8 @@ function ScreenModal({ processId, editing, onClose, onSaved }: ScreenModalProps)
                     setRoute(e.target.value);
                     setRouteEdited(true);
                   }}
-                  placeholder="e.g. /hostel/leave-approval"
+                  placeholder="e.g. /sales/dashboard"
                   className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm text-gray-800 placeholder-gray-400 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-gray-600">Menu Group</label>
-                <input
-                  type="text"
-                  value={group ?? ""}
-                  onChange={(e) => setGroup(e.target.value)}
-                  placeholder="e.g. Reports (optional)"
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
                 />
               </div>
               <div className="space-y-1.5">
@@ -299,8 +267,8 @@ function ScreenModal({ processId, editing, onClose, onSaved }: ScreenModalProps)
                 <input
                   type="number"
                   value={order}
-                  min={0}
-                  onChange={(e) => setOrder(Number(e.target.value))}
+                  min={1}
+                  onChange={(e) => setOrder(Math.max(1, Number(e.target.value) || 1))}
                   className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
                 />
               </div>
@@ -452,6 +420,19 @@ export default function MenuManagementPage() {
     }
   }
 
+  const table = useTableData(screens, (s) =>
+    [s.name, s.url, s.is_active ? "active" : "inactive"].filter(Boolean).join(" ")
+  );
+
+  function handleExport() {
+    exportToCsv(`screens-${(selectedProcess?.name ?? "all").toLowerCase().replace(/\s+/g, "-")}`, [
+      { header: "Screen", value: (s) => s.name },
+      { header: "Route", value: (s) => s.url },
+      { header: "Order", value: (s) => s.order },
+      { header: "Status", value: (s) => (s.is_active ? "Active" : "Inactive") },
+    ], table.filtered);
+  }
+
   const selectedProcess = processes.find((p) => p.id === selectedProcessId) ?? null;
 
   return (
@@ -466,7 +447,7 @@ export default function MenuManagementPage() {
             <Cog className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Menu Management</h1>
+            <h1 className="text-xl font-bold text-gray-900">Developer Management</h1>
             <p className="text-sm text-gray-500">Organize sidebar navigation into processes and screens</p>
           </div>
         </div>
@@ -526,9 +507,11 @@ export default function MenuManagementPage() {
                     style={active ? { background: "linear-gradient(135deg, #1d55e8, #1235b0)" } : undefined}
                   >
                     <p className="text-sm font-semibold truncate">{process.name}</p>
-                    <p className={`text-xs font-mono mt-0.5 truncate ${active ? "text-white/80" : "text-gray-400"}`}>
-                      {process.code}
-                    </p>
+                    {process.description && (
+                      <p className={`text-xs mt-0.5 truncate ${active ? "text-white/80" : "text-gray-400"}`}>
+                        {process.description}
+                      </p>
+                    )}
                   </button>
                 );
               })
@@ -585,13 +568,22 @@ export default function MenuManagementPage() {
               <p className="text-sm">Select or create a process to manage its screens</p>
             </div>
           ) : (
+            <>
+            <div className="px-6 py-3 border-b border-gray-100 flex justify-end">
+              <TableToolbar
+                query={table.query}
+                onQueryChange={table.setQuery}
+                onExport={handleExport}
+                exportDisabled={table.filtered.length === 0}
+                placeholder="Search screens..."
+              />
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide bg-gray-50/50">
                     <th className="px-6 py-3">Screen</th>
                     <th className="px-6 py-3">Route</th>
-                    <th className="px-6 py-3">Group</th>
                     <th className="px-6 py-3">Order</th>
                     <th className="px-6 py-3">Status</th>
                     <th className="px-6 py-3 text-right">Actions</th>
@@ -601,25 +593,24 @@ export default function MenuManagementPage() {
                   {loadingScreens || loadingProcesses ? (
                     [1, 2, 3].map((i) => (
                       <tr key={i} className="animate-pulse">
-                        <td className="px-6 py-4" colSpan={6}>
+                        <td className="px-6 py-4" colSpan={5}>
                           <div className="h-4 bg-gray-100 rounded w-full" />
                         </td>
                       </tr>
                     ))
-                  ) : screens.length === 0 ? (
+                  ) : table.filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
+                      <td colSpan={5} className="px-6 py-12 text-center text-gray-400">
                         <Cog className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                        <p className="text-sm">No screens yet</p>
-                        <p className="text-xs mt-0.5">Add your first screen above</p>
+                        <p className="text-sm">{screens.length === 0 ? "No screens yet" : "No results match your search"}</p>
+                        {screens.length === 0 && <p className="text-xs mt-0.5">Add your first screen above</p>}
                       </td>
                     </tr>
                   ) : (
-                    screens.map((screen) => (
+                    table.paged.map((screen) => (
                       <tr key={screen.id} className="hover:bg-gray-50/50 transition-colors">
                         <td className="px-6 py-3.5 font-semibold text-gray-800">{screen.name}</td>
                         <td className="px-6 py-3.5 font-mono text-xs text-blue-600">{screen.url}</td>
-                        <td className="px-6 py-3.5 text-gray-400">{screen.group || "—"}</td>
                         <td className="px-6 py-3.5 text-gray-500">{screen.order}</td>
                         <td className="px-6 py-3.5">
                           <span
@@ -657,6 +648,15 @@ export default function MenuManagementPage() {
                 </tbody>
               </table>
             </div>
+            <TablePagination
+              page={table.page}
+              pageSize={table.pageSize}
+              totalPages={table.totalPages}
+              totalItems={table.filtered.length}
+              onPageChange={table.setPage}
+              onPageSizeChange={table.setPageSize}
+            />
+            </>
           )}
         </div>
       </div>
@@ -677,6 +677,7 @@ export default function MenuManagementPage() {
       {screenModalOpen && selectedProcess && (
         <ScreenModal
           processId={selectedProcess.id}
+          nextOrder={Math.max(0, ...screens.map((s) => s.order)) + 1}
           editing={editingScreen}
           onClose={() => {
             setScreenModalOpen(false);

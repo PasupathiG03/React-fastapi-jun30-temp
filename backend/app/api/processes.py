@@ -26,13 +26,11 @@ def create_process(
     _=Depends(get_superuser),
 ):
     """Create a new process."""
-    existing = db.query(Process).filter(
-        (Process.name == payload.name) | (Process.code == payload.code)
-    ).first()
+    existing = db.query(Process).filter(Process.name == payload.name).first()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A process with this name or code already exists",
+            detail="A process with this name already exists",
         )
 
     process = Process(**payload.model_dump())
@@ -55,18 +53,14 @@ def update_process(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Process not found")
 
     update_data = payload.model_dump(exclude_unset=True)
-    if ("name" in update_data and update_data["name"] != process.name) or (
-        "code" in update_data and update_data["code"] != process.code
-    ):
+    if "name" in update_data and update_data["name"] != process.name:
         existing = db.query(Process).filter(
-            Process.id != process_id,
-            (Process.name == update_data.get("name", process.name))
-            | (Process.code == update_data.get("code", process.code)),
+            Process.id != process_id, Process.name == update_data["name"]
         ).first()
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="A process with this name or code already exists",
+                detail="A process with this name already exists",
             )
 
     for key, value in update_data.items():

@@ -1,9 +1,19 @@
 
 import { useEffect, useState } from "react";
-import { BarChart2, Clock, Shield, TrendingUp, UserCheck, Users, Workflow, ArrowUpRight } from "lucide-react";
+import { BarChart2, Clock, Layers, LayoutDashboard, Shield, TrendingUp, UserCheck, Users, Workflow, ArrowUpRight } from "lucide-react";
 import { fetchUsers } from "@/services/user";
 import { fetchRoles } from "@/services/role";
 import { fetchWorkflows } from "@/services/workflow";
+import { fetchMenus, type MenuItem } from "@/services/menu";
+import { API_BASE_URL } from "@/lib/constants";
+import { getToken } from "@/lib/auth";
+
+interface Me {
+  employee_name: string | null;
+  employee_id: string;
+  is_superuser: boolean;
+  role?: { name: string } | null;
+}
 
 interface Stat {
   label: string;
@@ -14,8 +24,8 @@ interface Stat {
 }
 
 const QUICK_ACTIONS = [
-  { label: "Manage Users",     href: "/user-management"     },
-  { label: "Manage Roles",     href: "/role-management"     },
+  { label: "Manage Users",     href: "/access-control/user-management"     },
+  { label: "Manage Roles",     href: "/access-control/role-management"     },
   { label: "Manage Menus",     href: "/menu-management"     },
   { label: "Manage Workflows", href: "/workflow-management" },
 ];
@@ -80,36 +90,72 @@ function ActivitySkeleton() {
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<Stat[]>([]);
+  const [me, setMe] = useState<Me | null>(null);
+  const [menus, setMenus] = useState<MenuItem[]>([]);
+  const isAdmin = !!me && (me.is_superuser || me.role?.name === "Developer");
 
   useEffect(() => {
     loadStats();
   }, []);
 
   async function loadStats() {
-    const [usersResult, rolesResult, workflowsResult] = await Promise.allSettled([
-      fetchUsers(),
-      fetchRoles(),
-      fetchWorkflows(),
+    const token = getToken();
+    const [meRes, menusRes] = await Promise.allSettled([
+      fetch(`${API_BASE_URL}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => (r.ok ? r.json() : null)),
+      fetchMenus(),
     ]);
+    const meData: Me | null = meRes.status === "fulfilled" ? meRes.value : null;
+    const myMenus = menusRes.status === "fulfilled" ? menusRes.value : [];
+    setMe(meData);
+    setMenus(myMenus);
 
-    const users = usersResult.status === "fulfilled" ? usersResult.value : [];
-    const roles = rolesResult.status === "fulfilled" ? rolesResult.value : [];
-    const workflows = workflowsResult.status === "fulfilled" ? workflowsResult.value : [];
+    const admin = !!meData && (meData.is_superuser || meData.role?.name === "Developer");
+    if (admin) {
+      const [usersResult, rolesResult, workflowsResult] = await Promise.allSettled([
+        fetchUsers(),
+        fetchRoles(),
+        fetchWorkflows(),
+      ]);
 
-    setStats([
-      { label: "Total Users", value: users.length, icon: Users, iconColor: "#1d55e8", bg: "#eff3fe" },
-      {
-        label: "Active Users",
-        value: users.filter((u) => u.is_active).length,
-        icon: UserCheck,
-        iconColor: "#0ea575",
-        bg: "#ecfdf5",
-      },
-      { label: "Total Roles", value: roles.length, icon: Shield, iconColor: "#f59e0b", bg: "#fffbeb" },
-      { label: "Total Workflows", value: workflows.length, icon: Workflow, iconColor: "#8b5cf6", bg: "#f5f3ff" },
-    ]);
+      const users = usersResult.status === "fulfilled" ? usersResult.value : [];
+      const roles = rolesResult.status === "fulfilled" ? rolesResult.value : [];
+      const workflows = workflowsResult.status === "fulfilled" ? workflowsResult.value : [];
+
+      setStats([
+        { label: "Total Users", value: users.length, icon: Users, iconColor: "#1d55e8", bg: "#eff3fe" },
+        {
+          label: "Active Users",
+          value: users.filter((u) => u.is_active).length,
+          icon: UserCheck,
+          iconColor: "#0ea575",
+          bg: "#ecfdf5",
+        },
+        { label: "Total Roles", value: roles.length, icon: Shield, iconColor: "#f59e0b", bg: "#fffbeb" },
+        { label: "Total Workflows", value: workflows.length, icon: Workflow, iconColor: "#8b5cf6", bg: "#f5f3ff" },
+      ]);
+    } else {
+      // Regular users only see numbers about what they are allowed to open.
+      setStats([
+        { label: "Screens You Can Access", value: myMenus.length, icon: LayoutDashboard, iconColor: "#1d55e8", bg: "#eff3fe" },
+        {
+          label: "Processes",
+          value: new Set(myMenus.map((m) => m.process_id).filter((id) => id != null)).size,
+          icon: Layers,
+          iconColor: "#8b5cf6",
+          bg: "#f5f3ff",
+        },
+      ]);
+    }
     setLoading(false);
   }
+
+  // Admins get the built-in admin shortcuts; everyone gets the screens their role can open.
+  const quickActions = [
+    ...(isAdmin ? QUICK_ACTIONS : []),
+    ...menus
+      .filter((m) => !QUICK_ACTIONS.some((q) => q.href === m.url))
+      .map((m) => ({ label: m.name, href: m.url })),
+  ];
 
   return (
     <div className="space-y-6">
@@ -118,10 +164,14 @@ export default function DashboardPage() {
         className="rounded-2xl p-6 text-white"
         style={{ background: "linear-gradient(135deg, #1d55e8 0%, #1235b0 100%)" }}
       >
-        <p className="text-blue-200 text-sm font-medium mb-1">Welcome back</p>
+        <p className="text-blue-200 text-sm font-medium mb-1">
+          Welcome back{me ? `, ${me.employee_name || me.employee_id}` : ""}
+        </p>
         <h2 className="text-2xl font-bold">Workflow Platform</h2>
         <p className="text-blue-200 text-sm mt-1">
-          Manage users, roles, menus, and approval workflows from one place.
+          {isAdmin
+            ? "Manage users, roles, menus, and approval workflows from one place."
+            : `Signed in${me?.role ? ` as ${me.role.name}` : ""}. Use the sidebar or the shortcuts below to open your screens.`}
         </p>
       </div>
 
@@ -159,9 +209,14 @@ export default function DashboardPage() {
                 <h3 className="font-semibold text-gray-700 text-sm">Quick Actions</h3>
               </div>
               <div className="space-y-2">
-                {QUICK_ACTIONS.map(({ label, href }) => (
+                {quickActions.length === 0 && (
+                  <p className="text-sm text-gray-400 py-4 text-center">
+                    No screens assigned to your role yet. Ask an administrator to grant access.
+                  </p>
+                )}
+                {quickActions.map(({ label, href }) => (
                   <a
-                    key={label}
+                    key={href}
                     href={href}
                     className="flex items-center justify-between px-4 py-3 rounded-lg border border-gray-100 hover:border-blue-200 hover:bg-blue-50 transition-all group"
                   >
