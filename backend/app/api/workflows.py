@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.dependencies import WORKFLOW_SCREEN, get_current_user, get_db, require_screen
 from app.models.role import Role
-from app.models.workflow import Workflow, WorkflowItem, WorkflowItemHistory, WorkflowStage
+from app.models.workflow import StageType, Workflow, WorkflowItem, WorkflowItemHistory, WorkflowStage
 from app.schemas.workflow import (
+    CopyAccess,
     ItemCreate,
     ItemHistoryOut,
     ItemMove,
@@ -46,6 +47,15 @@ def _roles_from_ids(db: Session, role_ids: list[int]) -> list[Role]:
     if len(roles) != len(ids):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more roles do not exist")
     return roles
+
+
+def _with_admin(db: Session, roles: list[Role]) -> list[Role]:
+    """Every stage is created with the Admin role on it, whatever the caller picked. It can still be
+    removed afterwards from Menu Access or by editing the stage."""
+    admin = db.query(Role).filter(func.lower(Role.name) == "admin", Role.is_active == True).first()
+    if admin is None or any(r.id == admin.id for r in roles):
+        return roles
+    return [*roles, admin]
 
 
 def _user_can_open(user, stage: WorkflowStage) -> bool:
@@ -201,6 +211,41 @@ def delete_workflow(
     db.commit()
 
 
+@router.post("/{workflow_id}/copy-access", response_model=WorkflowDetailOut)
+def copy_access(
+    workflow_id: int,
+    payload: CopyAccess,
+    db: Session = Depends(get_db),
+    _=Depends(require_screen(WORKFLOW_SCREEN)),
+):
+    """Copy which roles may open each stage from another workflow.
+
+    Stages are matched by type, in order: the 1st QC stage here takes the roles of the 1st QC stage
+    in the source, and so on. If this workflow has more stages of a type than the source, the extra
+    ones reuse the source's last stage of that type. A stage whose type the source lacks is left as is."""
+    if payload.source_workflow_id == workflow_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pick a different workflow to copy from")
+    target = _get_workflow_or_404(db, workflow_id)
+    source = _get_workflow_or_404(db, payload.source_workflow_id)
+
+    source_by_type: dict[StageType, list[WorkflowStage]] = {}
+    for s in source.stages:
+        source_by_type.setdefault(s.stage_type, []).append(s)
+
+    seen: dict[StageType, int] = {}
+    for stage in target.stages:
+        candidates = source_by_type.get(stage.stage_type)
+        if not candidates:
+            continue
+        n = seen.get(stage.stage_type, 0)
+        seen[stage.stage_type] = n + 1
+        stage.roles = _with_admin(db, list(candidates[min(n, len(candidates) - 1)].roles))
+
+    db.commit()
+    db.refresh(target)
+    return target
+
+
 # ── Stages ───────────────────────────────────────────────────────────────
 
 @router.post(
@@ -217,7 +262,7 @@ def create_stage(
     _get_workflow_or_404(db, workflow_id)
     data = payload.model_dump(exclude={"role_ids"})
     stage = WorkflowStage(workflow_id=workflow_id, **data)
-    stage.roles = _roles_from_ids(db, payload.role_ids)
+    stage.roles = _with_admin(db, _roles_from_ids(db, payload.role_ids))
     db.add(stage)
     db.commit()
     db.refresh(stage)

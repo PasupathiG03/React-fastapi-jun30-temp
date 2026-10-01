@@ -121,6 +121,19 @@ export async function deleteWorkflow(id: number): Promise<void> {
   return handle(res);
 }
 
+/** Copy each stage's roles from another workflow (stages matched by type, in order). */
+export async function copyWorkflowAccess(
+  id: number,
+  sourceWorkflowId: number
+): Promise<WorkflowDetail> {
+  const res = await fetch(`${API_BASE_URL}/api/workflows/${id}/copy-access`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ source_workflow_id: sourceWorkflowId }),
+  });
+  return handle(res);
+}
+
 export async function fetchMyStages(): Promise<MyWorkflow[]> {
   const res = await fetch(`${API_BASE_URL}/api/workflows/my-stages`, { headers: authHeaders() });
   return handle(res);

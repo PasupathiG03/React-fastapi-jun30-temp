@@ -49,15 +49,31 @@ export default function MenuAccessPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target]);
 
+  // Until the process/workflow list arrives we don't know whether this is a screen or a stage matrix,
+  // so the labels that depend on it stay as skeletons instead of flashing "Screens" and then "Stages".
+  const booting = loading && target === null;
+
   const granted = useMemo(() => new Set(matrix?.grants.map((g) => key(g.role_id, g.menu_id))), [matrix]);
 
   // The Developer role has full system access by default, so we only display configurable roles in the matrix
   const orderedRoles = useMemo(() => {
     if (!matrix?.roles) return [];
-    return matrix.roles
-      .filter((r) => r.name.trim().toLowerCase() !== "developer")
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [matrix?.roles]);
+    const roles = matrix.roles.filter((r) => r.name.trim().toLowerCase() !== "developer");
+
+    // For a workflow, line the role columns up with the stage rows: Admin first, then the roles named
+    // after each stage type in the order those stages run (Production, QC, QA), then everyone else.
+    const stageTypes = isWorkflow
+      ? [...new Set(workflows.find((w) => w.id === targetId)?.stages.map((s) => s.stage_type as string))]
+      : [];
+    const rank = (name: string) => {
+      const n = name.trim().toLowerCase();
+      if (!stageTypes.length) return 0;
+      if (n === "admin") return -1;
+      const i = stageTypes.indexOf(n);
+      return i === -1 ? stageTypes.length : i;
+    };
+    return roles.sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name));
+  }, [matrix?.roles, isWorkflow, workflows, targetId]);
 
   async function toggle(roleId: number, menuId: number, nextAllowed?: boolean) {
     if (!matrix) return;
@@ -97,9 +113,16 @@ export default function MenuAccessPage() {
       <div className="glass-card rounded-[22px] overflow-hidden">
         {/* Card Header: Screens & Process Select */}
         <div className="relative z-20 px-6 py-4 border-b border-slate-100 dark:border-white/[0.06] flex items-center justify-between gap-4">
-          <h2 className="text-base font-bold text-slate-900 dark:text-white">{isWorkflow ? "Stages" : "Screens"}</h2>
+          {booting ? (
+            <div className="h-5 w-24 bg-slate-200 dark:bg-white/10 rounded-md animate-pulse" />
+          ) : (
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">{isWorkflow ? "Stages" : "Screens"}</h2>
+          )}
           <div className="flex items-center gap-2.5">
             <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">Process / Workflow</label>
+            {booting ? (
+              <div className="h-8 w-64 bg-slate-200 dark:bg-white/10 rounded-xl animate-pulse" />
+            ) : (
             <CustomSelect
               value={target ?? undefined}
               onChange={(val) => setTarget(String(val))}
@@ -111,6 +134,7 @@ export default function MenuAccessPage() {
               className="w-64"
               size="sm"
             />
+            )}
           </div>
         </div>
 
@@ -120,7 +144,13 @@ export default function MenuAccessPage() {
             <thead>
               <tr className="text-left text-xs font-semibold text-slate-500 dark:text-slate-400 border-b border-slate-200/90 dark:border-white/[0.08] bg-white/45 dark:bg-white/[0.02]">
                 <th className="px-6 py-3.5 font-semibold border-r border-slate-200/90 dark:border-white/[0.08]">
-                  {isWorkflow ? "Stage" : "Screen"}
+                  {booting ? (
+                    <div className="h-3.5 w-12 bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
+                  ) : isWorkflow ? (
+                    "Stage"
+                  ) : (
+                    "Screen"
+                  )}
                 </th>
                 {orderedRoles.length > 0
                   ? orderedRoles.map((r, idx) => (

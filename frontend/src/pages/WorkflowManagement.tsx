@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  Copy,
   Edit2,
   MoreVertical,
   Plus,
@@ -10,9 +11,12 @@ import {
 } from "lucide-react";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { CustomSelect } from "@/components/CustomSelect";
+import RoleMultiSelect from "@/components/RoleMultiSelect";
 import { getStageIcon } from "@/lib/stageIcons";
+import { fetchRoles, type RoleItem } from "@/services/role";
 import {
   createStage,
+  copyWorkflowAccess,
   createWorkflow,
   deleteStage,
   deleteWorkflow,
@@ -32,6 +36,73 @@ const STAGE_TYPE_OPTIONS: { value: StageType; label: string }[] = [
   { value: "qc", label: "Quality Control (QC)" },
   { value: "qa", label: "Quality Assurance (QA)" },
 ];
+
+// ── Roles that can be assigned to a stage ────────────────────────────────
+
+// Developer already has full access to every stage, so it is not offered here.
+function useAssignableRoles() {
+  const [roles, setRoles] = useState<RoleItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchRoles()
+      .then((data) => {
+        if (!cancelled) setRoles(data.filter((r) => r.name.trim().toLowerCase() !== "developer"));
+      })
+      .catch(() => {
+        // The picker shows "No roles available"; access can still be set in Menu Access.
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return { roles, loading };
+}
+
+// A new stage starts with Admin plus the role named after its type (QC -> "QC", QA -> "QA", Production -> "Production").
+function defaultRoleIds(stageType: StageType, roles: RoleItem[]): number[] {
+  return roles
+    .filter((r) => {
+      const name = r.name.trim().toLowerCase();
+      return name === "admin" || name === stageType;
+    })
+    .map((r) => r.id);
+}
+
+function NoRolesWarning({ show }: { show: boolean }) {
+  if (!show) return null;
+  return (
+    <p className="text-[11px] text-amber-600 dark:text-amber-400">
+      No role selected: only Developers will see this stage.
+    </p>
+  );
+}
+
+function RoleBadges({ roleIds, roles }: { roleIds: number[]; roles: RoleItem[] }) {
+  const names = roleIds
+    .map((id) => roles.find((r) => r.id === id)?.name)
+    .filter((n): n is string => Boolean(n));
+  if (names.length === 0) {
+    return <span className="text-[10px] text-amber-600 dark:text-amber-400 shrink-0">Developers only</span>;
+  }
+  return (
+    <span className="flex items-center gap-1 shrink-0">
+      {names.map((n) => (
+        <span
+          key={n}
+          className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400"
+        >
+          {n}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 // ── Confirm Dialog Modal ─────────────────────────────────────────────────
 
@@ -183,6 +254,8 @@ function WorkflowFormModal({
 
 // ── Add/Edit Stage Modal ─────────────────────────────────────────────────
 
+type StagePayload = { name: string; stage_type: StageType; sequence_order: number; role_ids: number[] };
+
 function StageFormModal({
   workflowName,
   nextOrder,
@@ -194,13 +267,22 @@ function StageFormModal({
   nextOrder: number;
   editing: StageItem | null;
   onClose: () => void;
-  onSaved: (payload: { name: string; stage_type: StageType; sequence_order: number }) => Promise<void>;
+  onSaved: (payload: StagePayload) => Promise<void>;
 }) {
   const [name, setName] = useState(editing?.name ?? "");
   const [stageType, setStageType] = useState<StageType>(editing?.stage_type ?? "production");
   const [sequenceOrder, setSequenceOrder] = useState<number>(editing?.sequence_order ?? nextOrder);
+  const [roleIds, setRoleIds] = useState<number[]>(editing?.role_ids ?? []);
+  const [rolesTouched, setRolesTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const { roles, loading: rolesLoading } = useAssignableRoles();
+
+  // For a new stage, follow the stage type until the user picks roles by hand.
+  useEffect(() => {
+    if (editing || rolesTouched || rolesLoading) return;
+    setRoleIds(defaultRoleIds(stageType, roles));
+  }, [editing, rolesTouched, rolesLoading, stageType, roles]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -214,6 +296,7 @@ function StageFormModal({
         name: trimmed,
         stage_type: stageType,
         sequence_order: Number(sequenceOrder) || nextOrder,
+        role_ids: roleIds,
       });
       onClose();
     } catch (err) {
@@ -291,6 +374,22 @@ function StageFormModal({
               </p>
             </div>
 
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
+                Roles with Access
+              </label>
+              <RoleMultiSelect
+                roles={roles}
+                value={roleIds}
+                loading={rolesLoading}
+                onChange={(ids) => {
+                  setRolesTouched(true);
+                  setRoleIds(ids);
+                }}
+              />
+              <NoRolesWarning show={!rolesLoading && roleIds.length === 0} />
+            </div>
+
             {error && (
               <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-600 dark:text-red-400">
                 {error}
@@ -322,15 +421,124 @@ function StageFormModal({
   );
 }
 
+// ── Copy Access Modal ────────────────────────────────────────────────────
+
+function CopyAccessModal({
+  target,
+  workflows,
+  onClose,
+  onCopied,
+}: {
+  target: WorkflowDetail;
+  workflows: WorkflowDetail[];
+  onClose: () => void;
+  onCopied: (workflow: WorkflowDetail) => void;
+}) {
+  const [sourceId, setSourceId] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!sourceId) return setError("Choose a workflow to copy from");
+    setError("");
+    setSubmitting(true);
+    try {
+      onCopied(await copyWorkflowAccess(target.id, sourceId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to copy access");
+      setSubmitting(false);
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+      <div className="glass-modal rounded-2xl w-full max-w-md overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between bg-white/30 dark:bg-white/[0.02]">
+          <h2 className="text-sm font-bold text-slate-900 dark:text-white">Copy Access: {target.name}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="p-6 space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
+                Copy from workflow
+              </label>
+              <CustomSelect<number>
+                value={sourceId}
+                onChange={setSourceId}
+                options={[
+                  { value: 0, label: "Select a workflow" },
+                  ...copySourceOptions(workflows, target.id).slice(1),
+                ]}
+                className="w-full"
+                size="md"
+              />
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Each stage takes the roles of the same-type stage (QC, QA, Production) in the chosen workflow, in order.
+                This replaces the roles currently set on those stages.
+              </p>
+            </div>
+
+            {error && (
+              <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-600 dark:text-red-400">
+                {error}
+              </div>
+            )}
+          </div>
+
+          <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 rounded-b-2xl">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-6 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-sm transition-all disabled:opacity-60 cursor-pointer"
+            >
+              {submitting ? "Copying..." : "Copy Access"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ── Create Workflow Wizard (Name → Add Stages) ───────────────────────────
 
+function copySourceOptions(workflows: WorkflowDetail[], excludeId?: number) {
+  return [
+    { value: 0, label: "Don't copy" },
+    ...workflows
+      .filter((w) => w.id !== excludeId && w.stages.length > 0)
+      .map((w) => ({ value: w.id, label: w.name })),
+  ];
+}
+
 function CreateWorkflowWizardModal({
+  existingWorkflows,
   onClose,
   onDone,
 }: {
+  existingWorkflows: WorkflowDetail[];
   onClose: () => void;
   onDone: (workflow: WorkflowDetail) => void;
 }) {
+  const [copyFrom, setCopyFrom] = useState(0);
+  const [finishing, setFinishing] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
   const [workflow, setWorkflow] = useState<WorkflowDetail | null>(null);
   const [addedStages, setAddedStages] = useState<StageItem[]>([]);
@@ -344,16 +552,30 @@ function CreateWorkflowWizardModal({
   const nextOrder = addedStages.length + 1;
   const [stageSubmitting, setStageSubmitting] = useState(false);
   const [stageError, setStageError] = useState("");
+  const [stageRoleIds, setStageRoleIds] = useState<number[]>([]);
+  const [rolesTouched, setRolesTouched] = useState(false);
+  const { roles, loading: rolesLoading } = useAssignableRoles();
 
-  function closeAndSync() {
-    if (workflow) {
-      onDone({
-        ...workflow,
-        stages: addedStages,
-      });
-    } else {
-      onClose();
+  // Follow the stage type until the user picks roles by hand for this stage.
+  useEffect(() => {
+    if (rolesTouched || rolesLoading) return;
+    setStageRoleIds(defaultRoleIds(stageType, roles));
+  }, [rolesTouched, rolesLoading, stageType, roles]);
+
+  async function closeAndSync() {
+    if (!workflow) return onClose();
+    if (copyFrom && addedStages.length > 0) {
+      setFinishing(true);
+      try {
+        // Replaces the roles picked above with the source workflow's.
+        return onDone(await copyWorkflowAccess(workflow.id, copyFrom));
+      } catch (err) {
+        setStageError(err instanceof Error ? err.message : "Failed to copy access");
+        setFinishing(false);
+        return;
+      }
     }
+    onDone({ ...workflow, stages: addedStages });
   }
 
   async function handleNext(e: React.FormEvent) {
@@ -386,10 +608,12 @@ function CreateWorkflowWizardModal({
         name: trimmed,
         stage_type: stageType,
         sequence_order: nextOrder,
+        role_ids: stageRoleIds,
       });
       setAddedStages((prev) => [...prev, s]);
       setStageName("");
       setStageType("production");
+      setRolesTouched(false);
     } catch (err) {
       setStageError(err instanceof Error ? err.message : "Failed to add stage");
     } finally {
@@ -502,6 +726,7 @@ function CreateWorkflowWizardModal({
                           <span className="flex-1 text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
                             {stage.name}
                           </span>
+                          <RoleBadges roleIds={stage.role_ids} roles={roles} />
                         </div>
                       );
                     })}
@@ -555,6 +780,22 @@ function CreateWorkflowWizardModal({
                   />
                 </div>
 
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
+                    Roles with Access
+                  </label>
+                  <RoleMultiSelect
+                    roles={roles}
+                    value={stageRoleIds}
+                    loading={rolesLoading}
+                    onChange={(ids) => {
+                      setRolesTouched(true);
+                      setStageRoleIds(ids);
+                    }}
+                  />
+                  <NoRolesWarning show={!rolesLoading && stageRoleIds.length === 0} />
+                </div>
+
                 {stageError && (
                   <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-600 dark:text-red-400">
                     {stageError}
@@ -572,6 +813,24 @@ function CreateWorkflowWizardModal({
               </form>
             </div>
 
+            {copySourceOptions(existingWorkflows).length > 1 && (
+              <div className="px-6 py-3 border-t border-slate-100 dark:border-white/[0.08] space-y-1.5">
+                <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
+                  Copy access from
+                </label>
+                <CustomSelect<number>
+                  value={copyFrom}
+                  onChange={setCopyFrom}
+                  options={copySourceOptions(existingWorkflows)}
+                  className="w-full"
+                  size="md"
+                />
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                  On finish, stages take the roles of the same-type stages in that workflow, replacing the roles picked above.
+                </p>
+              </div>
+            )}
+
             <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-between rounded-b-2xl">
               <span className="text-xs text-slate-400 dark:text-slate-500">
                 {addedStages.length} {addedStages.length === 1 ? "stage" : "stages"} created
@@ -579,9 +838,10 @@ function CreateWorkflowWizardModal({
               <button
                 type="button"
                 onClick={closeAndSync}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-sm transition-all cursor-pointer"
+                disabled={finishing}
+                className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-sm transition-all disabled:opacity-60 cursor-pointer"
               >
-                Finish & View Workflow
+                {finishing ? "Finishing..." : "Finish & View Workflow"}
               </button>
             </div>
           </div>
@@ -605,6 +865,7 @@ export default function WorkflowManagementPage() {
     workflow: WorkflowDetail;
     editing: StageItem | null;
   } | null>(null);
+  const [copyAccessTarget, setCopyAccessTarget] = useState<WorkflowDetail | null>(null);
   const [workflowToDelete, setWorkflowToDelete] = useState<WorkflowItem | null>(null);
   const [stageToDelete, setStageToDelete] = useState<{
     workflow: WorkflowDetail;
@@ -613,6 +874,7 @@ export default function WorkflowManagementPage() {
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const { roles: assignableRoles } = useAssignableRoles();
 
   useEffect(() => {
     loadWorkflows();
@@ -678,7 +940,7 @@ export default function WorkflowManagementPage() {
     setStageModal({ workflow: w, editing: null });
   }
 
-  async function handleStageSaved(payload: { name: string; stage_type: StageType; sequence_order: number }) {
+  async function handleStageSaved(payload: StagePayload) {
     if (!stageModal) return;
     const { workflow, editing } = stageModal;
     const saved = editing
@@ -835,6 +1097,17 @@ export default function WorkflowManagementPage() {
                       >
                         <Edit2 className="w-3.5 h-3.5" /> Rename
                       </button>
+                      {workflows.length > 1 && w.stages.length > 0 && (
+                        <button
+                          onClick={() => {
+                            setCopyAccessTarget(w);
+                            setOpenMenuId(null);
+                          }}
+                          className="w-full flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-white/40 dark:hover:bg-white/5 cursor-pointer"
+                        >
+                          <Copy className="w-3.5 h-3.5" /> Copy access from…
+                        </button>
+                      )}
                       <button
                         onClick={() => handleToggleActive(w)}
                         className="w-full flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-white/40 dark:hover:bg-white/5 cursor-pointer"
@@ -892,6 +1165,7 @@ export default function WorkflowManagementPage() {
                         >
                           {stage.name}
                         </button>
+                        <RoleBadges roleIds={stage.role_ids} roles={assignableRoles} />
                         <button
                           onClick={() => setStageModal({ workflow: w, editing: stage })}
                           title="Edit stage"
@@ -925,8 +1199,22 @@ export default function WorkflowManagementPage() {
 
       {createModalOpen && (
         <CreateWorkflowWizardModal
+          existingWorkflows={workflows}
           onClose={() => setCreateModalOpen(false)}
           onDone={handleWorkflowCreated}
+        />
+      )}
+
+      {copyAccessTarget && (
+        <CopyAccessModal
+          target={copyAccessTarget}
+          workflows={workflows}
+          onClose={() => setCopyAccessTarget(null)}
+          onCopied={(updated) => {
+            setWorkflows((prev) => prev.map((w) => (w.id === updated.id ? updated : w)));
+            setCopyAccessTarget(null);
+            flash(`Access copied to "${updated.name}"`);
+          }}
         />
       )}
 

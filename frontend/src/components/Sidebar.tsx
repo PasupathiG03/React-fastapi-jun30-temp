@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronDown,
+  GitBranch,
   Layers,
   LayoutDashboard,
   ShieldCheck,
@@ -10,7 +11,7 @@ import {
   LogOut,
   Shield,
   Users,
-  Workflow,
+  Network,
   Sparkles,
 } from "lucide-react";
 import { Cog } from "flowbite-react-icons/outline";
@@ -25,18 +26,12 @@ import { useLive } from "@/context/LiveContext";
 import { buildStageRoutes } from "@/lib/slug";
 import { getStageIcon } from "@/lib/stageIcons";
 
-const STATIC_ADMIN_URLS = [
-  "/dashboard",
-  "/access-control/user-management",
-  "/access-control/role-management",
-  "/access-control/menu-access",
-  "/developer-management/process-screen",
-  "/workflow-management",
-];
+// Screens a Developer always gets from the hard-coded entries below, so the database copies are skipped.
+const STATIC_ADMIN_URLS = ["/dashboard", "/developer-management/process-screen"];
 
 export function getProcessIcon(name: string): React.ElementType {
   const n = name.trim().toLowerCase();
-  if (n.includes("workflow")) return Workflow;
+  if (n.includes("workflow")) return Network;
   if (n.includes("access") || n.includes("admin")) return Lock;
   if (n.includes("developer") || n.includes("dev")) return Sparkles;
   if (n.includes("user") || n.includes("employee")) return Users;
@@ -53,7 +48,7 @@ const BUILT_IN_SCREEN_ICONS: Record<string, React.ElementType> = {
   "/access-control/role-management": Shield,
   "/access-control/menu-access": ShieldCheck,
   "/developer-management/process-screen": Layers,
-  "/workflow-management": Workflow,
+  "/workflow-management": Network,
   "/dashboard": LayoutDashboard,
 };
 
@@ -68,7 +63,7 @@ export function getScreenIcon(name: string, url: string, iconKey?: string | null
   if (lowerUrl.includes("user-management") || lowerName.includes("user")) return Users;
   if (lowerUrl.includes("role-management") || lowerName.includes("role")) return Shield;
   if (lowerUrl.includes("menu-access") || lowerName.includes("access") || lowerName.includes("permission")) return ShieldCheck;
-  if (lowerUrl.includes("workflow") || lowerName.includes("workflow")) return Workflow;
+  if (lowerUrl.includes("workflow") || lowerName.includes("workflow")) return Network;
   if (lowerUrl.includes("process-screen") || lowerName.includes("process") || lowerName.includes("screen")) return Layers;
   if (lowerUrl.includes("dashboard") || lowerName.includes("dashboard")) return LayoutDashboard;
 
@@ -210,7 +205,19 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
   });
 
   const visibleMenus =
-    userRole === "Developer" ? dynamicMenus.filter((m) => !STATIC_ADMIN_URLS.includes(m.url)) : dynamicMenus;
+    userRole === "Developer"
+      ? dynamicMenus.filter(
+          (m) =>
+            !STATIC_ADMIN_URLS.includes(m.url) &&
+            !m.url.startsWith("/access-control") &&
+            m.url !== "/workflow-management"
+        )
+      : dynamicMenus;
+
+  // Developers always get the hard-coded Access Control (User, Role, Menu Access) and Workflow Management
+  // entries, whatever screens are registered in the database. Other roles only see what Menu Access grants.
+  const showFallbackAccess = userRole === "Developer";
+  const showFallbackWorkflow = userRole === "Developer";
 
   // Main menus in the order set on each process (screens without a process come first).
   type MenuEntry =
@@ -527,7 +534,7 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
             )}
 
             {/* Administration section */}
-            {userRole === "Developer" && (
+            {(showFallbackAccess || showFallbackWorkflow) && (
               <>
                 {!collapsed && (
                   <p className="px-3 pt-3 pb-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
@@ -535,8 +542,8 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
                   </p>
                 )}
 
-                {collapsed ? (
-                  <>
+                {showFallbackAccess &&
+                  (collapsed ? (
                     <FlyoutGroup
                       label="Access Control"
                       Icon={Lock}
@@ -547,11 +554,8 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
                         { href: "/access-control/menu-access", label: "Menu Access", Icon: ShieldCheck },
                       ]}
                     />
-                    {renderItem("/workflow-management", "Workflow Management", Workflow)}
-                  </>
-                ) : (
-                  <>
-                    {renderGroup(
+                  ) : (
+                    renderGroup(
                       "Access Control",
                       Lock,
                       accessControlOpen,
@@ -562,11 +566,10 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
                         {renderItem("/access-control/role-management", "Role Management", Shield, true)}
                         {renderItem("/access-control/menu-access", "Menu Access", ShieldCheck, true)}
                       </>
-                    )}
+                    )
+                  ))}
 
-                    {renderItem("/workflow-management", "Workflow Management", Workflow)}
-                  </>
-                )}
+                {showFallbackWorkflow && renderItem("/workflow-management", "Workflow Management", Network)}
               </>
             )}
 
@@ -583,7 +586,7 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
                     <FlyoutGroup
                       key={`wf-${w.id}`}
                       label={w.name}
-                      Icon={Workflow}
+                      Icon={GitBranch}
                       active={isWorkflowActive(w)}
                       items={w.stages.map((s) => ({
                         href: stagePath(w, s.id),
@@ -596,7 +599,7 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
                   : myWorkflows.map((w) =>
                     renderGroup(
                       w.name,
-                      Workflow,
+                      GitBranch,
                       isWorkflowOpen(w),
                       isWorkflowActive(w),
                       () => toggleWorkflow(w),

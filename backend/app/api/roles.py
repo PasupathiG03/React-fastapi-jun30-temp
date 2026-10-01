@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import ROLE_SCREEN, USER_SCREEN, get_db, require_screen
+from app.core.dependencies import ROLE_SCREEN, USER_SCREEN, WORKFLOW_SCREEN, get_db, require_screen
 from app.models.role import Role
 from app.schemas.role import RoleCreate, RoleOut, RoleUpdate
 
@@ -18,8 +18,9 @@ def _protect_developer_role(actor, role: Role) -> None:
 @router.get("/", response_model=List[RoleOut])
 def list_roles(
     db: Session = Depends(get_db),
-    # The User Management form also needs the role list for its "Role" dropdown.
-    _=Depends(require_screen(ROLE_SCREEN, USER_SCREEN)),
+    # The User Management form needs the role list for its "Role" dropdown, and the
+    # Workflow Management stage form needs it to pick which roles may open a stage.
+    _=Depends(require_screen(ROLE_SCREEN, USER_SCREEN, WORKFLOW_SCREEN)),
 ):
     """List all active roles."""
     return db.query(Role).filter(Role.is_active == True).order_by(Role.id.desc()).all()

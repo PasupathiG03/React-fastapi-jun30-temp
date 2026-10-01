@@ -101,6 +101,10 @@ class WorkflowUpdate(BaseModel):
         return v
 
 
+class CopyAccess(BaseModel):
+    source_workflow_id: int
+
+
 class WorkflowOut(BaseModel):
     id: int
     name: str
