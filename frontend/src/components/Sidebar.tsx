@@ -600,9 +600,9 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
                     renderGroup(
                       "Access Control",
                       Lock,
-                      adminOpen ?? true,
+                      adminOpen ?? false,
                       DEV_ACCESS_CONTROL.some((i) => pathname === i.href || pathname.startsWith(i.href + "/")),
-                      () => setAdminOpen(!(adminOpen ?? true)),
+                      () => setAdminOpen(!(adminOpen ?? false)),
                       DEV_ACCESS_CONTROL.map((i) => renderItem(i.href, i.label, i.Icon, true))
                     )
                   )
