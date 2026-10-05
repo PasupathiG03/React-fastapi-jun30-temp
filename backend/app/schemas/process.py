@@ -5,7 +5,6 @@ from app.schemas.base import CreatorOut
 
 class ProcessBase(BaseModel):
     name: str = Field(..., max_length=150)
-    description: str | None = Field(None, max_length=500)
     is_active: bool = True
 
 
@@ -14,9 +13,13 @@ class ProcessCreate(ProcessBase):
     order: int | None = Field(None, ge=1)
 
 
+class ProcessReorderItem(BaseModel):
+    id: int
+    order: int
+
+
 class ProcessUpdate(BaseModel):
     name: str | None = Field(None, max_length=150)
-    description: str | None = Field(None, max_length=500)
     is_active: bool | None = None
     order: int | None = Field(None, ge=1)
 

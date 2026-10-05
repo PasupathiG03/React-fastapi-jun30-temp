@@ -41,7 +41,7 @@ const QUICK_ACTIONS = [
   { label: "Manage Roles", href: "/access-control/role-management" },
   { label: "Menu Access", href: "/access-control/menu-access" },
   { label: "Manage Menus", href: "/developer-management/process-screen" },
-  { label: "Manage Workflows", href: "/workflow-management" },
+  { label: "Manage Workflows", href: "/access-control/workflow-management" },
 ];
 
 export default function DashboardPage() {
@@ -52,7 +52,7 @@ export default function DashboardPage() {
   const { stages: pendingStages, total: pendingTotal, pathFor } = usePending();
   const { accessVersion } = useLive();
   const waitingStages = pendingStages.filter((s) => s.count > 0);
-  const isAdmin = !!me && (me.is_superuser || me.role?.name === "Developer");
+  const isAdmin = !!me && (me.is_superuser && me.role?.name?.trim().toLowerCase() === "developer");
 
   useEffect(() => {
     loadStats();
@@ -71,7 +71,7 @@ export default function DashboardPage() {
     setMe(meData);
     setMenus(myMenus);
 
-    const admin = !!meData && (meData.is_superuser || meData.role?.name === "Developer");
+    const admin = !!meData && (meData.is_superuser && meData.role?.name?.trim().toLowerCase() === "developer");
     if (admin) {
       const [usersResult, rolesResult, workflowsResult] = await Promise.allSettled([
         fetchUsers(),

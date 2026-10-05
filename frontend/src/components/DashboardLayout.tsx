@@ -7,6 +7,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { PendingProvider } from "@/context/PendingContext";
 import SessionWatcher from "@/components/SessionWatcher";
 import { LiveProvider } from "@/context/LiveContext";
+import { PageLoadingProvider } from "@/context/PageLoadingContext";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   // Phones and small tablets start with the compact (icon-only) sidebar so the page keeps its width.
@@ -36,19 +37,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 : "linear-gradient(135deg, #eef4fc 0%, #e2edfd 50%, #d8e7fa 100%)",
           }}
         >
-          {/* Floating Left Sidebar */}
-          <Sidebar collapsed={collapsed} loading={loading} />
+          {/* Both the sidebar and the top bar read/report into PageLoadingContext (the sidebar reports
+              its own load; TopBar's chrome waits on every reporter), so both must be inside it. */}
+          <PageLoadingProvider>
+            {/* Floating Left Sidebar */}
+            <Sidebar collapsed={collapsed} loading={loading} />
 
-          {/* Right Column: TopBar + Page Content */}
-          <div className="flex flex-col flex-1 h-full min-w-0 overflow-hidden gap-3.5">
-            <TopBar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} loading={loading} />
-            <main className="flex-1 overflow-y-auto pr-1 pb-6 min-w-0 [scrollbar-width:thin]">
-              {children}
-            </main>
-            <footer className="shrink-0 text-center text-xs text-slate-500 dark:text-slate-400 pb-0.5">
-              &copy; 2026 MTPL. All rights reserved.
-            </footer>
-          </div>
+            {/* Right Column: TopBar + Page Content */}
+            <div className="flex flex-col flex-1 h-full min-w-0 overflow-hidden gap-3.5">
+              <TopBar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} loading={loading} />
+              <main className="flex-1 overflow-y-auto pr-1 pb-6 min-w-0 [scrollbar-width:thin]">
+                {children}
+              </main>
+              <footer className="shrink-0 text-center text-xs text-slate-500 dark:text-slate-400 pb-0.5">
+                &copy; 2026 MTPL. All rights reserved.
+              </footer>
+            </div>
+          </PageLoadingProvider>
         </div>
       </PendingProvider>
     </LiveProvider>

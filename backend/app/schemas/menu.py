@@ -37,7 +37,7 @@ class MenuUpdate(BaseModel):
     order: int | None = Field(None, ge=1)
     process_id: int | None = None
     is_active: bool | None = None
-    status: bool | None = None
+    is_deleted: bool | None = None
 
 
 class MenuReorderItem(BaseModel):
@@ -55,7 +55,7 @@ class MenuOut(BaseModel):
     process_id: int | None = None
     process: ProcessOut | None = None
     is_active: bool
-    status: bool
+    is_deleted: bool
     created_at: datetime | None = None
     creator: CreatorOut | None = None
 

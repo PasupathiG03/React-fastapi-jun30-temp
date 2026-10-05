@@ -4,11 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_db, get_superuser
+from app.core.dependencies import get_db, require_screen
+from app.core.builtin_screens import DEVELOPER_ONLY_SCREENS, MENU_ACCESS_SCREEN
 from app.models.access import RoleMenuAccess
 from app.models.menu import Menu
 from app.models.role import Role
-from app.models.workflow import Workflow, WorkflowStage, workflow_stage_roles
+from app.models.workflow import Workflow, WorkflowStage
 
 router = APIRouter()
 
@@ -45,7 +46,7 @@ class AccessUpdate(BaseModel):
 def get_access_matrix(
     process_id: Optional[int] = None,
     db: Session = Depends(get_db),
-    _=Depends(get_superuser),
+    _=Depends(require_screen(MENU_ACCESS_SCREEN)),
 ):
     from sqlalchemy import case
     roles = (
@@ -58,7 +59,8 @@ def get_access_matrix(
         .all()
     )
 
-    query = db.query(Menu).filter(Menu.status == False)
+    # Developer-only screens are always open to Developers and can never be granted to another role.
+    query = db.query(Menu).filter(Menu.is_deleted == False, Menu.url.notin_(DEVELOPER_ONLY_SCREENS))
     if process_id is not None:
         query = query.filter(Menu.process_id == process_id)
     screens = query.order_by(Menu.order, Menu.id).all()
@@ -78,13 +80,16 @@ def get_access_matrix(
 def set_access(
     payload: AccessUpdate,
     db: Session = Depends(get_db),
-    _=Depends(get_superuser),
+    _=Depends(require_screen(MENU_ACCESS_SCREEN)),
 ):
     """Allow or revoke one role's access to one screen."""
     if not db.query(Role.id).filter(Role.id == payload.role_id).first():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
-    if not db.query(Menu.id).filter(Menu.id == payload.menu_id).first():
+    menu = db.query(Menu).filter(Menu.id == payload.menu_id).first()
+    if not menu:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Screen not found")
+    if payload.allowed and menu.url in DEVELOPER_ONLY_SCREENS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This screen is only available to Developers")
 
     existing = (
         db.query(RoleMenuAccess)
@@ -104,7 +109,7 @@ def set_access(
 def get_stage_access_matrix(
     workflow_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_superuser),
+    _=Depends(require_screen(MENU_ACCESS_SCREEN)),
 ):
     """Roles x stages matrix for one workflow. In the response, `screens` are the stages and
     `menu_id` in a grant is the stage id, so the Menu Access page can reuse the same table."""
@@ -113,18 +118,14 @@ def get_stage_access_matrix(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow not found")
     roles = db.query(Role).filter(Role.is_active == True).order_by(Role.name).all()
     stages = workflow.stages
-    stage_ids = [s.id for s in stages]
-    rows = (
-        db.query(workflow_stage_roles.c.stage_id, workflow_stage_roles.c.role_id)
-        .filter(workflow_stage_roles.c.stage_id.in_(stage_ids))
-        .all()
-        if stage_ids
-        else []
-    )
     return AccessMatrix(
         roles=[AccessRole(id=r.id, name=r.name) for r in roles],
         screens=[AccessScreen(id=s.id, name=s.name, url="") for s in stages],
-        grants=[AccessGrant(role_id=role_id, menu_id=stage_id) for stage_id, role_id in rows],
+        grants=[
+            AccessGrant(role_id=role_id, menu_id=stage.id)
+            for stage in stages
+            for role_id in (stage.role_ids or [])
+        ],
     )
 
 
@@ -132,7 +133,7 @@ def get_stage_access_matrix(
 def set_stage_access(
     payload: AccessUpdate,
     db: Session = Depends(get_db),
-    _=Depends(get_superuser),
+    _=Depends(require_screen(MENU_ACCESS_SCREEN)),
 ):
     """Allow or revoke one role's access to one workflow stage (`menu_id` is the stage id)."""
     role = db.query(Role).filter(Role.id == payload.role_id).first()
@@ -142,9 +143,9 @@ def set_stage_access(
     if not stage:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stage not found")
 
-    has = any(r.id == role.id for r in stage.roles)
+    has = role.id in (stage.role_ids or [])
     if payload.allowed and not has:
-        stage.roles.append(role)
+        stage.role_ids = [*(stage.role_ids or []), role.id]
     elif not payload.allowed and has:
-        stage.roles = [r for r in stage.roles if r.id != role.id]
+        stage.role_ids = [rid for rid in stage.role_ids if rid != role.id]
     db.commit()

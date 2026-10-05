@@ -68,19 +68,27 @@ async def get_current_user(
     return user
 
 
+DEVELOPER_ROLE_NAME = "developer"
+
+
+def is_developer_role(role) -> bool:
+    return role is not None and (role.name or "").strip().lower() == DEVELOPER_ROLE_NAME
+
+
+def has_full_access(user) -> bool:
+    """Superusers with the Developer role can open every screen and call every API."""
+    return bool(user.is_superuser and is_developer_role(user.role))
+
+
 def get_superuser(current_user=Depends(get_current_user)):
-    if not current_user.is_superuser:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superuser access required")
+    """Developer-only APIs (Router Setup, Dashboard, process and screen setup): superusers and Developers."""
+    if not has_full_access(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Developer access required")
     return current_user
 
 
-USER_SCREEN = "/access-control/user-management"
-ROLE_SCREEN = "/access-control/role-management"
-WORKFLOW_SCREEN = "/workflow-management"
-
-
 def require_screen(*urls: str):
-    """Allow superusers, and users whose role was granted at least one of these screens in Menu Access.
+    """Allow superusers and Developers, and users whose role was granted at least one of these screens in Menu Access.
     This ties the API to the same permission that shows the screen in the sidebar, so a screen a role can open
     also works, while everything else stays closed."""
 
@@ -88,7 +96,7 @@ def require_screen(*urls: str):
         from app.models.access import RoleMenuAccess
         from app.models.menu import Menu
 
-        if current_user.is_superuser:
+        if has_full_access(current_user):
             return current_user
         allowed = (
             current_user.role_id is not None
@@ -98,7 +106,7 @@ def require_screen(*urls: str):
                 RoleMenuAccess.role_id == current_user.role_id,
                 Menu.url.in_(urls),
                 Menu.is_active == True,
-                Menu.status == False,
+                Menu.is_deleted == False,
             )
             .first()
             is not None

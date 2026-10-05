@@ -3,24 +3,32 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import USER_SCREEN, get_db, require_screen
+from app.core.dependencies import get_db, has_full_access, is_developer_role, require_screen
+from app.core.builtin_screens import USER_SCREEN
+from app.models.role import Role
 from app.models.user import User
 from app.schemas.user import UserCreate, UserOut, UserUpdate
+from app.core.config import settings
 from app.core.security import hash_password
 
 router = APIRouter()
 
-DEFAULT_PASSWORD = "Admin@123#"
+DEFAULT_PASSWORD = settings.DEFAULT_PASSWORD
 
 
-def _protect_superusers(actor: User, target: User, new_is_superuser) -> None:
-    """A role that only has the User Management screen must not be able to gain or remove superuser power."""
-    if actor.is_superuser:
+def _protect_superusers(db: Session, actor: User, target: User | None, data: dict) -> None:
+    """A role that only has the User Management screen must not be able to gain or remove full access:
+    it cannot change a superuser or Developer account, make anyone a superuser, or give anyone the
+    Developer role (including itself)."""
+    if has_full_access(actor):
         return
-    if target.is_superuser:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only a superuser can change a superuser account")
-    if new_is_superuser:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only a superuser can grant superuser access")
+    if target is not None and has_full_access(target):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only a Developer can change a Developer or superuser account")
+    if data.get("is_superuser"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only a Developer can grant superuser access")
+    role_id = data.get("role_id")
+    if role_id is not None and is_developer_role(db.query(Role).filter(Role.id == role_id).first()):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only a Developer can give the Developer role")
 
 
 @router.get("/", response_model=List[UserOut])
@@ -39,8 +47,7 @@ def create_user(
     current_user=Depends(require_screen(USER_SCREEN)),
 ):
     """Create a new user (superusers, and roles that were given the User Management screen)."""
-    if payload.is_superuser and not current_user.is_superuser:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only a superuser can create a superuser")
+    _protect_superusers(db, current_user, None, payload.model_dump())
     existing_user = db.query(User).filter(User.employee_id == payload.employee_id).first()
     if existing_user:
         raise HTTPException(
@@ -69,7 +76,7 @@ def update_user(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    _protect_superusers(current_user, user, payload.model_dump(exclude_unset=True).get("is_superuser"))
+    _protect_superusers(db, current_user, user, payload.model_dump(exclude_unset=True))
 
     if payload.employee_id and payload.employee_id != user.employee_id:
         existing_user = db.query(User).filter(User.employee_id == payload.employee_id).first()
@@ -100,7 +107,7 @@ def delete_user(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    _protect_superusers(current_user, user, None)
+    _protect_superusers(db, current_user, user, {})
         
     user.is_active = False
     user.token_version = (user.token_version or 0) + 1

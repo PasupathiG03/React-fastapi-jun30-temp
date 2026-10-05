@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 import { Cog } from "flowbite-react-icons/outline";
 import { logout } from "@/lib/auth";
-import { API_BASE_URL } from "@/lib/constants";
 import { ICON_MAP } from "@/lib/icons";
 import { fetchMenus, type MenuItem } from "@/services/menu";
 import { fetchMyStages, type MyWorkflow } from "@/services/workflow";
@@ -25,9 +24,34 @@ import { usePending } from "@/context/PendingContext";
 import { useLive } from "@/context/LiveContext";
 import { buildStageRoutes } from "@/lib/slug";
 import { getStageIcon } from "@/lib/stageIcons";
+import { API_BASE_URL } from "@/lib/constants";
+import { useReportPageLoading } from "@/context/PageLoadingContext";
 
-// Screens a Developer always gets from the hard-coded entries below, so the database copies are skipped.
-const STATIC_ADMIN_URLS = ["/dashboard", "/developer-management/process-screen"];
+// Mirrors backend/app/core/builtin_screens.py's built-in access-control screens. A group made up only of
+// these (whatever it is, or isn't, grouped under in the database) is shown as the fixed "Access Control"
+// section, so this never depends on how that process happens to be named or whether it has been migrated.
+const ADMIN_SCREEN_URLS = new Set([
+  "/access-control/user-management",
+  "/access-control/role-management",
+  "/access-control/menu-access",
+  "/access-control/workflow-management",
+]);
+
+// A Developer's core navigation (also mirrors backend/app/core/builtin_screens.py) is hard-coded here, not
+// read from /api/menus like everything else. A Developer must never lose Router Setup or Access Control --
+// the very screens needed to fix the menus table -- just because that table is empty, misconfigured, or
+// a process got renamed/deactivated by mistake. Any screen or process a Developer adds beyond these still
+// comes from the database and shows alongside them (see visibleMenus below, which excludes these URLs so
+// the database's own copies, once ensure_default_menus recreates them, don't render twice).
+const DEV_DASHBOARD = { href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard };
+const DEV_ROUTER_SETUP = { href: "/developer-management/process-screen", label: "Router Setup", Icon: Layers };
+const DEV_ACCESS_CONTROL: FlyoutItem[] = [
+  { href: "/access-control/role-management", label: "Role Management", Icon: Shield },
+  { href: "/access-control/user-management", label: "User Management", Icon: Users },
+  { href: "/access-control/menu-access", label: "Menu Access", Icon: ShieldCheck },
+  { href: "/access-control/workflow-management", label: "Workflow Management", Icon: Network },
+];
+const BUILT_IN_URLS = new Set([DEV_DASHBOARD.href, DEV_ROUTER_SETUP.href, ...DEV_ACCESS_CONTROL.map((i) => i.href)]);
 
 export function getProcessIcon(name: string): React.ElementType {
   const n = name.trim().toLowerCase();
@@ -40,21 +64,9 @@ export function getProcessIcon(name: string): React.ElementType {
   return Layers;
 }
 
-// The built-in admin screens always use the same icons as the hard-coded Developer menu, so a user
-// who sees them from the database gets exactly the same look (the stored icon key can point at a
-// different icon set, which made the two differ).
-const BUILT_IN_SCREEN_ICONS: Record<string, React.ElementType> = {
-  "/access-control/user-management": Users,
-  "/access-control/role-management": Shield,
-  "/access-control/menu-access": ShieldCheck,
-  "/developer-management/process-screen": Layers,
-  "/workflow-management": Network,
-  "/dashboard": LayoutDashboard,
-};
-
 export function getScreenIcon(name: string, url: string, iconKey?: string | null): React.ElementType {
-  const builtIn = BUILT_IN_SCREEN_ICONS[url.trim().toLowerCase()];
-  if (builtIn) return builtIn;
+  // Screens carry their own icon key from the backend (backend/app/core/seed.py sets it for the built-in
+  // ones). A URL/name guess below only covers a screen with no icon key, or one ICON_MAP doesn't have.
   if (iconKey && ICON_MAP[iconKey]) return ICON_MAP[iconKey];
 
   const lowerName = name.trim().toLowerCase();
@@ -181,19 +193,11 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
   const [dynamicMenus, setDynamicMenus] = useState<MenuItem[]>([]);
   const [myWorkflows, setMyWorkflows] = useState<MyWorkflow[]>([]);
   const [fetching, setFetching] = useState(true);
+  const [isDeveloper, setIsDeveloper] = useState(false);
   const [roleReady, setRoleReady] = useState(false);
-  const [userRole, setUserRole] = useState<string | null>(null);
-
-  // Expand/collapse choices live only in memory: every group starts closed after a refresh.
-  // The group of the current page is still highlighted via its "active" state.
-  const accessActive = pathname.startsWith("/access-control");
-  const devMgmtActive = pathname.startsWith("/developer-management");
-  const [accessChoice, setAccessChoice] = useState<boolean | null>(null);
-  const [devChoice, setDevChoice] = useState<boolean | null>(null);
-  const accessControlOpen = accessChoice ?? false;
-  const devMgmtOpen = devChoice ?? false;
-  const toggleAccessControl = () => setAccessChoice(!accessControlOpen);
-  const toggleDevMgmt = () => setDevChoice(!devMgmtOpen);
+  // The top bar's chrome (breadcrumb, hamburger, theme toggle, bell) waits on this too, so it never
+  // looks "ready" while the sidebar underneath is still showing its own loading skeleton.
+  useReportPageLoading("sidebar", loading || fetching || !roleReady);
 
   const [skeletonRows, setSkeletonRows] = useState(() => {
     try {
@@ -204,20 +208,11 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
     }
   });
 
-  const visibleMenus =
-    userRole === "Developer"
-      ? dynamicMenus.filter(
-          (m) =>
-            !STATIC_ADMIN_URLS.includes(m.url) &&
-            !m.url.startsWith("/access-control") &&
-            m.url !== "/workflow-management"
-        )
-      : dynamicMenus;
-
-  // Developers always get the hard-coded Access Control (User, Role, Menu Access) and Workflow Management
-  // entries, whatever screens are registered in the database. Other roles only see what Menu Access grants.
-  const showFallbackAccess = userRole === "Developer";
-  const showFallbackWorkflow = userRole === "Developer";
+  // Every custom screen/process still comes from /api/menus. For a Developer, the built-in screens are
+  // hard-coded (see DEV_* above) instead, so the database's own copies of them -- once
+  // ensure_default_menus has (re)created them -- are excluded here to avoid showing each one twice.
+  const visibleMenus = isDeveloper ? dynamicMenus.filter((m) => !BUILT_IN_URLS.has(m.url)) : dynamicMenus;
+  const devHasDashboard = dynamicMenus.some((m) => m.url === DEV_DASHBOARD.href);
 
   // Main menus in the order set on each process (screens without a process come first).
   type MenuEntry =
@@ -245,13 +240,24 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
     const sameName = (g: { name: string; items: MenuItem[] }) =>
       g.items.length === 1 && g.items[0].name.trim().toLowerCase() === g.name.trim().toLowerCase();
     for (const g of groups) {
+      g.items.sort((a, b) => a.order - b.order || a.id - b.id);
       entries.push(sameName(g) ? { kind: "item", order: g.order, item: g.items[0] } : { kind: "group", order: g.order, group: g });
     }
     entries.sort((a, b) => a.order - b.order);
     const flatOrder = entries.flatMap((e) => (e.kind === "item" ? [e.item] : e.group.items));
+    // The built-in access-control screens (backend/app/core/builtin_screens.py) get their own
+    // "Administration" section below the main menu, matching how it always looked when it was
+    // hard-coded here. Detected by which screens the group holds, not by the process's name (whatever
+    // that process is called -- "Administration" before the screens are migrated into it, "Access
+    // Control" after -- still groups and labels the same way, and a role granted only some of these
+    // screens still gets the section).
+    const isAccessControl = (e: MenuEntry) =>
+      e.kind === "group" && e.group.items.length > 0 && e.group.items.every((i) => ADMIN_SCREEN_URLS.has(i.url));
     return {
-      entries,
+      entries: entries.filter((e) => !isAccessControl(e)),
+      administration: entries.filter(isAccessControl),
       flatOrder,
+      // Row counts (for the loading skeleton) still cover every entry, administration included.
       loose: entries.filter((e) => e.kind === "item"),
       groups: entries.filter((e) => e.kind === "group"),
     };
@@ -295,14 +301,11 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
     setProcessChoice((prev) => ({ ...prev, [-w.id]: !isWorkflowOpen(w) }));
   }
 
+  const [adminOpen, setAdminOpen] = useState<boolean | null>(null);
+  const [devOpen, setDevOpen] = useState<boolean | null>(null);
+
   useEffect(() => {
     if (fetching || !roleReady) return;
-    const isDev = userRole === "Developer";
-    const adminRows = isDev
-      ? collapsed
-        ? 1 + 1 + 1
-        : 1 + (devMgmtOpen ? 1 : 0) + 1 + (accessControlOpen ? 3 : 0) + 1
-      : 0;
     const menuRows = collapsed
       ? menuGroups.entries.length
       : menuGroups.loose.length +
@@ -310,19 +313,25 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
     const workflowRows = collapsed
       ? myWorkflows.length
       : myWorkflows.reduce((n, w) => n + 1 + (isWorkflowOpen(w) ? w.stages.length : 0), 0);
-    const rows = (isDev ? 1 : 0) + menuRows + workflowRows + adminRows;
+    // The hard-coded Developer rows (Router Setup, Dashboard, Access Control) a Developer always gets.
+    const devRows = isDeveloper
+      ? collapsed
+        ? 1 + 1 + 1
+        : 1 + (devOpen ? 1 : 0) + 1 + 1 + ((adminOpen ?? true) ? DEV_ACCESS_CONTROL.length : 0)
+      : 0;
+    const rows = menuRows + workflowRows + devRows;
     setSkeletonRows(rows);
     try {
       localStorage.setItem("sidebar:rowCount", String(rows));
     } catch {
       // ignore
     }
-  }, [fetching, roleReady, userRole, visibleMenus.length, menuGroups.groups.length, myWorkflows, processChoice, pathname, collapsed, accessControlOpen]);
+  }, [fetching, roleReady, isDeveloper, visibleMenus.length, menuGroups.groups.length, myWorkflows, processChoice, pathname, collapsed, devOpen, adminOpen]);
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/auth/me`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => data && setUserRole(data.role?.name))
+      .then((data) => setIsDeveloper(Boolean(data?.is_superuser && data?.role?.name?.trim().toLowerCase() === "developer")))
       .catch(() => { })
       .finally(() => setRoleReady(true));
 
@@ -429,7 +438,14 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
     >
       {/* ── Top Logo ── */}
       <div className="w-full px-2 py-2 flex items-center justify-center">
-        <PulseLogo collapsed={collapsed} />
+        {loading || fetching || !roleReady ? (
+          <div
+            className={`rounded-lg bg-slate-200 dark:bg-white/10 animate-pulse ${collapsed ? "h-[30px] w-12" : "h-11 w-[118px]"}`}
+            aria-hidden="true"
+          />
+        ) : (
+          <PulseLogo collapsed={collapsed} />
+        )}
       </div>
       {/* Underline: fades out at both ends in the template colours */}
       <div className="mx-3 mt-1 mb-3 h-px bg-gradient-to-r from-transparent via-[#0084ff]/40 to-transparent" />
@@ -437,27 +453,65 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
       {/* ── Nav Items Scroll Area ── */}
       <nav className="flex-1 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden space-y-1">
         {loading || fetching || !roleReady ? (
-          <div className="space-y-2 py-2 px-1">
-            {Array.from({ length: skeletonRows }, (_, i) => (
-              <div
-                key={i}
-                className={`flex items-center px-3 py-2 rounded-xl gap-3 animate-pulse bg-white/30 dark:bg-white/[0.03] ${collapsed ? "justify-center" : ""
-                  }`}
-              >
-                <div className="w-5 h-5 rounded-md bg-slate-200 dark:bg-white/10 shrink-0" />
-                {!collapsed && (
-                  <div
-                    className="h-3.5 bg-slate-200 dark:bg-white/10 rounded"
-                    style={{ width: `${50 + ((i * 35) % 40)}%` }}
-                  />
-                )}
+          <div className="space-y-2.5 py-1 px-1">
+            {/* Section 1: Developer */}
+            {!collapsed && (
+              <div className="px-3 pt-1 pb-0.5">
+                <div className="h-2 w-16 bg-slate-200/80 dark:bg-white/10 rounded animate-pulse" />
               </div>
-            ))}
+            )}
+            <div className={`flex items-center px-3 py-2 rounded-xl gap-3 animate-pulse bg-white/30 dark:bg-white/[0.03] ${collapsed ? "justify-center" : ""}`}>
+              <div className="w-5 h-5 rounded-md bg-slate-200 dark:bg-white/10 shrink-0" />
+              {!collapsed && <div className="h-3.5 w-36 bg-slate-200 dark:bg-white/10 rounded" />}
+            </div>
+
+            {/* Section 2: Main menu */}
+            {!collapsed && (
+              <div className="px-3 pt-1.5 pb-0.5">
+                <div className="h-2 w-16 bg-slate-200/80 dark:bg-white/10 rounded animate-pulse" />
+              </div>
+            )}
+            <div className={`flex items-center px-3 py-2 rounded-xl gap-3 animate-pulse bg-white/30 dark:bg-white/[0.03] ${collapsed ? "justify-center" : ""}`}>
+              <div className="w-5 h-5 rounded-md bg-slate-200 dark:bg-white/10 shrink-0" />
+              {!collapsed && <div className="h-3.5 w-24 bg-slate-200 dark:bg-white/10 rounded" />}
+            </div>
+
+            {/* Section 3: Administration */}
+            {!collapsed && (
+              <div className="px-3 pt-1.5 pb-0.5">
+                <div className="h-2 w-24 bg-slate-200/80 dark:bg-white/10 rounded animate-pulse" />
+              </div>
+            )}
+            <div className={`flex items-center px-3 py-2 rounded-xl gap-3 animate-pulse bg-white/30 dark:bg-white/[0.03] ${collapsed ? "justify-center" : ""}`}>
+              <div className="w-5 h-5 rounded-md bg-slate-200 dark:bg-white/10 shrink-0" />
+              {!collapsed && <div className="h-3.5 w-28 bg-slate-200 dark:bg-white/10 rounded" />}
+            </div>
+            {!collapsed && (
+              <div className="mt-0.5 ml-4 pl-2.5 border-l border-slate-200/70 dark:border-white/10 space-y-1">
+                {[64, 58, 52, 68].map((w, i) => (
+                  <div key={i} className="flex items-center gap-3 px-3 py-1.5 rounded-xl animate-pulse">
+                    <div className="w-4 h-4 rounded bg-slate-200/70 dark:bg-white/10 shrink-0" />
+                    <div className="h-3 bg-slate-200/70 dark:bg-white/10 rounded" style={{ width: `${w}%` }} />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Section 4: Workflows */}
+            {!collapsed && (
+              <div className="px-3 pt-1.5 pb-0.5">
+                <div className="h-2 w-20 bg-slate-200/80 dark:bg-white/10 rounded animate-pulse" />
+              </div>
+            )}
+            <div className={`flex items-center px-3 py-2 rounded-xl gap-3 animate-pulse bg-white/30 dark:bg-white/[0.03] ${collapsed ? "justify-center" : ""}`}>
+              <div className="w-5 h-5 rounded-md bg-slate-200 dark:bg-white/10 shrink-0" />
+              {!collapsed && <div className="h-3.5 w-20 bg-slate-200 dark:bg-white/10 rounded" />}
+            </div>
           </div>
         ) : (
           <>
-            {/* Developer Management: always first for Developers */}
-            {userRole === "Developer" && (
+            {/* Developer: Router Setup, hard-coded so a Developer always has it (see DEV_* above) */}
+            {isDeveloper && (
               <>
                 {!collapsed && (
                   <p className="px-3 pt-1 pb-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
@@ -468,31 +522,31 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
                   <FlyoutGroup
                     label="Developer Management"
                     Icon={Sparkles}
-                    active={devMgmtActive}
-                    items={[{ href: "/developer-management/process-screen", label: "Router Setup", Icon: Layers }]}
+                    active={pathname.startsWith("/developer-management")}
+                    items={[DEV_ROUTER_SETUP]}
                   />
                 ) : (
                   renderGroup(
                     "Developer Management",
                     Sparkles,
-                    devMgmtOpen,
-                    devMgmtActive,
-                    toggleDevMgmt,
-                    renderItem("/developer-management/process-screen", "Router Setup", Layers, true)
+                    devOpen ?? false,
+                    pathname.startsWith("/developer-management"),
+                    () => setDevOpen(!(devOpen ?? false)),
+                    renderItem(DEV_ROUTER_SETUP.href, DEV_ROUTER_SETUP.label, DEV_ROUTER_SETUP.Icon, true)
                   )
                 )}
               </>
             )}
 
             {/* Main menu section */}
-            {!collapsed && (userRole === "Developer" || menuGroups.entries.length > 0) && (
+            {!collapsed && (isDeveloper || menuGroups.entries.length > 0) && (
               <p className="px-3 pt-1 pb-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                 Main menu
               </p>
             )}
 
-            {userRole === "Developer" &&
-              renderItem("/dashboard", "Dashboard", LayoutDashboard)}
+            {/* Dashboard: hard-coded for a Developer, shown only while present in the menus table */}
+            {isDeveloper && devHasDashboard && renderItem(DEV_DASHBOARD.href, DEV_DASHBOARD.label, DEV_DASHBOARD.Icon)}
 
             {/* Dynamic menus */}
             {collapsed ? (
@@ -533,43 +587,67 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
               </>
             )}
 
-            {/* Administration section */}
-            {(showFallbackAccess || showFallbackWorkflow) && (
+            {/* Administration: for a Developer this is the hard-coded Access Control group (DEV_*
+                above); for any other role it is whatever Menu Access granted (menuGroups.administration,
+                detected by which screens a group holds -- see the ADMIN_SCREEN_URLS comment above). */}
+            {(isDeveloper || menuGroups.administration.length > 0) && (
               <>
                 {!collapsed && (
                   <p className="px-3 pt-3 pb-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                     Administration
                   </p>
                 )}
-
-                {showFallbackAccess &&
-                  (collapsed ? (
+                {isDeveloper ? (
+                  collapsed ? (
                     <FlyoutGroup
                       label="Access Control"
                       Icon={Lock}
-                      active={accessActive}
-                      items={[
-                        { href: "/access-control/user-management", label: "User Management", Icon: Users },
-                        { href: "/access-control/role-management", label: "Role Management", Icon: Shield },
-                        { href: "/access-control/menu-access", label: "Menu Access", Icon: ShieldCheck },
-                      ]}
+                      active={DEV_ACCESS_CONTROL.some((i) => pathname === i.href || pathname.startsWith(i.href + "/"))}
+                      items={DEV_ACCESS_CONTROL}
                     />
                   ) : (
                     renderGroup(
                       "Access Control",
                       Lock,
-                      accessControlOpen,
-                      accessActive,
-                      toggleAccessControl,
-                      <>
-                        {renderItem("/access-control/user-management", "User Management", Users, true)}
-                        {renderItem("/access-control/role-management", "Role Management", Shield, true)}
-                        {renderItem("/access-control/menu-access", "Menu Access", ShieldCheck, true)}
-                      </>
+                      adminOpen ?? true,
+                      DEV_ACCESS_CONTROL.some((i) => pathname === i.href || pathname.startsWith(i.href + "/")),
+                      () => setAdminOpen(!(adminOpen ?? true)),
+                      DEV_ACCESS_CONTROL.map((i) => renderItem(i.href, i.label, i.Icon, true))
                     )
-                  ))}
-
-                {showFallbackWorkflow && renderItem("/workflow-management", "Workflow Management", Network)}
+                  )
+                ) : (
+                menuGroups.administration.map((e) => {
+                  if (e.kind !== "group") return null;
+                  // Labelled "Access Control" regardless of what the underlying process is actually
+                  // named in the database -- see the ADMIN_SCREEN_URLS comment above.
+                  const label = "Access Control";
+                  return collapsed ? (
+                    <FlyoutGroup
+                      key={e.group.key}
+                      label={label}
+                      Icon={Lock}
+                      active={isGroupActive(e.group.items)}
+                      items={e.group.items.map((i) => ({
+                        href: i.url,
+                        label: i.name,
+                        Icon: getScreenIcon(i.name, i.url, i.icon),
+                      }))}
+                    />
+                  ) : (
+                    renderGroup(
+                      label,
+                      Lock,
+                      isProcessOpen(e.group),
+                      isGroupActive(e.group.items),
+                      () => toggleProcess(e.group),
+                      e.group.items.map((item) =>
+                        renderItem(item.url, item.name, getScreenIcon(item.name, item.url, item.icon), true)
+                      ),
+                      e.group.key
+                    )
+                  );
+                })
+                )}
               </>
             )}
 
@@ -615,16 +693,26 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
 
       {/* ── Logout Button at Bottom ── */}
       <div className="pt-2 border-t border-slate-200/80 dark:border-white/[0.08]">
-        <button
-          type="button"
-          onClick={handleLogout}
-          title={collapsed ? "Logout" : undefined}
-          className={`flex items-center px-3 py-2.5 rounded-xl w-full text-[13.5px] font-medium transition-all duration-200 border border-slate-200/90 dark:border-slate-800 bg-white/30 dark:bg-[#0e172e]/60 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-200 dark:hover:border-rose-900/50 hover:bg-rose-50/50 dark:hover:bg-rose-500/10 ${collapsed ? "justify-center gap-0" : "gap-3"
-            }`}
-        >
-          <LogOut className="shrink-0 w-4 h-4" />
-          {!collapsed && <span>Logout</span>}
-        </button>
+        {loading || fetching || !roleReady ? (
+          <div
+            className={`flex items-center px-3 py-2.5 rounded-xl w-full border border-slate-200/60 dark:border-white/5 bg-white/20 dark:bg-white/[0.02] animate-pulse ${collapsed ? "justify-center gap-0" : "gap-3"
+              }`}
+          >
+            <div className="w-4 h-4 rounded bg-slate-200/80 dark:bg-white/10 shrink-0" />
+            {!collapsed && <div className="h-3.5 w-16 bg-slate-200/80 dark:bg-white/10 rounded" />}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={handleLogout}
+            title={collapsed ? "Logout" : undefined}
+            className={`flex items-center px-3 py-2.5 rounded-xl w-full text-[13.5px] font-medium transition-all duration-200 border border-slate-200/90 dark:border-slate-800 bg-white/30 dark:bg-[#0e172e]/60 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-200 dark:hover:border-rose-900/50 hover:bg-rose-50/50 dark:hover:bg-rose-500/10 ${collapsed ? "justify-center gap-0" : "gap-3"
+              }`}
+          >
+            <LogOut className="shrink-0 w-4 h-4" />
+            {!collapsed && <span>Logout</span>}
+          </button>
+        )}
       </div>
     </aside>
   );

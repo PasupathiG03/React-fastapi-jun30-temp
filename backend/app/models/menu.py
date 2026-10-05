@@ -14,8 +14,10 @@ class Menu(AuditMixin, Base):
     url = Column(String(255), nullable=False, unique=True)
     order = Column(Integer, default=1, nullable=False)
     process_id = Column(Integer, ForeignKey("processes.id", ondelete="SET NULL"), nullable=True)
+    # Two different things: is_active is a user-facing on/off toggle (Router Setup's "Active" switch);
+    # is_deleted is an internal soft-delete marker, never shown or edited directly in the UI.
     is_active = Column(Boolean, default=True, nullable=False)
-    status = Column(Boolean, default=False, nullable=False)
+    is_deleted = Column(Boolean, default=False, nullable=False)
 
     process = relationship("Process", backref="screens")
 

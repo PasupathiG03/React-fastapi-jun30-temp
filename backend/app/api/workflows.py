@@ -1,12 +1,14 @@
+from datetime import datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.dependencies import WORKFLOW_SCREEN, get_current_user, get_db, require_screen
+from app.core.dependencies import get_current_user, get_db, has_full_access, require_screen
+from app.core.builtin_screens import MENU_ACCESS_SCREEN, WORKFLOW_SCREEN
 from app.models.role import Role
-from app.models.workflow import StageType, Workflow, WorkflowItem, WorkflowItemHistory, WorkflowStage
+from app.models.workflow import StageType, Workflow, WorkflowItem, WorkflowStage
 from app.schemas.workflow import (
     CopyAccess,
     ItemCreate,
@@ -36,26 +38,27 @@ def _get_workflow_or_404(db: Session, workflow_id: int) -> Workflow:
 
 
 def _is_developer(user) -> bool:
-    return bool(user.is_superuser or (user.role is not None and user.role.name == "Developer"))
+    return has_full_access(user)
 
 
-def _roles_from_ids(db: Session, role_ids: list[int]) -> list[Role]:
+def _validated_role_ids(db: Session, role_ids: list[int]) -> list[int]:
+    """The given ids, de-duplicated and sorted, after checking every one of them is a real role."""
     ids = sorted(set(role_ids))
     if not ids:
         return []
-    roles = db.query(Role).filter(Role.id.in_(ids)).all()
-    if len(roles) != len(ids):
+    found = db.query(Role.id).filter(Role.id.in_(ids)).count()
+    if found != len(ids):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more roles do not exist")
-    return roles
+    return ids
 
 
-def _with_admin(db: Session, roles: list[Role]) -> list[Role]:
+def _with_admin(db: Session, role_ids: list[int]) -> list[int]:
     """Every stage is created with the Admin role on it, whatever the caller picked. It can still be
     removed afterwards from Menu Access or by editing the stage."""
-    admin = db.query(Role).filter(func.lower(Role.name) == "admin", Role.is_active == True).first()
-    if admin is None or any(r.id == admin.id for r in roles):
-        return roles
-    return [*roles, admin]
+    admin = db.query(Role.id).filter(func.lower(Role.name) == "admin", Role.is_active == True).first()
+    if admin is None or admin.id in role_ids:
+        return role_ids
+    return [*role_ids, admin.id]
 
 
 def _user_can_open(user, stage: WorkflowStage) -> bool:
@@ -89,7 +92,8 @@ def my_stages(
 @router.get("/", response_model=List[WorkflowDetailOut])
 def list_workflows(
     db: Session = Depends(get_db),
-    _=Depends(require_screen(WORKFLOW_SCREEN)),
+    # Menu Access also lists workflows in its dropdown.
+    _=Depends(require_screen(WORKFLOW_SCREEN, MENU_ACCESS_SCREEN)),
 ):
     """List every workflow with its stages nested, so the UI can
     render each workflow's stages inline without a follow-up request."""
@@ -239,7 +243,7 @@ def copy_access(
             continue
         n = seen.get(stage.stage_type, 0)
         seen[stage.stage_type] = n + 1
-        stage.roles = _with_admin(db, list(candidates[min(n, len(candidates) - 1)].roles))
+        stage.role_ids = _with_admin(db, list(candidates[min(n, len(candidates) - 1)].role_ids))
 
     db.commit()
     db.refresh(target)
@@ -261,8 +265,8 @@ def create_stage(
 ):
     _get_workflow_or_404(db, workflow_id)
     data = payload.model_dump(exclude={"role_ids"})
-    stage = WorkflowStage(workflow_id=workflow_id, **data)
-    stage.roles = _with_admin(db, _roles_from_ids(db, payload.role_ids))
+    role_ids = _with_admin(db, _validated_role_ids(db, payload.role_ids))
+    stage = WorkflowStage(workflow_id=workflow_id, role_ids=role_ids, **data)
     db.add(stage)
     db.commit()
     db.refresh(stage)
@@ -289,7 +293,7 @@ def update_stage(
     for key, value in update_data.items():
         setattr(stage, key, value)
     if role_ids is not None:
-        stage.roles = _roles_from_ids(db, role_ids)
+        stage.role_ids = _validated_role_ids(db, role_ids)
 
     db.commit()
     db.refresh(stage)
@@ -322,7 +326,9 @@ def get_stage(
         is_last=stage.id == workflow.stages[-1].id,
         workflow_id=workflow.id,
         workflow_name=workflow.name,
-        role_names=sorted(r.name for r in stage.roles),
+        role_names=sorted(
+            row.name for row in db.query(Role.name).filter(Role.id.in_(stage.role_ids)).all()
+        ) if stage.role_ids else [],
     )
 
 
@@ -372,16 +378,22 @@ def _get_item_at_users_stage(db: Session, user, item_id: int) -> WorkflowItem:
     return item
 
 
-def _log(db: Session, item: WorkflowItem, action: str, from_stage, to_stage, comment: str | None):
-    db.add(
-        WorkflowItemHistory(
-            item_id=item.id,
-            action=action,
-            from_stage_id=from_stage.id if from_stage else None,
-            to_stage_id=to_stage.id if to_stage else None,
-            comment=(comment or "").strip() or None,
-        )
-    )
+def _log(item: WorkflowItem, actor, action: str, from_stage, to_stage, comment: str | None) -> None:
+    """Append one movement to the item's history (reassigning the column, not mutating the list in
+    place, so SQLAlchemy always sees the change)."""
+    item.history = [
+        *item.history,
+        {
+            "action": action,
+            "from_stage_id": from_stage.id if from_stage else None,
+            "from_stage_name": from_stage.name if from_stage else None,
+            "to_stage_id": to_stage.id if to_stage else None,
+            "to_stage_name": to_stage.name if to_stage else None,
+            "comment": (comment or "").strip() or None,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "actor": {"employee_id": actor.employee_id, "employee_name": actor.employee_name},
+        },
+    ]
 
 
 @router.get("/{workflow_id}/stages/{stage_id}/items", response_model=List[ItemOut])
@@ -423,10 +435,11 @@ def create_item(
         current_stage_id=first.id,
         title=payload.title,
         description=(payload.description or "").strip() or None,
+        history=[],
     )
     db.add(item)
     db.flush()
-    _log(db, item, "created", None, first, None)
+    _log(item, current_user, "created", None, first, None)
     db.commit()
     db.refresh(item)
     return item
@@ -447,11 +460,11 @@ def advance_item(
     if idx + 1 < len(stages):
         nxt = stages[idx + 1]
         item.current_stage_id = nxt.id
-        _log(db, item, "advanced", current, nxt, payload.comment)
+        _log(item, current_user, "advanced", current, nxt, payload.comment)
     else:
         item.current_stage_id = None
         item.is_completed = True
-        _log(db, item, "completed", current, None, payload.comment)
+        _log(item, current_user, "completed", current, None, payload.comment)
     db.commit()
     db.refresh(item)
     return item
@@ -474,7 +487,7 @@ def reject_item(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The first stage has nowhere to send back to")
     current, prev = stages[idx], stages[idx - 1]
     item.current_stage_id = prev.id
-    _log(db, item, "rejected", current, prev, payload.comment)
+    _log(item, current_user, "rejected", current, prev, payload.comment)
     db.commit()
     db.refresh(item)
     return item
@@ -491,18 +504,22 @@ def item_history(
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
     # Allowed when the user can open the stage the item is at now, or one it has passed through.
-    touched = {h.from_stage_id for h in item.history} | {h.to_stage_id for h in item.history} | {item.current_stage_id}
+    touched = (
+        {h.get("from_stage_id") for h in item.history}
+        | {h.get("to_stage_id") for h in item.history}
+        | {item.current_stage_id}
+    )
     if not any(_user_can_open(current_user, s) for s in item.workflow.stages if s.id in touched):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this item")
     return [
         ItemHistoryOut(
-            id=h.id,
-            action=h.action,
-            from_stage_name=h.from_stage.name if h.from_stage else None,
-            to_stage_name=h.to_stage.name if h.to_stage else None,
-            comment=h.comment,
-            created_at=h.created_at,
-            actor=h.creator,
+            id=idx,
+            action=h["action"],
+            from_stage_name=h.get("from_stage_name"),
+            to_stage_name=h.get("to_stage_name"),
+            comment=h.get("comment"),
+            created_at=h.get("created_at"),
+            actor=h.get("actor"),
         )
-        for h in item.history
+        for idx, h in enumerate(item.history, start=1)
     ]

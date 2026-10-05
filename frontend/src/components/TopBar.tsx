@@ -17,6 +17,7 @@ import { isAuthenticated, logout } from "@/lib/auth";
 import { changePasswordApi } from "@/services/auth";
 import { useTheme } from "@/context/ThemeContext";
 import { usePending } from "@/context/PendingContext";
+import { usePageLoading } from "@/context/PageLoadingContext";
 
 interface Props {
   collapsed: boolean;
@@ -50,6 +51,7 @@ export default function TopBar({ onToggle, loading = false }: Props) {
   const { stages: pendingStages, total: pendingTotal, pathFor, resolve } = usePending();
   const waiting = pendingStages.filter((s) => s.count > 0);
   const navigate = useNavigate();
+  const { pageLoading } = usePageLoading();
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -130,6 +132,7 @@ export default function TopBar({ onToggle, loading = false }: Props) {
       if (pathname.includes("user-management")) crumbs.push({ label: "User Management", isLast: true });
       else if (pathname.includes("role-management")) crumbs.push({ label: "Role Management", isLast: true });
       else if (pathname.includes("menu-access")) crumbs.push({ label: "Menu Access", isLast: true });
+      else if (pathname.includes("workflow-management")) crumbs.push({ label: "Workflow Management", isLast: true });
       else crumbs[0].isLast = true;
       return crumbs;
     }
@@ -138,9 +141,6 @@ export default function TopBar({ onToggle, loading = false }: Props) {
         { label: "Developer Management", isLast: false },
         { label: "Router Setup", isLast: true },
       ];
-    }
-    if (pathname === "/workflow-management") {
-      return [{ label: "Workflow Management", isLast: true }];
     }
     // /workflows/<workflow>/<stage>: show the real names instead of the address segments
     const stageRoute = pathname.match(/^\/workflows\/([^/]+)\/([^/]+)\/?$/);
@@ -167,52 +167,73 @@ export default function TopBar({ onToggle, loading = false }: Props) {
     <header className="relative z-40 h-14 w-full shrink-0 flex items-center justify-between px-4 rounded-2xl glass-panel transition-colors duration-200">
       {/* Left: Hamburger menu + Breadcrumbs */}
       <div className="flex items-center gap-3 min-w-0">
-        <button
-          type="button"
-          onClick={onToggle}
-          title="Toggle Sidebar"
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-white/10"
-        >
-          <Menu className="w-4 h-4" />
-        </button>
+        {loading || pageLoading ? (
+          <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-white/10 animate-pulse shrink-0" aria-hidden="true" />
+        ) : (
+          <button
+            type="button"
+            onClick={onToggle}
+            title="Toggle Sidebar"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-white/10"
+          >
+            <Menu className="w-4 h-4" />
+          </button>
+        )}
 
         {/* Breadcrumbs */}
         <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs truncate">
-          {breadcrumbs.map((crumb, idx) => (
-            <div key={idx} className="flex items-center gap-1.5">
-              {idx > 0 && (
-                <ChevronRight className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
-              )}
-              <span
-                className={`truncate ${crumb.isLast
-                  ? "font-semibold text-slate-900 dark:text-white"
-                  : "font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 cursor-default"
-                  }`}
-              >
-                {crumb.label}
-              </span>
+          {pageLoading ? (
+            // The page itself asked for this (useReportPageLoading): its breadcrumb depends on data
+            // that hasn't loaded yet, so a skeleton stands in rather than a blank or wrong label.
+            <div className="flex items-center gap-1.5" aria-hidden="true">
+              <div className="h-3 w-20 bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
+              <ChevronRight className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 shrink-0" />
+              <div className="h-3 w-24 bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
             </div>
-          ))}
+          ) : (
+            breadcrumbs.map((crumb, idx) => (
+              <div key={idx} className="flex items-center gap-1.5">
+                {idx > 0 && (
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
+                )}
+                <span
+                  className={`truncate ${crumb.isLast
+                    ? "font-semibold text-slate-900 dark:text-white"
+                    : "font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 cursor-default"
+                    }`}
+                >
+                  {crumb.label}
+                </span>
+              </div>
+            ))
+          )}
         </nav>
       </div>
 
       {/* Right: Theme Toggle, Notifications, User Profile */}
       <div className="flex items-center gap-2">
         {/* Theme Toggle Button */}
-        <button
-          type="button"
-          onClick={toggleTheme}
-          title={`Switch to ${theme === "dark" ? "Light" : "Dark"} Mode`}
-          className="w-8 h-8 rounded-full flex items-center justify-center text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 border border-slate-200/70 dark:border-white/10 transition-colors shadow-sm"
-        >
-          {theme === "dark" ? (
-            <Sun className="w-4 h-4 text-amber-400 hover:rotate-45 transition-transform" />
-          ) : (
-            <Moon className="w-4 h-4 text-slate-600" />
-          )}
-        </button>
+        {loading || pageLoading ? (
+          <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-white/10 animate-pulse shrink-0" aria-hidden="true" />
+        ) : (
+          <button
+            type="button"
+            onClick={toggleTheme}
+            title={`Switch to ${theme === "dark" ? "Light" : "Dark"} Mode`}
+            className="w-8 h-8 rounded-full flex items-center justify-center text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 border border-slate-200/70 dark:border-white/10 transition-colors shadow-sm"
+          >
+            {theme === "dark" ? (
+              <Sun className="w-4 h-4 text-amber-400 hover:rotate-45 transition-transform" />
+            ) : (
+              <Moon className="w-4 h-4 text-slate-600" />
+            )}
+          </button>
+        )}
 
         {/* Notification Bell: open items waiting in the stages this user can open */}
+        {loading || pageLoading ? (
+          <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-white/10 animate-pulse shrink-0" aria-hidden="true" />
+        ) : (
         <div className="relative" ref={bellRef}>
           <button
             type="button"
@@ -265,6 +286,7 @@ export default function TopBar({ onToggle, loading = false }: Props) {
             </div>
           )}
         </div>
+        )}
 
         {/* Profile */}
         {loading || profileLoading ? (

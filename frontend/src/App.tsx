@@ -43,6 +43,7 @@ export default function App() {
             <Route path="/access-control/user-management" element={<UserManagement />} />
             <Route path="/access-control/role-management" element={<RoleManagement />} />
             <Route path="/access-control/menu-access" element={<MenuAccess />} />
+            <Route path="/access-control/workflow-management" element={<WorkflowManagement />} />
 
             {/* Developer Management */}
             <Route path="/developer-management" element={<Navigate to="/developer-management/process-screen" replace />} />
@@ -52,13 +53,13 @@ export default function App() {
             <Route path="/workflows/:workflowSlug/:stageSlug" element={<StageWorkspace />} />
             {/* Old id-based links redirect to the readable address */}
             <Route path="/workflows/:workflowId/stages/:stageId" element={<LegacyStageRedirect />} />
-            <Route path="/workflow-management" element={<WorkflowManagement />} />
           </Route>
 
           {/* Old flat URLs still work */}
           <Route path="/menu-management" element={<Navigate to="/developer-management/process-screen" replace />} />
           <Route path="/user-management" element={<Navigate to="/access-control/user-management" replace />} />
           <Route path="/role-management" element={<Navigate to="/access-control/role-management" replace />} />
+          <Route path="/workflow-management" element={<Navigate to="/access-control/workflow-management" replace />} />
           <Route path="/menu-access" element={<Navigate to="/access-control/menu-access" replace />} />
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

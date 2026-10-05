@@ -4,17 +4,31 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_db, get_superuser, get_current_user
+from app.core.dependencies import get_db, get_superuser, get_current_user, require_screen
+from app.core.builtin_screens import MENU_ACCESS_SCREEN
 from app.models.process import Process
-from app.schemas.process import ProcessCreate, ProcessOut, ProcessUpdate
+from app.schemas.process import ProcessCreate, ProcessOut, ProcessReorderItem, ProcessUpdate
 
 router = APIRouter()
+
+
+def _renumber_active_processes(db: Session) -> None:
+    """Keep order gap-free (1, 2, 3, ...) among active processes, in their current relative order.
+    Called whenever a process leaves the active list, so deleting #2 of 3 makes the old #3 become #2
+    instead of leaving a hole. This session has autoflush off, so the caller's own pending change (e.g.
+    is_active = False) needs an explicit flush before the query below can see it."""
+    db.flush()
+    active = db.query(Process).filter(Process.is_active == True).order_by(Process.order, Process.name).all()
+    for i, p in enumerate(active, start=1):
+        if p.order != i:
+            p.order = i
 
 
 @router.get("/", response_model=List[ProcessOut])
 def list_processes(
     db: Session = Depends(get_db),
-    _=Depends(get_superuser),
+    # Router Setup (superusers) and the Menu Access process dropdown use this list.
+    _=Depends(require_screen(MENU_ACCESS_SCREEN)),
 ):
     """List all active processes."""
     return db.query(Process).filter(Process.is_active == True).order_by(Process.order, Process.name).all()
@@ -44,6 +58,20 @@ def create_process(
     return process
 
 
+@router.put("/reorder", status_code=status.HTTP_200_OK)
+def reorder_processes(
+    payload: List[ProcessReorderItem],
+    db: Session = Depends(get_db),
+    _=Depends(get_superuser),
+):
+    """Bulk update the order of processes (drag-and-drop in Router Setup)."""
+    for item in payload:
+        db.query(Process).filter(Process.id == item.id).update({"order": item.order})
+    db.info.setdefault("live_kinds", set()).add("access")
+    db.commit()
+    return {"message": "Reordered successfully"}
+
+
 @router.put("/{process_id}", response_model=ProcessOut)
 def update_process(
     process_id: int,
@@ -67,8 +95,11 @@ def update_process(
                 detail="A process with this name already exists",
             )
 
+    was_active = process.is_active
     for key, value in update_data.items():
         setattr(process, key, value)
+    if was_active and process.is_active is False:
+        _renumber_active_processes(db)
 
     db.commit()
     db.refresh(process)
@@ -87,4 +118,5 @@ def delete_process(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Process not found")
 
     process.is_active = False
+    _renumber_active_processes(db)
     db.commit()

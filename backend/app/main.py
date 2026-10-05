@@ -4,19 +4,10 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.core.database import SessionLocal
 from app.core.events import broadcaster
 from app.core.logger import logger
-from app.models.menu import Menu
-from app.models.process import Process
-from app.api import access, auth, events, menu, users, roles, processes, workflows
-
-DEFAULT_PROCESS = {"name": "Administration", "description": "Core system administration screens"}
-
-DEFAULT_MENUS = [
-    {"name": "User Management", "icon": "Users", "url": "/access-control/user-management", "order": 1},
-    {"name": "Role Management", "icon": "Shield", "url": "/access-control/role-management", "order": 2},
-]
+from app.core.builtin_screens import ensure_default_menus
+from app.api.router import api_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -65,47 +56,19 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization"],
 )
 
-app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
-app.include_router(menu.router, prefix="/api/menus", tags=["Menus"])
-app.include_router(users.router, prefix="/api/users", tags=["Users"])
-app.include_router(roles.router, prefix="/api/roles", tags=["Roles"])
-app.include_router(processes.router, prefix="/api/processes", tags=["Processes"])
-app.include_router(events.router, prefix="/api/events", tags=["Live updates"])
-app.include_router(access.router, prefix="/api/access", tags=["Access"])
-app.include_router(workflows.router, prefix="/api/workflows", tags=["Workflows"])
+app.include_router(api_router)
 
 
 @app.on_event("startup")
 async def on_startup():
     logger.info("Starting %s", settings.PROJECT_NAME)
-    seed_default_menus()
+    ensure_default_menus()
     broadcaster.start(asyncio.get_running_loop())
 
 
 @app.on_event("shutdown")
 async def on_shutdown():
     broadcaster.stop()
-
-
-def seed_default_menus():
-    """Populate the standard sidebar menus (and their default process) on a
-    fresh install so they show up immediately, without an admin having to
-    add/import them by hand."""
-    db = SessionLocal()
-    try:
-        if db.query(Menu).first() is not None:
-            return
-        process = db.query(Process).filter(Process.name == DEFAULT_PROCESS["name"]).first()
-        if process is None:
-            process = Process(**DEFAULT_PROCESS, is_active=True)
-            db.add(process)
-            db.flush()
-        for item in DEFAULT_MENUS:
-            db.add(Menu(**item, process_id=process.id, is_active=True, status=False))
-        db.commit()
-        logger.info("Seeded %d default menu(s)", len(DEFAULT_MENUS))
-    finally:
-        db.close()
 
 
 @app.get("/health", tags=["Health"])

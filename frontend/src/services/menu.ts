@@ -10,7 +10,6 @@ export interface MenuItem {
   process_id: number | null;
   process?: ProcessItem | null;
   is_active: boolean;
-  status: boolean;
   created_at?: string;
   creator?: { employee_id: string; employee_name?: string | null };
 }
@@ -92,7 +91,10 @@ export async function deleteMenu(id: number): Promise<void> {
     method: "DELETE",
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error("Failed to delete menu");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(extractDetail(err));
+  }
 }
 
 export interface MenuReorderPayload {

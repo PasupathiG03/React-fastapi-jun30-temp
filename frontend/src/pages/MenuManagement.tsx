@@ -1,16 +1,19 @@
 
 import { useEffect, useState } from "react";
-import { Plus, Trash2, X, Edit2, Cog, Layers } from "lucide-react";
+import { Plus, Trash2, X, Edit2, Cog, GripVertical, Layers } from "lucide-react";
 import { createPortal } from "react-dom";
 import { TablePagination, TableToolbar } from "@/components/DataTableControls";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { getProcessIcon, getScreenIcon } from "@/components/Sidebar";
 import { useTableData } from "@/hooks/useTableData";
 import { exportToCsv } from "@/lib/exportData";
+import { useReportPageLoading } from "@/context/PageLoadingContext";
+import { useLive } from "@/context/LiveContext";
 import {
   createProcess,
   deleteProcess,
   fetchProcesses,
+  reorderProcesses,
   updateProcess,
   type ProcessItem,
   type ProcessCreatePayload,
@@ -20,9 +23,27 @@ import {
   deleteMenu,
   fetchAllMenus,
   updateMenu,
+  updateMenuOrders,
   type MenuItem,
   type MenuCreatePayload,
 } from "@/services/menu";
+
+/** Moves the dragged item next to the drop target and renumbers everyone 1..N in the new order.
+ * Returns null if nothing actually moved (dropped on itself). */
+function reorderById<T extends { id: number; order: number }>(
+  items: T[],
+  draggedId: number,
+  dropOnId: number
+): T[] | null {
+  if (draggedId === dropOnId) return null;
+  const from = items.findIndex((i) => i.id === draggedId);
+  const to = items.findIndex((i) => i.id === dropOnId);
+  if (from === -1 || to === -1) return null;
+  const next = [...items];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next.map((item, idx) => ({ ...item, order: idx + 1 }));
+}
 
 function toSlug(name: string): string {
   return name
@@ -65,7 +86,6 @@ interface ProcessModalProps {
 
 function ProcessModal({ nextOrder, editing, onClose, onSaved }: ProcessModalProps) {
   const [name, setName] = useState(editing?.name ?? "");
-  const [description, setDescription] = useState(editing?.description ?? "");
   const [order, setOrder] = useState(editing?.order ?? nextOrder);
   const [isActive, setIsActive] = useState(editing?.is_active ?? true);
   const [submitting, setSubmitting] = useState(false);
@@ -80,7 +100,6 @@ function ProcessModal({ nextOrder, editing, onClose, onSaved }: ProcessModalProp
     try {
       const payload: ProcessCreatePayload = {
         name: name.trim(),
-        description: description.trim() || null,
         order: Math.max(1, Number(order) || 1),
         is_active: isActive,
       };
@@ -121,17 +140,6 @@ function ProcessModal({ nextOrder, editing, onClose, onSaved }: ProcessModalProp
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 text-xs text-slate-800 dark:text-slate-200 glass-field placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/30 transition-colors"
                 />
               </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Description</label>
-              <input
-                type="text"
-                value={description ?? ""}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Optional description"
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 text-xs text-slate-800 dark:text-slate-200 glass-field placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/30 transition-colors"
-              />
             </div>
 
             <div className="space-y-1.5">
@@ -334,6 +342,7 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
   const [screens, setScreens] = useState<MenuItem[]>([]);
   const [loadingProcesses, setLoadingProcesses] = useState(true);
   const [loadingScreens, setLoadingScreens] = useState(false);
+  useReportPageLoading("router-setup", loadingProcesses);
 
   const [processModalOpen, setProcessModalOpen] = useState(false);
   const [editingProcess, setEditingProcess] = useState<ProcessItem | null>(null);
@@ -346,13 +355,48 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  const [draggedProcessId, setDraggedProcessId] = useState<number | null>(null);
+  const [dragOverProcessId, setDragOverProcessId] = useState<number | null>(null);
+  const [draggedScreenId, setDraggedScreenId] = useState<number | null>(null);
+  const [dragOverScreenId, setDragOverScreenId] = useState<number | null>(null);
+
+  function dropProcess(dropOnId: number) {
+    setDragOverProcessId(null);
+    if (draggedProcessId == null) return;
+    const reordered = reorderById(processes, draggedProcessId, dropOnId);
+    setDraggedProcessId(null);
+    if (!reordered) return;
+    const before = processes;
+    setProcesses(reordered); // optimistic: no refetch, no reload
+    reorderProcesses(reordered.map((p) => ({ id: p.id, order: p.order }))).catch(() => {
+      setProcesses(before);
+      setError("Failed to save the new process order");
+    });
+  }
+
+  function dropScreen(dropOnId: number) {
+    setDragOverScreenId(null);
+    if (draggedScreenId == null) return;
+    const reordered = reorderById(screens, draggedScreenId, dropOnId);
+    setDraggedScreenId(null);
+    if (!reordered) return;
+    const before = screens;
+    setScreens(reordered); // optimistic: no refetch, no reload
+    updateMenuOrders(reordered.map((s) => ({ id: s.id, order: s.order }))).catch(() => {
+      setScreens(before);
+      setError("Failed to save the new screen order");
+    });
+  }
+
+  const { accessVersion } = useLive();
+
   useEffect(() => {
     loadProcesses();
-  }, []);
+  }, [accessVersion]);
 
   useEffect(() => {
     if (selectedProcessId != null) loadScreens(selectedProcessId);
-  }, [selectedProcessId]);
+  }, [selectedProcessId, accessVersion]);
 
   async function loadProcesses() {
     try {
@@ -430,8 +474,9 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
       setScreens((prev) => prev.filter((m) => m.id !== screenToDelete.id));
       setScreenToDelete(null);
       flash("Screen deleted successfully");
-    } catch {
-      setError("Failed to delete screen");
+    } catch (err) {
+      setScreenToDelete(null);
+      setError(err instanceof Error ? err.message : "Failed to delete screen");
     }
   }
 
@@ -462,6 +507,7 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
               ? "Create the processes that group your screens in the sidebar"
               : "Add and organize the screens inside each process"
         }
+        loading={loadingProcesses}
       />
 
       {success && (
@@ -480,24 +526,38 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
         <div className={`${isProcessMode ? "flex-1 min-w-0" : "w-80 shrink-0"} glass-card rounded-[22px] overflow-hidden`}>
           <div className="px-4 py-3.5 border-b border-slate-100 dark:border-white/[0.06] flex items-center justify-between bg-white/30 dark:bg-white/[0.02]">
             <div className="flex items-center gap-2">
-              <Layers className="w-4 h-4 text-sky-500" />
-              <h2 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">Processes</h2>
-              <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300">
-                {loadingProcesses ? "…" : processes.length}
-              </span>
+              {loadingProcesses ? (
+                <>
+                  <span className="w-4 h-4 rounded bg-slate-200 dark:bg-white/10 animate-pulse" />
+                  <span className="h-3.5 w-16 rounded bg-slate-200 dark:bg-white/10 animate-pulse" />
+                  <span className="w-5 h-4 rounded-full bg-slate-100 dark:bg-white/10 animate-pulse" />
+                </>
+              ) : (
+                <>
+                  <Layers className="w-4 h-4 text-sky-500" />
+                  <h2 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">Processes</h2>
+                  <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300">
+                    {processes.length}
+                  </span>
+                </>
+              )}
             </div>
             {canManageProcesses && (
-              <button
-                onClick={() => {
-                  setEditingProcess(null);
-                  setProcessModalOpen(true);
-                }}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-sm hover:shadow-[0_2px_10px_rgba(14,165,233,0.3)] transition-all cursor-pointer"
-                title="Add process"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add</span>
-              </button>
+              loadingProcesses ? (
+                <div className="h-6 w-16 rounded-lg bg-slate-100 dark:bg-white/10 animate-pulse" />
+              ) : (
+                <button
+                  onClick={() => {
+                    setEditingProcess(null);
+                    setProcessModalOpen(true);
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-sm hover:shadow-[0_2px_10px_rgba(14,165,233,0.3)] transition-all cursor-pointer"
+                  title="Add process"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add</span>
+                </button>
+              )
             )}
           </div>
 
@@ -531,7 +591,25 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
               processes.map((process) => {
                 const active = !isProcessMode && process.id === selectedProcessId;
                 return (
-                  <div key={process.id} className="relative">
+                  <div
+                    key={process.id}
+                    className={`relative rounded-xl transition-all ${dragOverProcessId === process.id ? "ring-2 ring-sky-400" : ""} ${draggedProcessId === process.id ? "opacity-40" : ""}`}
+                    draggable={canManageProcesses}
+                    onDragStart={() => setDraggedProcessId(process.id)}
+                    onDragEnd={() => {
+                      setDraggedProcessId(null);
+                      setDragOverProcessId(null);
+                    }}
+                    onDragOver={(e) => {
+                      if (draggedProcessId == null) return;
+                      e.preventDefault();
+                      if (dragOverProcessId !== process.id) setDragOverProcessId(process.id);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      dropProcess(process.id);
+                    }}
+                  >
                     <button
                       onClick={() => setSelectedProcessId(process.id)}
                       className={`group relative w-full text-left p-2.5 ${isProcessMode ? "pr-24" : ""} rounded-xl transition-all duration-150 flex items-center justify-between gap-3 cursor-pointer ${active
@@ -540,6 +618,12 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
                         }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
+                        {canManageProcesses && (
+                          <GripVertical
+                            className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 shrink-0 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity"
+                            aria-hidden="true"
+                          />
+                        )}
                         <div
                           className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors ${active
                             ? "bg-gradient-to-br from-sky-400 to-blue-600 text-white shadow-[0_2px_8px_rgba(14,165,233,0.38)]"
@@ -556,11 +640,6 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
                             <span className="text-slate-400 font-semibold mr-1.5">{process.order}.</span>
                             {process.name}
                           </p>
-                          {process.description && (
-                            <p className={`text-[11px] truncate mt-0.5 ${active ? "text-sky-700/80 dark:text-sky-300/80" : "text-slate-400 dark:text-slate-500"}`}>
-                              {process.description}
-                            </p>
-                          )}
                         </div>
                       </div>
                     </button>
@@ -607,7 +686,9 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
                     <h2 className="text-base font-bold text-slate-900 dark:text-white">
                       {selectedProcess ? `Screens in ${selectedProcess.name}` : "Screens"}
                     </h2>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{selectedProcess?.description || "No description."}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      {screens.length} {screens.length === 1 ? "screen" : "screens"}
+                    </p>
                   </>
                 )}
               </div>
@@ -656,23 +737,38 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
             ) : (
               <>
                 <div className="px-6 py-3 border-b border-slate-100 dark:border-white/[0.06] flex justify-end">
-                  <TableToolbar
-                    query={table.query}
-                    onQueryChange={table.setQuery}
-                    onExport={handleExport}
-                    exportDisabled={table.filtered.length === 0}
-                    placeholder="Search screens..."
-                  />
+                  {loadingProcesses ? (
+                    <div className="flex items-center gap-2">
+                      <div className="h-8 w-48 rounded-lg bg-slate-100 dark:bg-white/5 animate-pulse" />
+                      <div className="h-8 w-20 rounded-lg bg-slate-100 dark:bg-white/5 animate-pulse" />
+                    </div>
+                  ) : (
+                    <TableToolbar
+                      query={table.query}
+                      onQueryChange={table.setQuery}
+                      onExport={handleExport}
+                      exportDisabled={table.filtered.length === 0}
+                      placeholder="Search screens..."
+                    />
+                  )}
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-left text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide border-b border-slate-100 dark:border-white/[0.06]">
-                        <th className="px-6 py-3">Screen</th>
-                        <th className="px-6 py-3">Route</th>
-                        <th className="px-6 py-3">Order</th>
-                        <th className="px-6 py-3">Status</th>
-                        <th className="px-6 py-3 text-right">Actions</th>
+                        {loadingProcesses ? (
+                          <th className="px-6 py-3" colSpan={5}>
+                            <div className="h-3 w-full max-w-md bg-slate-100 dark:bg-white/5 rounded animate-pulse" />
+                          </th>
+                        ) : (
+                          <>
+                            <th className="px-6 py-3">Screen</th>
+                            <th className="px-6 py-3">Route</th>
+                            <th className="px-6 py-3">Order</th>
+                            <th className="px-6 py-3">Status</th>
+                            <th className="px-6 py-3 text-right">Actions</th>
+                          </>
+                        )}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
@@ -714,10 +810,36 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
                           </td>
                         </tr>
                       ) : (
-                        table.paged.map((screen) => (
-                          <tr key={screen.id} className="hover:bg-white/35 dark:hover:bg-white/[0.02] transition-colors">
+                        table.paged.map((screen) => {
+                          // Drag-reordering needs the full, unfiltered, single-page list to make sense
+                          // (dragging a filtered or paginated row would reorder against rows not on screen).
+                          const canDrag = table.query === "" && table.totalPages <= 1;
+                          return (
+                          <tr
+                            key={screen.id}
+                            className={`hover:bg-white/35 dark:hover:bg-white/[0.02] transition-colors ${dragOverScreenId === screen.id ? "bg-sky-50/60 dark:bg-sky-500/10" : ""} ${draggedScreenId === screen.id ? "opacity-40" : ""}`}
+                            draggable={canDrag}
+                            onDragStart={() => canDrag && setDraggedScreenId(screen.id)}
+                            onDragEnd={() => {
+                              setDraggedScreenId(null);
+                              setDragOverScreenId(null);
+                            }}
+                            onDragOver={(e) => {
+                              if (!canDrag || draggedScreenId == null) return;
+                              e.preventDefault();
+                              if (dragOverScreenId !== screen.id) setDragOverScreenId(screen.id);
+                            }}
+                            onDrop={(e) => {
+                              if (!canDrag) return;
+                              e.preventDefault();
+                              dropScreen(screen.id);
+                            }}
+                          >
                             <td className="px-6 py-3.5 font-semibold text-slate-800 dark:text-slate-200">
                               <div className="flex items-center gap-2.5">
+                                {canDrag && (
+                                  <GripVertical className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 shrink-0 cursor-grab" aria-hidden="true" />
+                                )}
                                 {(() => {
                                   const Icon = getScreenIcon(screen.name, screen.url, screen.icon);
                                   return <Icon className="w-4 h-4 text-slate-400 shrink-0" />;
@@ -759,7 +881,8 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
                               </div>
                             </td>
                           </tr>
-                        ))
+                          );
+                        })
                       )}
                     </tbody>
                   </table>

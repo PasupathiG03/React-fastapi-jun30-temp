@@ -12,6 +12,7 @@ import { fetchWorkflows, type WorkflowDetail } from "@/services/workflow";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { CustomSelect } from "@/components/CustomSelect";
 import { CustomCheckbox } from "@/components/CustomCheckbox";
+import { useReportPageLoading } from "@/context/PageLoadingContext";
 
 const key = (roleId: number, menuId: number) => `${roleId}:${menuId}`;
 
@@ -52,6 +53,7 @@ export default function MenuAccessPage() {
   // Until the process/workflow list arrives we don't know whether this is a screen or a stage matrix,
   // so the labels that depend on it stay as skeletons instead of flashing "Screens" and then "Stages".
   const booting = loading && target === null;
+  useReportPageLoading("menu-access", booting);
 
   const granted = useMemo(() => new Set(matrix?.grants.map((g) => key(g.role_id, g.menu_id))), [matrix]);
 
@@ -101,6 +103,7 @@ export default function MenuAccessPage() {
         icon={ShieldCheck}
         title="Menu Access"
         subtitle="Choose which roles can see each screen and workflow stage in the sidebar"
+        loading={booting}
       />
 
       {error && (
@@ -119,7 +122,11 @@ export default function MenuAccessPage() {
             <h2 className="text-base font-bold text-slate-900 dark:text-white">{isWorkflow ? "Stages" : "Screens"}</h2>
           )}
           <div className="flex items-center gap-2.5">
-            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">Process / Workflow</label>
+            {booting ? (
+              <div className="h-3.5 w-28 bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
+            ) : (
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">Process / Workflow</label>
+            )}
             {booting ? (
               <div className="h-8 w-64 bg-slate-200 dark:bg-white/10 rounded-xl animate-pulse" />
             ) : (
@@ -238,9 +245,13 @@ export default function MenuAccessPage() {
 
         {/* Footer Note */}
         <div className="px-6 py-3.5 border-t border-slate-100 dark:border-white/[0.06] bg-white/25 dark:bg-white/[0.01]">
-          <p className="text-xs text-slate-400 dark:text-slate-500">
-            Note: The <span className="font-semibold text-slate-700 dark:text-slate-300">Developer</span> role has full access to all screens and stages by default and is not shown in this matrix.
-          </p>
+          {loading ? (
+            <div className="h-3.5 w-2/3 max-w-xl bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
+          ) : (
+            <p className="text-xs text-slate-400 dark:text-slate-500">
+              Note: The <span className="font-semibold text-slate-700 dark:text-slate-300">Developer</span> role has full access to all screens and stages by default and is not shown in this matrix.
+            </p>
+          )}
         </div>
       </div>
     </PageContainer>

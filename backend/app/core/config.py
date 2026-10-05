@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
+    DEFAULT_PASSWORD: str = "Admin@123#"
 
     # Browser origins allowed to call the API (comma separated). Never "*": requests carry the session cookie.
     CORS_ORIGINS: str = "http://localhost:8106"

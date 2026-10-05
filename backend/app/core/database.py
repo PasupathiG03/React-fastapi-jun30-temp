@@ -68,6 +68,15 @@ def _remember_live_changes(session, flush_context, instances):
             kinds.add(kind)
 
 
+@event.listens_for(SessionLocal, "after_bulk_update")
+def _remember_bulk_update(update_context):
+    mapper = update_context.matched_mapper
+    if mapper:
+        kind = _LIVE_TABLES.get(getattr(mapper.class_, "__tablename__", None))
+        if kind:
+            update_context.session.info.setdefault("live_kinds", set()).add(kind)
+
+
 @event.listens_for(SessionLocal, "after_commit")
 def _publish_live_changes(session):
     kinds = session.info.pop("live_kinds", None)

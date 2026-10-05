@@ -20,6 +20,9 @@ import { loginApi } from "@/services/auth";
 import { markSignedIn, takeLogoutReason } from "@/lib/auth";
 import { useTheme } from "@/context/ThemeContext";
 
+// Credentials must be typed by hand: no paste, drop, copy, cut or right-click menu on the login fields.
+const blockClipboard = (e: React.SyntheticEvent) => e.preventDefault();
+
 export default function LoginPage() {
   const [isVisible, setIsVisible] = useState(false);
   const [email, setEmail] = useState("");
@@ -216,6 +219,11 @@ export default function LoginPage() {
                           className="w-full bg-transparent text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
                           required
                           autoFocus
+                          onPaste={blockClipboard}
+                          onDrop={blockClipboard}
+                          onCopy={blockClipboard}
+                          onCut={blockClipboard}
+                          onContextMenu={blockClipboard}
                           autoComplete="username"
                           disabled={isLoading}
                         />
@@ -245,6 +253,11 @@ export default function LoginPage() {
                           placeholder="Enter your password"
                           className="w-full bg-transparent text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
                           required
+                          onPaste={blockClipboard}
+                          onDrop={blockClipboard}
+                          onCopy={blockClipboard}
+                          onCut={blockClipboard}
+                          onContextMenu={blockClipboard}
                           autoComplete="current-password"
                           disabled={isLoading}
                         />

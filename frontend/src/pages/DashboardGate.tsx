@@ -38,7 +38,7 @@ export default function DashboardGate() {
       if (cancelled) return;
 
       const me = meRes.status === "fulfilled" ? meRes.value : null;
-      if (me && (me.is_superuser || me.role?.name === "Developer")) {
+      if (me && (me.is_superuser && me.role?.name?.trim().toLowerCase() === "developer")) {
         setDecision({ kind: "dashboard" });
         return;
       }

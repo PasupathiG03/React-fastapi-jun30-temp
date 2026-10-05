@@ -1,6 +1,7 @@
 import enum
 
-from sqlalchemy import Boolean, Column, Enum, ForeignKey, Integer, String, Table, Text
+from sqlalchemy import Boolean, Column, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -11,15 +12,6 @@ class StageType(str, enum.Enum):
     PRODUCTION = "production"
     QC = "qc"
     QA = "qa"
-
-
-# Which roles may open a stage (and therefore see it in their sidebar).
-workflow_stage_roles = Table(
-    "workflow_stage_roles",
-    Base.metadata,
-    Column("stage_id", Integer, ForeignKey("workflow_stages.id", ondelete="CASCADE"), primary_key=True),
-    Column("role_id", Integer, ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True),
-)
 
 
 class Workflow(AuditMixin, Base):
@@ -48,13 +40,13 @@ class WorkflowStage(AuditMixin, Base):
     name = Column(String(150), nullable=False)
     stage_type = Column(Enum(StageType, name="stage_type"), nullable=False, default=StageType.PRODUCTION)
     sequence_order = Column(Integer, nullable=False, default=0)
+    # Ids of the roles that may open this stage. A plain array column, not a join table with Role: a role
+    # is only ever soft-deleted (Role.is_active), never actually removed, so there is no row for an
+    # ON DELETE CASCADE to protect against, and the API already validates every id before it is stored
+    # (see _validated_role_ids in app/api/workflows.py).
+    role_ids = Column(ARRAY(Integer), nullable=False, default=list, server_default="{}")
 
     workflow = relationship("Workflow", back_populates="stages")
-    roles = relationship("Role", secondary=workflow_stage_roles, lazy="selectin")
-
-    @property
-    def role_ids(self) -> list[int]:
-        return sorted(r.id for r in self.roles)
 
     def __repr__(self) -> str:
         return f"<WorkflowStage id={self.id} name={self.name!r}>"
@@ -71,32 +63,14 @@ class WorkflowItem(AuditMixin, Base):
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     is_completed = Column(Boolean, default=False, nullable=False)
+    # Every movement (created/advanced/rejected/completed), oldest first. Each entry is a snapshot taken
+    # at the time -- action, from/to stage id and name, comment, created_at (ISO 8601), and the actor's
+    # employee_id/employee_name -- not a live join, so it stays correct even if a stage is later renamed
+    # or deleted, or the user's name changes. Built and read in app/api/workflows.py (_log, item_history).
+    history = Column(JSONB, nullable=False, default=list, server_default="[]")
 
     workflow = relationship("Workflow")
     current_stage = relationship("WorkflowStage")
-    history = relationship(
-        "WorkflowItemHistory",
-        back_populates="item",
-        cascade="all, delete-orphan",
-        order_by="WorkflowItemHistory.id",
-    )
 
     def __repr__(self) -> str:
         return f"<WorkflowItem id={self.id} title={self.title!r}>"
-
-
-class WorkflowItemHistory(AuditMixin, Base):
-    """One movement of an item: created, advanced, sent back or completed. created_by is the actor."""
-
-    __tablename__ = "workflow_item_history"
-
-    id = Column(Integer, primary_key=True, index=True)
-    item_id = Column(Integer, ForeignKey("workflow_items.id", ondelete="CASCADE"), nullable=False, index=True)
-    action = Column(String(20), nullable=False)  # created | advanced | rejected | completed
-    from_stage_id = Column(Integer, ForeignKey("workflow_stages.id", ondelete="SET NULL"), nullable=True)
-    to_stage_id = Column(Integer, ForeignKey("workflow_stages.id", ondelete="SET NULL"), nullable=True)
-    comment = Column(Text, nullable=True)
-
-    item = relationship("WorkflowItem", back_populates="history")
-    from_stage = relationship("WorkflowStage", foreign_keys=[from_stage_id])
-    to_stage = relationship("WorkflowStage", foreign_keys=[to_stage_id])

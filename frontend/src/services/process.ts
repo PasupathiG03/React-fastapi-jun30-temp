@@ -3,7 +3,6 @@ import { API_BASE_URL } from "@/lib/constants";
 export interface ProcessItem {
   id: number;
   name: string;
-  description: string | null;
   order: number;
   is_active: boolean;
   created_at?: string;
@@ -12,7 +11,6 @@ export interface ProcessItem {
 
 export interface ProcessCreatePayload {
   name: string;
-  description?: string | null;
   order?: number;
   is_active?: boolean;
 }
@@ -70,6 +68,23 @@ export async function updateProcess(
     throw new Error(extractDetail(err));
   }
   return res.json();
+}
+
+export interface ProcessReorderPayload {
+  id: number;
+  order: number;
+}
+
+export async function reorderProcesses(payload: ProcessReorderPayload[]): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/api/processes/reorder`, {
+    method: "PUT",
+    headers: authHeaders(),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(extractDetail(err));
+  }
 }
 
 export async function deleteProcess(id: number): Promise<void> {

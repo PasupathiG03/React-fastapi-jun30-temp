@@ -20,7 +20,7 @@ ip_limiter = SlidingWindowLimiter(settings.LOGIN_ATTEMPTS_PER_IP, settings.LOGIN
 # Same wording whether the username is unknown, the password is wrong or the account is inactive.
 INVALID_LOGIN = "Invalid username or password"
 
-DEFAULT_PASSWORD = "Admin@123#"
+DEFAULT_PASSWORD = settings.DEFAULT_PASSWORD
 
 
 def _too_many(seconds: int) -> HTTPException:
