@@ -115,7 +115,7 @@ export default function MenuAccessPage() {
       {/* ── Main Content Card ── */}
       <div className="glass-card rounded-[22px] overflow-hidden">
         {/* Card Header: Screens & Process Select */}
-        <div className="relative z-20 px-6 py-4 border-b border-slate-100 dark:border-white/[0.06] flex items-center justify-between gap-4">
+        <div className="relative z-20 px-6 py-4 border-b border-slate-100 dark:border-white/[0.06] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           {booting ? (
             <div className="h-5 w-24 bg-slate-200 dark:bg-white/10 rounded-md animate-pulse" />
           ) : (
@@ -125,10 +125,10 @@ export default function MenuAccessPage() {
             {booting ? (
               <div className="h-3.5 w-28 bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
             ) : (
-              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">Process / Workflow</label>
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 shrink-0">Process / Workflow</label>
             )}
             {booting ? (
-              <div className="h-8 w-64 bg-slate-200 dark:bg-white/10 rounded-xl animate-pulse" />
+              <div className="h-8 w-full sm:w-64 bg-slate-200 dark:bg-white/10 rounded-xl animate-pulse" />
             ) : (
             <CustomSelect
               value={target ?? undefined}
@@ -138,7 +138,7 @@ export default function MenuAccessPage() {
                 ...workflows.map((w) => ({ value: `w:${w.id}`, label: `Workflow: ${w.name}` })),
               ]}
               placeholder={loading && !target ? "Loading..." : processes.length + workflows.length === 0 ? "Nothing to show" : "Select"}
-              className="w-64"
+              className="w-full sm:w-64"
               size="sm"
             />
             )}

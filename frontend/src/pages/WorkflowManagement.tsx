@@ -832,7 +832,7 @@ function CreateWorkflowWizardModal({
               </div>
             )}
 
-            <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-between rounded-b-2xl">
+            <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2 rounded-b-2xl">
               <span className="text-xs text-slate-400 dark:text-slate-500">
                 {addedStages.length} {addedStages.length === 1 ? "stage" : "stages"} created
               </span>
@@ -840,7 +840,7 @@ function CreateWorkflowWizardModal({
                 type="button"
                 onClick={closeAndSync}
                 disabled={finishing}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-sm transition-all disabled:opacity-60 cursor-pointer"
+                className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-sm transition-all disabled:opacity-60 cursor-pointer"
               >
                 {finishing ? "Finishing..." : "Finish & View Workflow"}
               </button>
@@ -1172,14 +1172,14 @@ export default function WorkflowManagementPage() {
                         <button
                           onClick={() => setStageModal({ workflow: w, editing: stage })}
                           title="Edit stage"
-                          className="opacity-0 group-hover:opacity-100 transition-opacity w-6 h-6 rounded-lg flex items-center justify-center text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-500/10 shrink-0 cursor-pointer"
+                          className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-500/10 shrink-0 cursor-pointer"
                         >
                           <Edit2 className="w-3 h-3" />
                         </button>
                         <button
                           onClick={() => setStageToDelete({ workflow: w, stage })}
                           title="Delete stage"
-                          className="opacity-0 group-hover:opacity-100 transition-opacity w-6 h-6 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 shrink-0 cursor-pointer"
+                          className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 shrink-0 cursor-pointer"
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>

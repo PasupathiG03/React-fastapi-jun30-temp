@@ -104,8 +104,10 @@ export function CustomCheckbox({
   );
 
   if (!label && !description) {
+    // Padding + a matching negative margin grows the tap target toward ~44px without changing the
+    // visible box size or shifting surrounding layout (the negative margin cancels the padding's footprint).
     return (
-      <div className={`inline-flex items-center justify-center ${className}`}>
+      <div className={`inline-flex items-center justify-center p-2 -m-2 ${className}`}>
         {buttonElement}
       </div>
     );

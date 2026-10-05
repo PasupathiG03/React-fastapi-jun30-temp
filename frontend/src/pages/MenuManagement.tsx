@@ -28,6 +28,11 @@ import {
   type MenuCreatePayload,
 } from "@/services/menu";
 
+// Mirrors backend/app/core/builtin_screens.py's PROTECTED_PROCESS_NAMES. These two hold nothing but
+// hardcoded Developer nav items (Sidebar.tsx's DEV_DASHBOARD / DEV_ROUTER_SETUP) -- unlike Access
+// Control, they are never meant to be managed like a regular process, so Router Setup never lists them.
+const HIDDEN_ROUTER_SETUP_PROCESSES = new Set(["Dashboard", "Developer Management"]);
+
 /** Moves the dragged item next to the drop target and renumbers everyone 1..N in the new order.
  * Returns null if nothing actually moved (dropped on itself). */
 function reorderById<T extends { id: number; order: number }>(
@@ -400,7 +405,7 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
 
   async function loadProcesses() {
     try {
-      const data = await fetchProcesses();
+      const data = (await fetchProcesses()).filter((p) => !HIDDEN_ROUTER_SETUP_PROCESSES.has(p.name));
       setProcesses(data);
       if (data.length > 0) setSelectedProcessId((prev) => prev ?? data[0].id);
     } catch {
@@ -521,9 +526,9 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
         </div>
       )}
 
-      <div className="flex gap-5 items-start">
+      <div className="flex flex-col lg:flex-row gap-5 items-stretch lg:items-start">
         {/* ── Processes panel ── */}
-        <div className={`${isProcessMode ? "flex-1 min-w-0" : "w-80 shrink-0"} glass-card rounded-[22px] overflow-hidden`}>
+        <div className={`${isProcessMode ? "flex-1 min-w-0" : "w-full lg:w-80 lg:shrink-0"} glass-card rounded-[22px] overflow-hidden`}>
           <div className="px-4 py-3.5 border-b border-slate-100 dark:border-white/[0.06] flex items-center justify-between bg-white/30 dark:bg-white/[0.02]">
             <div className="flex items-center gap-2">
               {loadingProcesses ? (
@@ -674,7 +679,7 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
         {/* ── Screens panel ── */}
         {!isProcessMode && (
           <div className="flex-1 min-w-0 glass-card rounded-[22px] overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.06] flex items-center justify-between">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.06] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 {loadingProcesses ? (
                   <div className="space-y-2 animate-pulse" aria-hidden="true">
@@ -693,7 +698,7 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
                 )}
               </div>
               {selectedProcess && (
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2">
                   {mode === undefined && (
                     <>
                       <button

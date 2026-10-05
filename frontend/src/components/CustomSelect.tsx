@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, Check } from "lucide-react";
 
 export interface SelectOption<T extends string | number = string | number> {
@@ -44,34 +45,33 @@ export function CustomSelect<T extends string | number = string | number>({
 }: CustomSelectProps<T>) {
   const [isOpen, setIsOpen] = useState(false);
   const [openUpward, setOpenUpward] = useState(false);
+  // Screen coordinates for the portaled popup (see below for why it's a portal, not `absolute`).
+  const [pos, setPos] = useState<{ top: number; bottom: number; left: number; width: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Find currently selected option
   const selectedOption = options.find((opt) => opt.value === value);
 
-  // Calculate opening direction
+  // Calculate opening direction and the popup's screen position. A plain `absolute` popup would get
+  // clipped by any ancestor with `overflow-hidden` (e.g. the card wrapping a table + its pagination
+  // footer) -- portaling to <body> with `fixed` coordinates (same pattern as Sidebar.tsx's FlyoutGroup)
+  // sidesteps that entirely.
   const updateDirection = useCallback(() => {
-    if (direction === "up") {
-      setOpenUpward(true);
-      return;
-    }
-    if (direction === "down") {
-      setOpenUpward(false);
-      return;
-    }
-    // Auto calculate based on viewport
-    if (containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    let upward: boolean;
+    if (direction === "up") upward = true;
+    else if (direction === "down") upward = false;
+    else {
       const spaceBelow = window.innerHeight - rect.bottom;
       const spaceAbove = rect.top;
       // If less than 220px below and more space above, open upward
-      if (spaceBelow < 220 && spaceAbove > spaceBelow) {
-        setOpenUpward(true);
-      } else {
-        setOpenUpward(false);
-      }
+      upward = spaceBelow < 220 && spaceAbove > spaceBelow;
     }
+    setOpenUpward(upward);
+    setPos({ top: rect.bottom, bottom: window.innerHeight - rect.top, left: rect.left, width: rect.width });
   }, [direction]);
 
   // Handle open toggle
@@ -88,7 +88,12 @@ export function CustomSelect<T extends string | number = string | number>({
     if (!isOpen) return;
 
     const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(target) &&
+        !menuRef.current?.contains(target)
+      ) {
         setIsOpen(false);
       }
     };
@@ -99,11 +104,23 @@ export function CustomSelect<T extends string | number = string | number>({
       }
     };
 
+    // The popup is portaled out of its scrolling container, so it can't track a scroll there --
+    // closing (rather than silently drifting out of place) matches how the rest of the app behaves.
+    // Scrolling the popup's own option list must NOT close it, so that's excluded here.
+    const handleScroll = (event: Event) => {
+      if (menuRef.current?.contains(event.target as Node)) return;
+      setIsOpen(false);
+    };
+
     document.addEventListener("mousedown", handleClickOutside);
     document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("scroll", handleScroll, true);
+    window.addEventListener("resize", handleScroll);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", handleScroll);
     };
   }, [isOpen]);
 
@@ -176,19 +193,23 @@ export function CustomSelect<T extends string | number = string | number>({
         />
       </button>
 
-      {/* Dropdown Menu Popup */}
-      {isOpen && (
+      {/* Dropdown Menu Popup: portaled to <body> with fixed coordinates so it's never clipped by an
+          `overflow-hidden` ancestor (e.g. the card wrapping a table + its pagination footer). */}
+      {isOpen && pos &&
+        createPortal(
         <div
           ref={menuRef}
           role="listbox"
-          className={`absolute left-0 right-0 z-50 min-w-full w-max max-w-[min(100vw-2rem,24rem)] py-1.5 rounded-xl
-            ${openUpward
-              ? "bottom-full mb-1.5 origin-bottom"
-              : "top-full mt-1.5 origin-top"
-            }
+          className={`fixed z-[1000] min-w-[var(--select-w)] w-max max-w-[min(100vw-2rem,24rem)] py-1.5 rounded-xl
+            ${openUpward ? "origin-bottom" : "origin-top"}
             glass-menu
             ${dropdownClassName}
           `}
+          style={{
+            left: pos.left,
+            ["--select-w" as any]: `${pos.width}px`,
+            ...(openUpward ? { bottom: pos.bottom + 6 } : { top: pos.top + 6 }),
+          }}
         >
           <div className="max-h-60 overflow-y-auto overflow-x-hidden p-1 space-y-0.5 custom-scrollbar">
             {options.length === 0 ? (
@@ -243,7 +264,8 @@ export function CustomSelect<T extends string | number = string | number>({
               })
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

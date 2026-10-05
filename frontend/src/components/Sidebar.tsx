@@ -26,6 +26,7 @@ import { buildStageRoutes } from "@/lib/slug";
 import { getStageIcon } from "@/lib/stageIcons";
 import { API_BASE_URL } from "@/lib/constants";
 import { useReportPageLoading } from "@/context/PageLoadingContext";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 
 // Mirrors backend/app/core/builtin_screens.py's built-in access-control screens. A group made up only of
 // these (whatever it is, or isn't, grouped under in the database) is shown as the fixed "Access Control"
@@ -65,8 +66,8 @@ export function getProcessIcon(name: string): React.ElementType {
 }
 
 export function getScreenIcon(name: string, url: string, iconKey?: string | null): React.ElementType {
-  // Screens carry their own icon key from the backend (backend/app/core/seed.py sets it for the built-in
-  // ones). A URL/name guess below only covers a screen with no icon key, or one ICON_MAP doesn't have.
+  // Screens carry their own icon key from the backend (backend/app/core/builtin_screens.py sets it for the
+  // built-in ones). A URL/name guess below only covers a screen with no icon key, or one ICON_MAP doesn't have.
   if (iconKey && ICON_MAP[iconKey]) return ICON_MAP[iconKey];
 
   const lowerName = name.trim().toLowerCase();
@@ -85,6 +86,10 @@ export function getScreenIcon(name: string, url: string, iconKey?: string | null
 interface Props {
   collapsed: boolean;
   loading?: boolean;
+  // Below the `lg` breakpoint the sidebar is an off-canvas drawer instead of the desktop collapse/expand
+  // rail; these two control that drawer, and `collapsed` (the desktop behavior) is ignored while it's used.
+  mobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 interface FlyoutItem {
@@ -183,36 +188,42 @@ function FlyoutGroup({
   );
 }
 
-export default function Sidebar({ collapsed, loading = false }: Props) {
+export default function Sidebar({ collapsed: collapsedProp, loading = false, mobileOpen = false, onCloseMobile }: Props) {
   const location = useLocation();
   const pathname = location.pathname;
   const navigate = useNavigate();
+
+  // Below `lg`, the sidebar is always shown "expanded" (full labels) inside the off-canvas drawer --
+  // the collapsed icon-rail + hover-flyout pattern is a desktop-only affordance (hover doesn't work on touch).
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const collapsed = isDesktop ? collapsedProp : false;
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCloseMobile?.();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mobileOpen, onCloseMobile]);
 
   const { countFor } = usePending();
   const { accessVersion } = useLive();
   const [dynamicMenus, setDynamicMenus] = useState<MenuItem[]>([]);
   const [myWorkflows, setMyWorkflows] = useState<MyWorkflow[]>([]);
   const [fetching, setFetching] = useState(true);
+  // Despite the name, this is true for any superuser too, not just the Developer role (mirrors
+  // has_full_access in backend/app/core/dependencies.py) -- both get the fully hardcoded nav below.
   const [isDeveloper, setIsDeveloper] = useState(false);
   const [roleReady, setRoleReady] = useState(false);
   // The top bar's chrome (breadcrumb, hamburger, theme toggle, bell) waits on this too, so it never
   // looks "ready" while the sidebar underneath is still showing its own loading skeleton.
   useReportPageLoading("sidebar", loading || fetching || !roleReady);
 
-  const [skeletonRows, setSkeletonRows] = useState(() => {
-    try {
-      const n = Number(localStorage.getItem("sidebar:rowCount"));
-      return n >= 1 && n <= 20 ? n : 4;
-    } catch {
-      return 4;
-    }
-  });
-
   // Every custom screen/process still comes from /api/menus. For a Developer, the built-in screens are
   // hard-coded (see DEV_* above) instead, so the database's own copies of them -- once
   // ensure_default_menus has (re)created them -- are excluded here to avoid showing each one twice.
   const visibleMenus = isDeveloper ? dynamicMenus.filter((m) => !BUILT_IN_URLS.has(m.url)) : dynamicMenus;
-  const devHasDashboard = dynamicMenus.some((m) => m.url === DEV_DASHBOARD.href);
 
   // Main menus in the order set on each process (screens without a process come first).
   type MenuEntry =
@@ -244,7 +255,6 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
       entries.push(sameName(g) ? { kind: "item", order: g.order, item: g.items[0] } : { kind: "group", order: g.order, group: g });
     }
     entries.sort((a, b) => a.order - b.order);
-    const flatOrder = entries.flatMap((e) => (e.kind === "item" ? [e.item] : e.group.items));
     // The built-in access-control screens (backend/app/core/builtin_screens.py) get their own
     // "Administration" section below the main menu, matching how it always looked when it was
     // hard-coded here. Detected by which screens the group holds, not by the process's name (whatever
@@ -256,10 +266,6 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
     return {
       entries: entries.filter((e) => !isAccessControl(e)),
       administration: entries.filter(isAccessControl),
-      flatOrder,
-      // Row counts (for the loading skeleton) still cover every entry, administration included.
-      loose: entries.filter((e) => e.kind === "item"),
-      groups: entries.filter((e) => e.kind === "group"),
     };
   })();
 
@@ -303,30 +309,6 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
 
   const [adminOpen, setAdminOpen] = useState<boolean | null>(null);
   const [devOpen, setDevOpen] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    if (fetching || !roleReady) return;
-    const menuRows = collapsed
-      ? menuGroups.entries.length
-      : menuGroups.loose.length +
-      menuGroups.groups.reduce((n, e) => (e.kind === "group" ? n + 1 + (isProcessOpen(e.group) ? e.group.items.length : 0) : n), 0);
-    const workflowRows = collapsed
-      ? myWorkflows.length
-      : myWorkflows.reduce((n, w) => n + 1 + (isWorkflowOpen(w) ? w.stages.length : 0), 0);
-    // The hard-coded Developer rows (Router Setup, Dashboard, Access Control) a Developer always gets.
-    const devRows = isDeveloper
-      ? collapsed
-        ? 1 + 1 + 1
-        : 1 + (devOpen ? 1 : 0) + 1 + 1 + ((adminOpen ?? true) ? DEV_ACCESS_CONTROL.length : 0)
-      : 0;
-    const rows = menuRows + workflowRows + devRows;
-    setSkeletonRows(rows);
-    try {
-      localStorage.setItem("sidebar:rowCount", String(rows));
-    } catch {
-      // ignore
-    }
-  }, [fetching, roleReady, isDeveloper, visibleMenus.length, menuGroups.groups.length, myWorkflows, processChoice, pathname, collapsed, devOpen, adminOpen]);
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/auth/me`)
@@ -430,12 +412,20 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
   };
 
   return (
-    <aside
-      className={`h-full shrink-0 flex flex-col justify-between rounded-[24px] transition-all duration-300 glass-panel p-3 select-none`}
-      style={{
-        width: collapsed ? 76 : 260,
-      }}
-    >
+    <>
+      {/* Backdrop: only below `lg`, where the sidebar is an off-canvas drawer over the page content. */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-30 bg-black/50 lg:hidden" onClick={onCloseMobile} aria-hidden="true" />
+      )}
+      <aside
+        className={`shrink-0 flex flex-col justify-between rounded-[24px] transition-all duration-300 glass-panel p-3 select-none ${isDesktop
+          ? "static h-full"
+          : `fixed z-40 top-2 left-2 bottom-2 sm:top-3.5 sm:left-3.5 sm:bottom-3.5 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`
+          }`}
+        style={{
+          width: collapsed ? 76 : 260,
+        }}
+      >
       {/* ── Top Logo ── */}
       <div className="w-full px-2 py-2 flex items-center justify-center">
         {loading || fetching || !roleReady ? (
@@ -545,8 +535,9 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
               </p>
             )}
 
-            {/* Dashboard: hard-coded for a Developer, shown only while present in the menus table */}
-            {isDeveloper && devHasDashboard && renderItem(DEV_DASHBOARD.href, DEV_DASHBOARD.label, DEV_DASHBOARD.Icon)}
+            {/* Dashboard: hard-coded for a Developer, same as Router Setup and Access Control below --
+                never depends on the menus table having an active row for it (see DEV_* above). */}
+            {isDeveloper && renderItem(DEV_DASHBOARD.href, DEV_DASHBOARD.label, DEV_DASHBOARD.Icon)}
 
             {/* Dynamic menus */}
             {collapsed ? (
@@ -714,6 +705,7 @@ export default function Sidebar({ collapsed, loading = false }: Props) {
           </button>
         )}
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

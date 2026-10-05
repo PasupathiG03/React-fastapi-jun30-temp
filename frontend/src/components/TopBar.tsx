@@ -164,9 +164,9 @@ export default function TopBar({ onToggle, loading = false }: Props) {
   })();
 
   return (
-    <header className="relative z-40 h-14 w-full shrink-0 flex items-center justify-between px-4 rounded-2xl glass-panel transition-colors duration-200">
+    <header className="relative z-40 h-14 w-full shrink-0 flex items-center justify-between gap-2 px-3 sm:px-4 rounded-2xl glass-panel transition-colors duration-200">
       {/* Left: Hamburger menu + Breadcrumbs */}
-      <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
         {loading || pageLoading ? (
           <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-white/10 animate-pulse shrink-0" aria-hidden="true" />
         ) : (
@@ -174,30 +174,35 @@ export default function TopBar({ onToggle, loading = false }: Props) {
             type="button"
             onClick={onToggle}
             title="Toggle Sidebar"
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-white/10"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-white/10 shrink-0"
           >
             <Menu className="w-4 h-4" />
           </button>
         )}
 
-        {/* Breadcrumbs */}
-        <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs truncate">
+        {/* Breadcrumbs: below `sm`, only the current page's name shows (the parent trail is dropped --
+            there isn't room for both it and the icon cluster on a phone, and the drawer already gives
+            that context), with its own ellipsis-truncation. From `sm` up, the full trail shows as before. */}
+        <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs min-w-0 flex-1 overflow-hidden">
           {pageLoading ? (
             // The page itself asked for this (useReportPageLoading): its breadcrumb depends on data
             // that hasn't loaded yet, so a skeleton stands in rather than a blank or wrong label.
-            <div className="flex items-center gap-1.5" aria-hidden="true">
-              <div className="h-3 w-20 bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
-              <ChevronRight className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 shrink-0" />
-              <div className="h-3 w-24 bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
+            <div className="flex items-center gap-1.5 min-w-0" aria-hidden="true">
+              <div className="hidden sm:block h-3 w-20 bg-slate-200 dark:bg-white/10 rounded animate-pulse shrink-0" />
+              <ChevronRight className="hidden sm:block w-3.5 h-3.5 text-slate-300 dark:text-slate-600 shrink-0" />
+              <div className="h-3 w-24 max-w-full bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
             </div>
           ) : (
             breadcrumbs.map((crumb, idx) => (
-              <div key={idx} className="flex items-center gap-1.5">
+              <div
+                key={idx}
+                className={`flex items-center gap-1.5 ${crumb.isLast ? "min-w-0 flex-1" : "hidden sm:flex shrink-0"}`}
+              >
                 {idx > 0 && (
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
+                  <ChevronRight className="hidden sm:block w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
                 )}
                 <span
-                  className={`truncate ${crumb.isLast
+                  className={`truncate block min-w-0 ${crumb.isLast
                     ? "font-semibold text-slate-900 dark:text-white"
                     : "font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 cursor-default"
                     }`}
@@ -211,7 +216,7 @@ export default function TopBar({ onToggle, loading = false }: Props) {
       </div>
 
       {/* Right: Theme Toggle, Notifications, User Profile */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
         {/* Theme Toggle Button */}
         {loading || pageLoading ? (
           <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-white/10 animate-pulse shrink-0" aria-hidden="true" />
@@ -251,7 +256,7 @@ export default function TopBar({ onToggle, loading = false }: Props) {
           </button>
 
           {bellOpen && (
-            <div className="absolute right-0 top-10 w-80 glass-menu rounded-2xl z-50 overflow-hidden">
+            <div className="absolute right-0 top-10 w-[min(20rem,calc(100vw-2rem))] glass-menu rounded-2xl z-50 overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-100 dark:border-white/[0.08]">
                 <p className="text-sm font-semibold text-slate-800 dark:text-white">Waiting for you</p>
                 <p className="text-[11px] text-slate-400 dark:text-slate-500">
@@ -308,7 +313,7 @@ export default function TopBar({ onToggle, loading = false }: Props) {
 
             {/* Dropdown */}
             {open && (
-              <div className="absolute right-0 top-full mt-2 w-60 glass-menu rounded-2xl overflow-hidden z-50">
+              <div className="absolute right-0 top-full mt-2 w-[min(15rem,calc(100vw-2rem))] glass-menu rounded-2xl overflow-hidden z-50">
                 <div className="flex items-start gap-2.5 px-4 py-3 border-b border-slate-100 dark:border-white/10 bg-white/30 dark:bg-white/[0.02]">
                   <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00d2ff] to-[#0072ff] text-white text-xs font-bold flex items-center justify-center shrink-0 shadow-sm">
                     {initials}

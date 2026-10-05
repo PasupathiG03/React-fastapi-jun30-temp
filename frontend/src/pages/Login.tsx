@@ -19,6 +19,7 @@ import {
 import { loginApi } from "@/services/auth";
 import { markSignedIn, takeLogoutReason } from "@/lib/auth";
 import { useTheme } from "@/context/ThemeContext";
+import Copyright from "@/components/Copyright";
 
 // Credentials must be typed by hand: no paste, drop, copy, cut or right-click menu on the login fields.
 const blockClipboard = (e: React.SyntheticEvent) => e.preventDefault();
@@ -86,7 +87,7 @@ export default function LoginPage() {
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.5, ease: "easeOut" }}
-        className="relative w-full lg:w-[46%] xl:w-[47%] 2xl:w-[48%] rounded-[28px] sm:rounded-[34px] overflow-hidden bg-gradient-to-br from-[#00d2ff] via-[#0084ff] to-[#0052cc] shadow-[0_20px_50px_rgba(0,198,255,0.28)] dark:shadow-[0_24px_70px_rgba(0,114,255,0.38)] p-8 sm:p-11 xl:p-16 flex flex-col justify-between min-h-[580px] lg:min-h-[calc(100vh-2.5rem)] shrink-0"
+        className="hidden lg:flex relative w-full lg:w-[46%] xl:w-[47%] 2xl:w-[48%] rounded-[28px] sm:rounded-[34px] overflow-hidden bg-gradient-to-br from-[#00d2ff] via-[#0084ff] to-[#0052cc] shadow-[0_20px_50px_rgba(0,198,255,0.28)] dark:shadow-[0_24px_70px_rgba(0,114,255,0.38)] p-8 sm:p-11 xl:p-16 flex-col justify-between lg:min-h-[calc(100vh-2.5rem)] shrink-0"
       >
         {/* Subtle dot grid */}
         <div
@@ -149,9 +150,7 @@ export default function LoginPage() {
 
         {/* Bottom Copyright */}
         <div className="relative z-10 pt-4">
-          <p className="text-xs sm:text-sm text-white/75 font-normal">
-            &copy; 2026 MTPL. All rights reserved.
-          </p>
+          <Copyright className="text-xs sm:text-sm text-white/75 font-normal" />
         </div>
       </motion.div>
 

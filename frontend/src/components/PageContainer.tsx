@@ -61,7 +61,7 @@ export default function PageContainer({
   className?: string;
 }) {
   return (
-    <div className={`w-full px-3.5 sm:px-4 py-2 pb-8 space-y-5 ${className}`}>
+    <div className={`w-full max-w-[1920px] mx-auto px-3.5 sm:px-4 py-2 pb-8 space-y-5 ${className}`}>
       {children}
     </div>
   );

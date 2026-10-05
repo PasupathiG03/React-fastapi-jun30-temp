@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import TopBar from "@/components/TopBar";
 import Sidebar from "@/components/Sidebar";
 import { isAuthenticated } from "@/lib/auth";
@@ -8,13 +8,18 @@ import { PendingProvider } from "@/context/PendingContext";
 import SessionWatcher from "@/components/SessionWatcher";
 import { LiveProvider } from "@/context/LiveContext";
 import { PageLoadingProvider } from "@/context/PageLoadingContext";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import Copyright from "@/components/Copyright";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  // Phones and small tablets start with the compact (icon-only) sidebar so the page keeps its width.
-  const [collapsed, setCollapsed] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
+  const [collapsed, setCollapsed] = useState(false);
+  // Below `lg` the sidebar is an off-canvas drawer (see Sidebar.tsx) instead of the desktop collapse rail.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
   const [loading, setLoading] = useState(true);
   const { theme } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -23,6 +28,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
     setLoading(false);
   }, [navigate]);
+
+  // Close the drawer whenever the route changes, so it never lingers over the new page.
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location.pathname]);
+
+  function handleToggleNav() {
+    if (isDesktop) setCollapsed((c) => !c);
+    else setMobileNavOpen((o) => !o);
+  }
 
   return (
     <LiveProvider>
@@ -41,16 +56,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               its own load; TopBar's chrome waits on every reporter), so both must be inside it. */}
           <PageLoadingProvider>
             {/* Floating Left Sidebar */}
-            <Sidebar collapsed={collapsed} loading={loading} />
+            <Sidebar
+              collapsed={collapsed}
+              loading={loading}
+              mobileOpen={mobileNavOpen}
+              onCloseMobile={() => setMobileNavOpen(false)}
+            />
 
             {/* Right Column: TopBar + Page Content */}
             <div className="flex flex-col flex-1 h-full min-w-0 overflow-hidden gap-3.5">
-              <TopBar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} loading={loading} />
+              <TopBar collapsed={collapsed} onToggle={handleToggleNav} loading={loading} />
               <main className="flex-1 overflow-y-auto pr-1 pb-6 min-w-0 [scrollbar-width:thin]">
                 {children}
               </main>
-              <footer className="shrink-0 text-center text-xs text-slate-500 dark:text-slate-400 pb-0.5">
-                &copy; 2026 MTPL. All rights reserved.
+              <footer className="shrink-0 text-center pb-0.5">
+                <Copyright className="text-xs text-slate-500 dark:text-slate-400" />
               </footer>
             </div>
           </PageLoadingProvider>

@@ -76,7 +76,10 @@ def is_developer_role(role) -> bool:
 
 
 def has_full_access(user) -> bool:
-    """Superusers with the Developer role can open every screen and call every API."""
+    """Only a user who is BOTH a superuser AND has the Developer role can open every screen and call
+    every API, no Menu Access grant needed. Everyone else -- including a superuser with a different
+    role, or a Developer-role user who isn't a superuser -- only gets what their role was explicitly
+    granted via Permission + Process Assignment (Menu Access)."""
     return bool(user.is_superuser and is_developer_role(user.role))
 
 

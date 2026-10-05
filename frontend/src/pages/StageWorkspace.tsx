@@ -287,7 +287,7 @@ export default function StageWorkspacePage() {
       )}
 
       <div className="glass-card rounded-[22px] overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between gap-3">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <h2 className="text-sm font-semibold text-slate-800 dark:text-white">
             Items in {stage.name} <span className="text-slate-400 font-normal">({items.length})</span>
           </h2>
@@ -308,16 +308,18 @@ export default function StageWorkspacePage() {
           <>
             <ul className="divide-y divide-slate-100 dark:divide-white/[0.06]">
               {table.paged.map((item, index) => (
-                <li key={item.id} className="flex items-center gap-4 px-6 py-4 hover:bg-white/35 dark:hover:bg-white/[0.03] transition-colors">
-                  <span className="w-6 text-center text-sm text-slate-400">{(table.page - 1) * table.pageSize + index + 1}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{item.title}</p>
-                    {item.description && <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{item.description}</p>}
-                    <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                      Added by {who(item.creator)} · {formatDate(item.created_at)}
-                    </p>
+                <li key={item.id} className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-6 py-4 hover:bg-white/35 dark:hover:bg-white/[0.03] transition-colors">
+                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <span className="w-6 text-center text-sm text-slate-400 shrink-0">{(table.page - 1) * table.pageSize + index + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{item.title}</p>
+                      {item.description && <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{item.description}</p>}
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                        Added by {who(item.creator)} · {formatDate(item.created_at)}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center flex-wrap justify-end gap-2 shrink-0 self-end sm:self-auto pl-10 sm:pl-0">
                     <button
                       onClick={() => setHistoryFor(item)}
                       title="History"

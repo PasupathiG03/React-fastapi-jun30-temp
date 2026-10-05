@@ -4,7 +4,7 @@ import { Users, Plus, Trash2, ToggleLeft, ToggleRight, X, Edit2, ShieldAlert } f
 import { UserItem, fetchUsers, createUser, updateUser, deleteUser, UserCreatePayload } from "@/services/user";
 import { RoleItem, fetchRoles } from "@/services/role";
 import { createPortal } from "react-dom";
-import { TablePagination, TableToolbar } from "@/components/DataTableControls";
+import { TablePagination, TableSearchInput, TableExportButton } from "@/components/DataTableControls";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { CustomSelect } from "@/components/CustomSelect";
 import { useTableData } from "@/hooks/useTableData";
@@ -320,18 +320,20 @@ export default function UserManagementPage() {
             <div className="h-3 w-12 bg-slate-100 dark:bg-white/5 rounded" />
           </div>
         ) : (
-          <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.06] flex items-center justify-between gap-4">
-            <h2 className="text-base font-bold text-slate-900 dark:text-white">Users</h2>
-            <div className="flex items-center gap-4">
+          <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.06] flex flex-wrap sm:flex-nowrap sm:items-center gap-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">Users</h2>
               <span className="text-xs text-slate-400">{users.length} user{users.length !== 1 ? "s" : ""}</span>
-              <TableToolbar
-                query={table.query}
-                onQueryChange={table.setQuery}
-                onExport={handleExport}
-                exportDisabled={table.filtered.length === 0}
-                placeholder="Search users..."
-              />
             </div>
+            {/* Export sits top-right next to the title on mobile; search drops to its own full-width row
+                below it. From `sm` up, both sit together to the right of the title in one row instead. */}
+            <TableExportButton onExport={handleExport} disabled={table.filtered.length === 0} className="ml-auto sm:ml-0 sm:order-3" />
+            <TableSearchInput
+              query={table.query}
+              onQueryChange={table.setQuery}
+              placeholder="Search users..."
+              className="basis-full sm:basis-auto sm:w-52 sm:ml-auto sm:order-2"
+            />
           </div>
         )}
 
@@ -364,75 +366,79 @@ export default function UserManagementPage() {
           <div className="flex flex-col">
             <ul className="divide-y divide-slate-100 dark:divide-white/[0.04] m-0 p-0">
               {table.paged.map((user, index) => (
-                <li key={user.id} className="flex items-center gap-4 px-6 py-3.5 hover:bg-white/35 dark:hover:bg-white/[0.02] transition-colors bg-white dark:bg-transparent">
+                <li key={user.id} className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-4 px-6 py-3.5 hover:bg-white/35 dark:hover:bg-white/[0.02] transition-colors bg-white dark:bg-transparent">
 
-                  {/* S.No */}
-                  <div className="w-8 shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500 text-center">
-                    {(table.page - 1) * table.pageSize + index + 1}
+                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                    {/* S.No */}
+                    <div className="w-8 shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500 text-center">
+                      {(table.page - 1) * table.pageSize + index + 1}
+                    </div>
+
+                    {/* Icon */}
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                      style={{
+                        background: user.is_active
+                          ? "rgba(14, 165, 233, 0.15)"
+                          : "rgba(148, 163, 184, 0.1)",
+                      }}
+                    >
+                      <Users className={`w-4 h-4 ${user.is_active ? "text-sky-500" : "text-slate-400"}`} />
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
+                        {user.employee_name || user.employee_id}
+                      </p>
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate mt-0.5">
+                        {user.employee_id}
+                        {user.location && ` • ${user.location}`}
+                        {user.role && ` • ${user.role.name}`}
+                      </p>
+                    </div>
+
+                    {/* Status badge */}
+                    <span
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${user.is_active
+                          ? "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400"
+                          : "bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400"
+                        }`}
+                    >
+                      {user.is_active ? "Active" : "Inactive"}
+                    </span>
                   </div>
-
-                  {/* Icon */}
-                  <div
-                    className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-                    style={{
-                      background: user.is_active
-                        ? "rgba(14, 165, 233, 0.15)"
-                        : "rgba(148, 163, 184, 0.1)",
-                    }}
-                  >
-                    <Users className={`w-4 h-4 ${user.is_active ? "text-sky-500" : "text-slate-400"}`} />
-                  </div>
-
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
-                      {user.employee_name || user.employee_id}
-                    </p>
-                    <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate mt-0.5">
-                      {user.employee_id}
-                      {user.location && ` • ${user.location}`}
-                      {user.role && ` • ${user.role.name}`}
-                    </p>
-                  </div>
-
-                  {/* Status badge */}
-                  <span
-                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${user.is_active
-                        ? "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400"
-                        : "bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400"
-                      }`}
-                  >
-                    {user.is_active ? "Active" : "Inactive"}
-                  </span>
 
                   {/* Actions */}
-                  <button
-                    onClick={() => handleOpenModal(user)}
-                    className="text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 transition-colors shrink-0 mx-1.5"
-                    title="Edit user"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center shrink-0 self-end sm:self-auto pl-11 sm:pl-0">
+                    <button
+                      onClick={() => handleOpenModal(user)}
+                      className="text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 transition-colors shrink-0 mx-1.5"
+                      title="Edit user"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
 
-                  <button
-                    onClick={() => handleToggleStatus(user)}
-                    className="text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 transition-colors shrink-0"
-                    title={user.is_active ? "Deactivate" : "Activate"}
-                  >
-                    {user.is_active ? (
-                      <ToggleRight className="w-5 h-5 text-sky-500" />
-                    ) : (
-                      <ToggleLeft className="w-5 h-5" />
-                    )}
-                  </button>
+                    <button
+                      onClick={() => handleToggleStatus(user)}
+                      className="text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 transition-colors shrink-0"
+                      title={user.is_active ? "Deactivate" : "Activate"}
+                    >
+                      {user.is_active ? (
+                        <ToggleRight className="w-5 h-5 text-sky-500" />
+                      ) : (
+                        <ToggleLeft className="w-5 h-5" />
+                      )}
+                    </button>
 
-                  <button
-                    onClick={() => handleDelete(user)}
-                    className="text-slate-300 dark:text-slate-600 hover:text-rose-500 transition-colors shrink-0 ml-1.5"
-                    title="Delete user"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                    <button
+                      onClick={() => handleDelete(user)}
+                      className="text-slate-300 dark:text-slate-600 hover:text-rose-500 transition-colors shrink-0 ml-1.5"
+                      title="Delete user"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>

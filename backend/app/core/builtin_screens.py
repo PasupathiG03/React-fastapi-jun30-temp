@@ -39,6 +39,12 @@ DEFAULT_MENUS = [
 
 BUILT_IN_SCREENS = frozenset(item["url"] for _, item in DEFAULT_MENUS)
 
+# These two processes hold nothing but hardcoded Developer nav items (Sidebar.tsx's DEV_DASHBOARD /
+# DEV_ROUTER_SETUP, never read from the menus table for their label/icon) -- unlike Access Control, they
+# are never meant to be managed like a regular process. app/api/processes.py uses this to stop them being
+# renamed, deactivated or deleted there, which is what let the Dashboard process go inactive before.
+PROTECTED_PROCESS_NAMES = frozenset({DASHBOARD_PROCESS["name"], DEVELOPER_PROCESS["name"]})
+
 
 def ensure_default_menus():
     """Add any missing built-in screen (and its process), and bring back one that was deleted or

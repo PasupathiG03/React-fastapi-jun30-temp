@@ -34,10 +34,6 @@ class LoginResponse(BaseModel):
     expires_in_minutes: int  # longest a single sign-in can last
 
 
-class TokenData(BaseModel):
-    employee_id: str
-
-
 class UserOut(BaseModel):
     id: int
     employee_id: str

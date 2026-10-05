@@ -5,7 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db, get_superuser, get_current_user, require_screen
-from app.core.builtin_screens import MENU_ACCESS_SCREEN
+from app.core.builtin_screens import MENU_ACCESS_SCREEN, PROTECTED_PROCESS_NAMES
 from app.models.process import Process
 from app.schemas.process import ProcessCreate, ProcessOut, ProcessReorderItem, ProcessUpdate
 
@@ -85,6 +85,12 @@ def update_process(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Process not found")
 
     update_data = payload.model_dump(exclude_unset=True)
+    if process.name in PROTECTED_PROCESS_NAMES:
+        if update_data.get("is_active") is False:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This process cannot be deactivated")
+        if "name" in update_data and update_data["name"] != process.name:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This process cannot be renamed")
+
     if "name" in update_data and update_data["name"] != process.name:
         existing = db.query(Process).filter(
             Process.id != process_id, Process.name == update_data["name"]
@@ -116,6 +122,8 @@ def delete_process(
     process = db.query(Process).filter(Process.id == process_id).first()
     if not process:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Process not found")
+    if process.name in PROTECTED_PROCESS_NAMES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This process cannot be deleted")
 
     process.is_active = False
     _renumber_active_processes(db)
