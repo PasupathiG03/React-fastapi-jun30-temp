@@ -22,6 +22,26 @@ export interface UserCreatePayload {
   role_id?: number | null;
 }
 
+export interface BulkUserInput {
+  employee_id: string;
+  employee_name?: string | null;
+  location?: string | null;
+  role_name?: string | null;
+}
+
+export interface BulkImportRowResult {
+  row: number;
+  employee_id: string;
+  status: "created" | "error";
+  message?: string | null;
+}
+
+export interface BulkImportResult {
+  created: number;
+  failed: number;
+  rows: BulkImportRowResult[];
+}
+
 function authHeaders(): Record<string, string> {
   // The session travels in an HttpOnly cookie (see lib/api.ts); no token is handled here.
   return { "Content-Type": "application/json" };
@@ -69,6 +89,19 @@ export async function updateUser(
     method: "PUT",
     headers: authHeaders(),
     body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(extractDetail(err));
+  }
+  return res.json();
+}
+
+export async function bulkImportUsers(rows: BulkUserInput[]): Promise<BulkImportResult> {
+  const res = await fetch(`${API_BASE_URL}/api/users/bulk-import`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(rows),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

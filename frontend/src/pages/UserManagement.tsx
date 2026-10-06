@@ -1,7 +1,31 @@
 
-import { useEffect, useState } from "react";
-import { Users, Plus, Trash2, ToggleLeft, ToggleRight, X, Edit2, ShieldAlert } from "lucide-react";
-import { UserItem, fetchUsers, createUser, updateUser, deleteUser, UserCreatePayload } from "@/services/user";
+import { useEffect, useRef, useState } from "react";
+import {
+  Users,
+  Plus,
+  Trash2,
+  ToggleLeft,
+  ToggleRight,
+  X,
+  Edit2,
+  ShieldAlert,
+  Upload,
+  Download,
+  FileSpreadsheet,
+  CheckCircle2,
+  AlertCircle,
+} from "lucide-react";
+import {
+  UserItem,
+  fetchUsers,
+  createUser,
+  updateUser,
+  deleteUser,
+  UserCreatePayload,
+  bulkImportUsers,
+  BulkUserInput,
+  BulkImportResult,
+} from "@/services/user";
 import { RoleItem, fetchRoles } from "@/services/role";
 import { createPortal } from "react-dom";
 import { TablePagination, TableSearchInput, TableExportButton } from "@/components/DataTableControls";
@@ -9,6 +33,14 @@ import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { CustomSelect } from "@/components/CustomSelect";
 import { useTableData } from "@/hooks/useTableData";
 import { exportToCsv } from "@/lib/exportData";
+import { parseCsv, mapCsvColumns } from "@/lib/importCsv";
+
+const BULK_IMPORT_COLUMNS: Record<string, string[]> = {
+  employee_id: ["employee_id", "employee id", "id", "emp id", "empid"],
+  employee_name: ["employee_name", "employee name", "name"],
+  location: ["location"],
+  role_name: ["role_name", "role name", "role"],
+};
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState<UserItem[]>([]);
@@ -27,6 +59,16 @@ export default function UserManagementPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  // Bulk import
+  const [isBulkOpen, setIsBulkOpen] = useState(false);
+  const [bulkFileName, setBulkFileName] = useState("");
+  const [bulkRows, setBulkRows] = useState<BulkUserInput[]>([]);
+  const [bulkParseError, setBulkParseError] = useState("");
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const [bulkResult, setBulkResult] = useState<BulkImportResult | null>(null);
+  const [bulkDragOver, setBulkDragOver] = useState(false);
+  const bulkFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadUsers();
@@ -146,6 +188,105 @@ export default function UserManagementPage() {
     ], table.filtered);
   }
 
+  function handleOpenBulk() {
+    setBulkFileName("");
+    setBulkRows([]);
+    setBulkParseError("");
+    setBulkResult(null);
+    setIsBulkOpen(true);
+  }
+
+  function handleDownloadTemplate() {
+    exportToCsv(
+      "user_import_template",
+      [
+        { header: "Employee ID", value: (r: Record<string, string>) => r.employee_id },
+        { header: "Employee Name", value: (r: Record<string, string>) => r.employee_name },
+        { header: "Location", value: (r: Record<string, string>) => r.location },
+        { header: "Role", value: (r: Record<string, string>) => r.role },
+      ],
+      [{ employee_id: "MAH1234", employee_name: "Jane Doe", location: "New York Office", role: "Admin" }]
+    );
+  }
+
+  async function processBulkFile(file: File) {
+    setBulkResult(null);
+    setBulkFileName(file.name);
+    if (!/\.csv$/i.test(file.name)) {
+      setBulkRows([]);
+      setBulkParseError("Please upload a .csv file.");
+      return;
+    }
+    try {
+      const text = await file.text();
+      const rows = parseCsv(text);
+      if (rows.length < 2) {
+        setBulkRows([]);
+        setBulkParseError("That file has no data rows below the header.");
+        return;
+      }
+      const [header, ...dataRows] = rows;
+      const colIndex = mapCsvColumns(header, BULK_IMPORT_COLUMNS);
+      if (colIndex.employee_id === undefined) {
+        setBulkRows([]);
+        setBulkParseError('Couldn\'t find an "Employee ID" column in that file\'s header row.');
+        return;
+      }
+      const parsed: BulkUserInput[] = dataRows
+        .filter((r) => r.some((cell) => cell.trim() !== ""))
+        .map((r) => ({
+          employee_id: (r[colIndex.employee_id] ?? "").trim(),
+          employee_name: colIndex.employee_name !== undefined ? (r[colIndex.employee_name] ?? "").trim() || null : null,
+          location: colIndex.location !== undefined ? (r[colIndex.location] ?? "").trim() || null : null,
+          role_name: colIndex.role_name !== undefined ? (r[colIndex.role_name] ?? "").trim() || null : null,
+        }));
+      setBulkParseError("");
+      setBulkRows(parsed);
+    } catch {
+      setBulkRows([]);
+      setBulkParseError("Couldn't read that file. Make sure it's a .csv export.");
+    }
+  }
+
+  function handleBulkFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) processBulkFile(file);
+  }
+
+  function handleBulkDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setBulkDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) processBulkFile(file);
+  }
+
+  async function handleBulkSubmit() {
+    if (bulkRows.length === 0) return;
+    setBulkSubmitting(true);
+    setBulkParseError("");
+    try {
+      const result = await bulkImportUsers(bulkRows);
+      if (result.created > 0) await loadUsers();
+      if (result.failed === 0) {
+        // Nothing for the user to review -- close and report it the same way a single Add User does.
+        handleCloseBulk();
+        setSuccess(`${result.created} user${result.created !== 1 ? "s" : ""} imported successfully`);
+        setTimeout(() => setSuccess(""), 4000);
+      } else {
+        setBulkResult(result);
+      }
+    } catch (err) {
+      setBulkParseError(err instanceof Error ? err.message : "Bulk import failed");
+    } finally {
+      setBulkSubmitting(false);
+    }
+  }
+
+  function handleCloseBulk() {
+    setIsBulkOpen(false);
+    if (bulkFileInputRef.current) bulkFileInputRef.current.value = "";
+  }
+
   return (
     <PageContainer>
       {/* Header */}
@@ -166,13 +307,22 @@ export default function UserManagementPage() {
           title="User Management"
           subtitle="Manage employee access and roles"
           actions={
-            <button
-              onClick={() => handleOpenModal()}
-              className="group relative flex items-center gap-2 px-4 py-2.5 text-white rounded-xl text-xs font-semibold bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-[0_0_15px_rgba(14,165,233,0.3)] transition-all"
-            >
-              <Plus className="w-4 h-4" />
-              Add User
-            </button>
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={handleOpenBulk}
+                className="flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300 glass-btn border border-slate-200 dark:border-white/10 rounded-xl hover:text-sky-600 dark:hover:text-sky-400 transition-colors shadow-sm"
+              >
+                <Upload className="w-4 h-4" />
+                Bulk Import
+              </button>
+              <button
+                onClick={() => handleOpenModal()}
+                className="group relative flex items-center gap-2 px-4 py-2.5 text-white rounded-xl text-xs font-semibold bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-[0_0_15px_rgba(14,165,233,0.3)] transition-all"
+              >
+                <Plus className="w-4 h-4" />
+                Add User
+              </button>
+            </div>
           }
         />
       )}
@@ -293,6 +443,187 @@ export default function UserManagementPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Bulk Import Modal */}
+      {isBulkOpen && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+          <div className="glass-modal rounded-2xl w-full max-w-2xl overflow-visible">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between rounded-t-2xl bg-white/30 dark:bg-white/[0.02]">
+              <div className="flex items-center gap-2">
+                <Upload className="w-4 h-4 text-sky-500" />
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white">Bulk Import Users</h2>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseBulk}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {!bulkResult ? (
+                <>
+                  <div className="flex items-center justify-end">
+                    <button
+                      type="button"
+                      onClick={handleDownloadTemplate}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-700 dark:text-sky-300 hover:underline"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Download a template
+                    </button>
+                  </div>
+
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); setBulkDragOver(true); }}
+                    onDragLeave={() => setBulkDragOver(false)}
+                    onDrop={handleBulkDrop}
+                    onClick={() => bulkFileInputRef.current?.click()}
+                    className={`flex flex-col items-center justify-center gap-2 px-6 py-8 rounded-xl border-2 border-dashed text-center cursor-pointer transition-colors ${bulkDragOver
+                      ? "border-sky-500 bg-sky-500/10"
+                      : "border-slate-200 dark:border-white/10 hover:border-sky-400 dark:hover:border-sky-500/50 bg-white/30 dark:bg-white/[0.02]"
+                      }`}
+                  >
+                    <input
+                      ref={bulkFileInputRef}
+                      type="file"
+                      accept=".csv,text/csv"
+                      onChange={handleBulkFileChange}
+                      onClick={(e) => e.stopPropagation()}
+                      className="hidden"
+                    />
+                    <FileSpreadsheet className={`w-7 h-7 ${bulkDragOver ? "text-sky-500" : "text-slate-400 dark:text-slate-500"}`} />
+                    <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                      Drag and drop a .csv file here, or click to browse
+                    </p>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                      Needs an Employee ID column; Name, Location and Role are optional
+                    </p>
+                    {bulkFileName && !bulkParseError && (
+                      <p className="mt-1 text-[11px] font-medium text-sky-600 dark:text-sky-400">
+                        {bulkFileName} &middot; {bulkRows.length} row{bulkRows.length !== 1 ? "s" : ""} ready to import
+                      </p>
+                    )}
+                  </div>
+
+                  {bulkParseError && (
+                    <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-600 dark:text-red-400">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      {bulkParseError}
+                    </div>
+                  )}
+
+                  {bulkRows.length > 0 && !bulkParseError && (
+                    <div className="rounded-xl border border-slate-200 dark:border-white/10 overflow-hidden">
+                      <div className="max-h-64 overflow-y-auto">
+                        <table className="w-full text-xs">
+                          <thead className="sticky top-0 bg-slate-50 dark:bg-[#0c1427] text-slate-500 dark:text-slate-400">
+                            <tr>
+                              <th className="text-left font-semibold px-3 py-2">Employee ID</th>
+                              <th className="text-left font-semibold px-3 py-2">Name</th>
+                              <th className="text-left font-semibold px-3 py-2">Location</th>
+                              <th className="text-left font-semibold px-3 py-2">Role</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-white/[0.06]">
+                            {bulkRows.map((r, i) => (
+                              <tr key={i} className={!r.employee_id ? "bg-red-50/60 dark:bg-red-500/[0.06]" : ""}>
+                                <td className="px-3 py-1.5 text-slate-700 dark:text-slate-300">
+                                  {r.employee_id || <span className="text-red-500">missing</span>}
+                                </td>
+                                <td className="px-3 py-1.5 text-slate-500 dark:text-slate-400">{r.employee_name || "—"}</td>
+                                <td className="px-3 py-1.5 text-slate-500 dark:text-slate-400">{r.location || "—"}</td>
+                                <td className="px-3 py-1.5 text-slate-500 dark:text-slate-400">{r.role_name || "—"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="px-3 py-1.5 text-[11px] text-slate-400 bg-slate-50 dark:bg-white/[0.02] dark:text-slate-500 border-t border-slate-100 dark:border-white/[0.06]">
+                        {bulkRows.length} row{bulkRows.length !== 1 ? "s" : ""} total
+                      </div>
+                    </div>
+                  )}
+
+                  {bulkRows.length > 0 && !bulkParseError && (
+                    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-xs text-slate-600 dark:text-slate-300">
+                      <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />
+                      <span>
+                        Every imported user gets the default password{" "}
+                        <b className="font-mono font-bold text-amber-700 dark:text-amber-300">Admin@123#</b>. Rows
+                        with a duplicate or invalid Employee ID, or a Role name that doesn't match an existing role,
+                        will fail individually without affecting the rest.
+                      </span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-semibold">
+                      <CheckCircle2 className="w-4 h-4" />
+                      {bulkResult.created} created
+                    </div>
+                    {bulkResult.failed > 0 && (
+                      <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-xs font-semibold">
+                        <AlertCircle className="w-4 h-4" />
+                        {bulkResult.failed} failed
+                      </div>
+                    )}
+                  </div>
+
+                  {bulkResult.failed > 0 && (
+                    <div className="rounded-xl border border-slate-200 dark:border-white/10 overflow-hidden max-h-64 overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-slate-50 dark:bg-white/[0.04] text-slate-500 dark:text-slate-400 sticky top-0">
+                          <tr>
+                            <th className="text-left font-semibold px-3 py-2">Row</th>
+                            <th className="text-left font-semibold px-3 py-2">Employee ID</th>
+                            <th className="text-left font-semibold px-3 py-2">Reason</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-white/[0.06]">
+                          {bulkResult.rows.filter((r) => r.status === "error").map((r) => (
+                            <tr key={r.row}>
+                              <td className="px-3 py-1.5 text-slate-500 dark:text-slate-400">{r.row}</td>
+                              <td className="px-3 py-1.5 text-slate-700 dark:text-slate-300">{r.employee_id || "—"}</td>
+                              <td className="px-3 py-1.5 text-red-600 dark:text-red-400">{r.message}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.03] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 shrink-0 rounded-b-2xl">
+              <button
+                type="button"
+                onClick={handleCloseBulk}
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+              >
+                {bulkResult ? "Done" : "Cancel"}
+              </button>
+              {!bulkResult && (
+                <button
+                  type="button"
+                  onClick={handleBulkSubmit}
+                  disabled={bulkSubmitting || bulkRows.length === 0 || !!bulkParseError}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 transition-all disabled:opacity-60 shadow-sm"
+                >
+                  <Upload className="w-4 h-4" />
+                  {bulkSubmitting ? "Importing..." : `Import ${bulkRows.length || ""} User${bulkRows.length !== 1 ? "s" : ""}`}
+                </button>
+              )}
+            </div>
           </div>
         </div>,
         document.body

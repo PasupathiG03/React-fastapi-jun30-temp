@@ -82,3 +82,25 @@ class UserOut(UserBase):
     creator: CreatorOut | None = None
 
     model_config = {"from_attributes": True}
+
+
+class BulkUserInput(BaseModel):
+    """One row from an imported file. role_name is resolved to a role_id server-side (case-insensitive,
+    active roles only) so the file can use a human-readable role name instead of an opaque id."""
+    employee_id: str
+    employee_name: str | None = None
+    location: str | None = None
+    role_name: str | None = None
+
+
+class BulkImportRowResult(BaseModel):
+    row: int
+    employee_id: str
+    status: str  # "created" | "error"
+    message: str | None = None
+
+
+class BulkImportResult(BaseModel):
+    created: int
+    failed: int
+    rows: list[BulkImportRowResult]
