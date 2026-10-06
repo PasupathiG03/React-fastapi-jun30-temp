@@ -168,7 +168,7 @@ function FlyoutGroup({
                   to={href}
                   role="menuitem"
                   className={`group flex items-center gap-3 px-3 py-2 rounded-xl text-[13.5px] font-medium transition-all duration-150 ${current
-                    ? "bg-sky-200 text-sky-800 dark:bg-sky-500/30 dark:text-sky-200"
+                    ? "dark:bg-sky-500/20 dark:text-white [html:not(.dark)_&]:bg-[#e0f2fe] [html:not(.dark)_&]:text-[#0284c7] [html:not(.dark)_&]:font-semibold"
                     : "text-slate-600 dark:text-slate-300 hover:text-sky-700 dark:hover:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-500/25 hover:translate-x-0.5 hover:shadow-sm"
                     }`}
                 >
