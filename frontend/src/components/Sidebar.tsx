@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronDown,
+  GitBranch,
   Layers,
   LayoutDashboard,
   ShieldCheck,
@@ -17,8 +18,11 @@ import { Cog } from "flowbite-react-icons/outline";
 import { logout } from "@/lib/auth";
 import { ICON_MAP } from "@/lib/icons";
 import { fetchMenus, type MenuItem } from "@/services/menu";
+import { fetchMyStages, type MyWorkflow } from "@/services/workflow";
 import PulseLogo from "@/components/PulseLogo";
 import { useLive } from "@/context/LiveContext";
+import { buildStageRoutes } from "@/lib/slug";
+import { getStageIcon } from "@/lib/stageIcons";
 import { API_BASE_URL } from "@/lib/constants";
 import { useReportPageLoading } from "@/context/PageLoadingContext";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -207,6 +211,7 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
 
   const { accessVersion } = useLive();
   const [dynamicMenus, setDynamicMenus] = useState<MenuItem[]>([]);
+  const [myWorkflows, setMyWorkflows] = useState<MyWorkflow[]>([]);
   const [fetching, setFetching] = useState(true);
   // Despite the name, this is true for any superuser too, not just the Developer role (mirrors
   // has_full_access in backend/app/core/dependencies.py) -- both get the fully hardcoded nav below.
@@ -274,6 +279,32 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
     setProcessChoice((prev) => ({ ...prev, [g.key]: !isProcessOpen(g) }));
   }
 
+  // Workflow groups: each workflow is a group, its stages (names come from the database) are sub-menus.
+  // Addresses are built from this component's own workflow list, so every stage always has its own
+  // unique, readable address (/workflows/<workflow>/<stage>).
+  const stageRoutes = useMemo(
+    () =>
+      buildStageRoutes(
+        myWorkflows.flatMap((w) =>
+          w.stages.map((s) => ({
+            workflow_id: w.id,
+            workflow_name: w.name,
+            stage_id: s.id,
+            stage_name: s.name,
+            sequence_order: s.sequence_order,
+          }))
+        )
+      ),
+    [myWorkflows]
+  );
+  const stagePath = (_w: MyWorkflow, stageId: number) =>
+    stageRoutes.find((r) => r.stageId === stageId)?.path ?? `/workflows/stage-${stageId}`;
+  const isWorkflowActive = (w: MyWorkflow) => w.stages.some((s) => pathname === stagePath(w, s.id));
+  const isWorkflowOpen = (w: MyWorkflow) => processChoice[-w.id] ?? false;
+  function toggleWorkflow(w: MyWorkflow) {
+    setProcessChoice((prev) => ({ ...prev, [-w.id]: !isWorkflowOpen(w) }));
+  }
+
   const [adminOpen, setAdminOpen] = useState<boolean | null>(null);
   const [devOpen, setDevOpen] = useState<boolean | null>(null);
 
@@ -283,6 +314,10 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
       .then((data) => setIsDeveloper(Boolean(data?.is_superuser && data?.role?.name?.trim().toLowerCase() === "developer")))
       .catch(() => { })
       .finally(() => setRoleReady(true));
+
+    fetchMyStages()
+      .then(setMyWorkflows)
+      .catch(() => { });
 
     fetchMenus()
       .then(setDynamicMenus)
@@ -456,6 +491,17 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
                 ))}
               </div>
             )}
+
+            {/* Section 4: Workflows */}
+            {!collapsed && (
+              <div className="px-3 pt-1.5 pb-0.5">
+                <div className="h-2 w-20 bg-slate-200/80 dark:bg-white/10 rounded animate-pulse" />
+              </div>
+            )}
+            <div className={`flex items-center px-3 py-2 rounded-xl gap-3 animate-pulse bg-white/30 dark:bg-white/[0.03] ${collapsed ? "justify-center" : ""}`}>
+              <div className="w-5 h-5 rounded-md bg-slate-200 dark:bg-white/10 shrink-0" />
+              {!collapsed && <div className="h-3.5 w-20 bg-slate-200 dark:bg-white/10 rounded" />}
+            </div>
           </div>
         ) : (
           <>
@@ -598,6 +644,42 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
                   );
                 })
                 )}
+              </>
+            )}
+
+            {/* Workflow stages the user's role may open */}
+            {myWorkflows.length > 0 && (
+              <>
+                {!collapsed && (
+                  <p className="px-3 pt-3 pb-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                    Workflows
+                  </p>
+                )}
+                {collapsed
+                  ? myWorkflows.map((w) => (
+                    <FlyoutGroup
+                      key={`wf-${w.id}`}
+                      label={w.name}
+                      Icon={GitBranch}
+                      active={isWorkflowActive(w)}
+                      items={w.stages.map((s) => ({
+                        href: stagePath(w, s.id),
+                        label: s.name,
+                        Icon: getStageIcon(s.stage_type),
+                      }))}
+                    />
+                  ))
+                  : myWorkflows.map((w) =>
+                    renderGroup(
+                      w.name,
+                      GitBranch,
+                      isWorkflowOpen(w),
+                      isWorkflowActive(w),
+                      () => toggleWorkflow(w),
+                      w.stages.map((s) => renderItem(stagePath(w, s.id), s.name, getStageIcon(s.stage_type), true)),
+                      `wf-${w.id}`
+                    )
+                  )}
               </>
             )}
           </>
