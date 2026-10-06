@@ -16,6 +16,9 @@ import { useReportPageLoading } from "@/context/PageLoadingContext";
 
 const key = (roleId: number, menuId: number) => `${roleId}:${menuId}`;
 
+// Developer Management holds only developer-only screens (Router Setup) which are never configurable in Menu Access.
+const HIDDEN_MENU_ACCESS_PROCESSES = new Set(["developer management"]);
+
 export default function MenuAccessPage() {
   const [processes, setProcesses] = useState<ProcessItem[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowDetail[]>([]);
@@ -30,9 +33,12 @@ export default function MenuAccessPage() {
   useEffect(() => {
     Promise.all([fetchProcesses().catch(() => [] as ProcessItem[]), fetchWorkflows().catch(() => [] as WorkflowDetail[])])
       .then(([procs, wfs]) => {
-        setProcesses(procs);
+        const visibleProcs = procs.filter(
+          (p) => !HIDDEN_MENU_ACCESS_PROCESSES.has(p.name.trim().toLowerCase())
+        );
+        setProcesses(visibleProcs);
         setWorkflows(wfs);
-        const first = procs[0] ? `p:${procs[0].id}` : wfs[0] ? `w:${wfs[0].id}` : null;
+        const first = visibleProcs[0] ? `p:${visibleProcs[0].id}` : wfs[0] ? `w:${wfs[0].id}` : null;
         setTarget(first);
         if (!first) setLoading(false);
       })

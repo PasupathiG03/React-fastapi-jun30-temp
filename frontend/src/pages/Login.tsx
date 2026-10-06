@@ -19,6 +19,7 @@ import {
 import { loginApi } from "@/services/auth";
 import { markSignedIn, takeLogoutReason } from "@/lib/auth";
 import { useTheme } from "@/context/ThemeContext";
+import { getAppBackground } from "@/lib/appBackground";
 import Copyright from "@/components/Copyright";
 
 // Credentials must be typed by hand: no paste, drop, copy, cut or right-click menu on the login fields.
@@ -58,13 +59,8 @@ export default function LoginPage() {
 
   return (
     <div
-      className="app-ambient relative min-h-screen w-full flex flex-col lg:flex-row items-stretch p-3.5 sm:p-5 transition-colors duration-300 overflow-x-hidden font-sans"
-      style={{
-        background:
-          theme === "dark"
-            ? "radial-gradient(ellipse 65% 45% at 20% 5%, rgba(14, 165, 233, 0.12), transparent 70%), radial-gradient(ellipse 55% 45% at 90% 90%, rgba(2, 132, 199, 0.08), transparent 70%), #070c1e"
-            : "linear-gradient(135deg, #eef4fc 0%, #e2edfd 50%, #d8e7fa 100%)",
-      }}
+      className="app-ambient login-pattern relative min-h-screen w-full flex flex-col lg:flex-row items-stretch p-3.5 sm:p-5 transition-colors duration-300 overflow-x-hidden font-sans"
+      style={getAppBackground(theme)}
     >
       {/* ── Top-Right Theme Toggle ── */}
       <div className="absolute top-5 right-5 sm:top-6 sm:right-6 z-30">

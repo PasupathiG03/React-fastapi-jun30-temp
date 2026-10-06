@@ -5,7 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db, get_superuser, get_current_user, require_screen
-from app.core.builtin_screens import MENU_ACCESS_SCREEN, PROTECTED_PROCESS_NAMES
+from app.core.builtin_screens import DEVELOPER_PROCESS, MENU_ACCESS_SCREEN, PROTECTED_PROCESS_NAMES
 from app.models.process import Process
 from app.schemas.process import ProcessCreate, ProcessOut, ProcessReorderItem, ProcessUpdate
 
@@ -30,8 +30,16 @@ def list_processes(
     # Router Setup (superusers) and the Menu Access process dropdown use this list.
     _=Depends(require_screen(MENU_ACCESS_SCREEN)),
 ):
-    """List all active processes."""
-    return db.query(Process).filter(Process.is_active == True).order_by(Process.order, Process.name).all()
+    """List all active processes (excluding internal Developer Management)."""
+    return (
+        db.query(Process)
+        .filter(
+            Process.is_active == True,
+            func.lower(Process.name) != func.lower(DEVELOPER_PROCESS["name"]),
+        )
+        .order_by(Process.order, Process.name)
+        .all()
+    )
 
 
 @router.post("/", response_model=ProcessOut, status_code=status.HTTP_201_CREATED)
