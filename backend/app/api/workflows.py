@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,15 +7,10 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.dependencies import get_current_user, get_db, has_full_access, require_screen
 from app.core.builtin_screens import MENU_ACCESS_SCREEN, WORKFLOW_SCREEN
 from app.models.role import Role
-from app.models.workflow import StageType, Workflow, WorkflowItem, WorkflowStage
+from app.models.workflow import StageType, Workflow, WorkflowStage
 from app.schemas.workflow import (
     CopyAccess,
-    ItemCreate,
-    ItemHistoryOut,
-    ItemMove,
-    ItemOut,
     MyWorkflowOut,
-    PendingStageOut,
     StageAccessOut,
     StageCreate,
     StageOut,
@@ -103,41 +97,6 @@ def list_workflows(
         .order_by(Workflow.name)
         .all()
     )
-
-
-@router.get("/pending", response_model=List[PendingStageOut])
-def pending_by_stage(
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    """Open-item counts for every stage the current user may open (drives the dashboard and the bell)."""
-    counts = dict(
-        db.query(WorkflowItem.current_stage_id, func.count(WorkflowItem.id))
-        .filter(WorkflowItem.is_completed == False, WorkflowItem.current_stage_id.isnot(None))
-        .group_by(WorkflowItem.current_stage_id)
-        .all()
-    )
-    workflows = (
-        db.query(Workflow)
-        .options(joinedload(Workflow.stages))
-        .filter(Workflow.is_active == True)
-        .order_by(Workflow.name)
-        .all()
-    )
-    return [
-        PendingStageOut(
-            workflow_id=w.id,
-            workflow_name=w.name,
-            stage_id=s.id,
-            stage_name=s.name,
-            stage_type=s.stage_type,
-            sequence_order=s.sequence_order,
-            count=counts.get(s.id, 0),
-        )
-        for w in workflows
-        for s in w.stages
-        if _user_can_open(current_user, s)
-    ]
 
 
 @router.post("/", response_model=WorkflowOut, status_code=status.HTTP_201_CREATED)
@@ -307,7 +266,7 @@ def get_stage(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    """A single stage for its workspace page. 403 unless the user's role is assigned to it."""
+    """A single stage's configuration."""
     workflow = _get_workflow_or_404(db, workflow_id)
     stage = next((s for s in workflow.stages if s.id == stage_id), None)
     if stage is None:
@@ -345,181 +304,5 @@ def delete_stage(
     ).first()
     if not stage:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stage not found")
-    if db.query(WorkflowItem.id).filter(WorkflowItem.current_stage_id == stage_id).first():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This stage still has items. Move them out before deleting it.",
-        )
     db.delete(stage)
     db.commit()
-
-
-# ── Items moving through stages ──────────────────────────────────────────
-
-def _get_open_stage_for_user(db: Session, user, workflow_id: int, stage_id: int) -> WorkflowStage:
-    """The stage, provided it belongs to the workflow and the user's role may open it."""
-    workflow = _get_workflow_or_404(db, workflow_id)
-    stage = next((s for s in workflow.stages if s.id == stage_id), None)
-    if stage is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stage not found")
-    if not _user_can_open(user, stage):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this stage")
-    return stage
-
-
-def _get_item_at_users_stage(db: Session, user, item_id: int) -> WorkflowItem:
-    item = db.query(WorkflowItem).filter(WorkflowItem.id == item_id).first()
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
-    if item.is_completed or item.current_stage is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This item is already completed")
-    if not _user_can_open(user, item.current_stage):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This item is not at a stage you can work on")
-    return item
-
-
-def _log(item: WorkflowItem, actor, action: str, from_stage, to_stage, comment: str | None) -> None:
-    """Append one movement to the item's history (reassigning the column, not mutating the list in
-    place, so SQLAlchemy always sees the change)."""
-    item.history = [
-        *item.history,
-        {
-            "action": action,
-            "from_stage_id": from_stage.id if from_stage else None,
-            "from_stage_name": from_stage.name if from_stage else None,
-            "to_stage_id": to_stage.id if to_stage else None,
-            "to_stage_name": to_stage.name if to_stage else None,
-            "comment": (comment or "").strip() or None,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "actor": {"employee_id": actor.employee_id, "employee_name": actor.employee_name},
-        },
-    ]
-
-
-@router.get("/{workflow_id}/stages/{stage_id}/items", response_model=List[ItemOut])
-def list_stage_items(
-    workflow_id: int,
-    stage_id: int,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    """Open items currently sitting at this stage (oldest first)."""
-    _get_open_stage_for_user(db, current_user, workflow_id, stage_id)
-    return (
-        db.query(WorkflowItem)
-        .filter(WorkflowItem.workflow_id == workflow_id, WorkflowItem.current_stage_id == stage_id)
-        .order_by(WorkflowItem.id)
-        .all()
-    )
-
-
-@router.post("/{workflow_id}/items", response_model=ItemOut, status_code=status.HTTP_201_CREATED)
-def create_item(
-    workflow_id: int,
-    payload: ItemCreate,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    """Start a new item at the workflow's first stage (needs access to that stage)."""
-    workflow = _get_workflow_or_404(db, workflow_id)
-    if not workflow.is_active:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This workflow is inactive")
-    if not workflow.stages:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This workflow has no stages yet")
-    first = workflow.stages[0]
-    if not _user_can_open(current_user, first):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the first stage can start new items")
-
-    item = WorkflowItem(
-        workflow_id=workflow_id,
-        current_stage_id=first.id,
-        title=payload.title,
-        description=(payload.description or "").strip() or None,
-        history=[],
-    )
-    db.add(item)
-    db.flush()
-    _log(item, current_user, "created", None, first, None)
-    db.commit()
-    db.refresh(item)
-    return item
-
-
-@router.post("/items/{item_id}/advance", response_model=ItemOut)
-def advance_item(
-    item_id: int,
-    payload: ItemMove,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    """Send the item to the next stage, or complete it from the last stage."""
-    item = _get_item_at_users_stage(db, current_user, item_id)
-    stages = item.workflow.stages
-    idx = next(i for i, s in enumerate(stages) if s.id == item.current_stage_id)
-    current = stages[idx]
-    if idx + 1 < len(stages):
-        nxt = stages[idx + 1]
-        item.current_stage_id = nxt.id
-        _log(item, current_user, "advanced", current, nxt, payload.comment)
-    else:
-        item.current_stage_id = None
-        item.is_completed = True
-        _log(item, current_user, "completed", current, None, payload.comment)
-    db.commit()
-    db.refresh(item)
-    return item
-
-
-@router.post("/items/{item_id}/reject", response_model=ItemOut)
-def reject_item(
-    item_id: int,
-    payload: ItemMove,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    """Send the item back to the previous stage. A comment explaining why is required."""
-    if not (payload.comment or "").strip():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Please add a comment explaining why")
-    item = _get_item_at_users_stage(db, current_user, item_id)
-    stages = item.workflow.stages
-    idx = next(i for i, s in enumerate(stages) if s.id == item.current_stage_id)
-    if idx == 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The first stage has nowhere to send back to")
-    current, prev = stages[idx], stages[idx - 1]
-    item.current_stage_id = prev.id
-    _log(item, current_user, "rejected", current, prev, payload.comment)
-    db.commit()
-    db.refresh(item)
-    return item
-
-
-@router.get("/items/{item_id}/history", response_model=List[ItemHistoryOut])
-def item_history(
-    item_id: int,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    """Movement log of an item. Allowed for Developers and for roles that can open a stage the item has been in."""
-    item = db.query(WorkflowItem).filter(WorkflowItem.id == item_id).first()
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
-    # Allowed when the user can open the stage the item is at now, or one it has passed through.
-    touched = (
-        {h.get("from_stage_id") for h in item.history}
-        | {h.get("to_stage_id") for h in item.history}
-        | {item.current_stage_id}
-    )
-    if not any(_user_can_open(current_user, s) for s in item.workflow.stages if s.id in touched):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this item")
-    return [
-        ItemHistoryOut(
-            id=idx,
-            action=h["action"],
-            from_stage_name=h.get("from_stage_name"),
-            to_stage_name=h.get("to_stage_name"),
-            comment=h.get("comment"),
-            created_at=h.get("created_at"),
-            actor=h.get("actor"),
-        )
-        for idx, h in enumerate(item.history, start=1)
-    ]

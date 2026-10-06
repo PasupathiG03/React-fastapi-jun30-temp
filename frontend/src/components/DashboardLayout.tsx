@@ -7,9 +7,18 @@ import { useTheme } from "@/context/ThemeContext";
 import { PendingProvider } from "@/context/PendingContext";
 import SessionWatcher from "@/components/SessionWatcher";
 import { LiveProvider } from "@/context/LiveContext";
-import { PageLoadingProvider } from "@/context/PageLoadingContext";
+import { PageLoadingProvider, usePageLoading } from "@/context/PageLoadingContext";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import Copyright from "@/components/Copyright";
+
+function LayoutFooter({ loading }: { loading: boolean }) {
+  const { pageLoading } = usePageLoading();
+  return (
+    <footer className="shrink-0 text-center pb-0.5">
+      <Copyright loading={loading || pageLoading} className="text-xs text-slate-500 dark:text-slate-400" />
+    </footer>
+  );
+}
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -69,9 +78,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <main className="flex-1 overflow-y-auto pr-1 pb-6 min-w-0 [scrollbar-width:thin]">
                 {children}
               </main>
-              <footer className="shrink-0 text-center pb-0.5">
-                <Copyright className="text-xs text-slate-500 dark:text-slate-400" />
-              </footer>
+              <LayoutFooter loading={loading} />
             </div>
           </PageLoadingProvider>
         </div>

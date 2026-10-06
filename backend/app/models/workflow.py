@@ -1,7 +1,7 @@
 import enum
 
-from sqlalchemy import Boolean, Column, Enum, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy import Boolean, Column, Enum, ForeignKey, Integer, String
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -50,27 +50,3 @@ class WorkflowStage(AuditMixin, Base):
 
     def __repr__(self) -> str:
         return f"<WorkflowStage id={self.id} name={self.name!r}>"
-
-
-class WorkflowItem(AuditMixin, Base):
-    """A piece of work travelling through a workflow's stages. current_stage_id is NULL once it is completed."""
-
-    __tablename__ = "workflow_items"
-
-    id = Column(Integer, primary_key=True, index=True)
-    workflow_id = Column(Integer, ForeignKey("workflows.id", ondelete="CASCADE"), nullable=False, index=True)
-    current_stage_id = Column(Integer, ForeignKey("workflow_stages.id", ondelete="RESTRICT"), nullable=True, index=True)
-    title = Column(String(200), nullable=False)
-    description = Column(Text, nullable=True)
-    is_completed = Column(Boolean, default=False, nullable=False)
-    # Every movement (created/advanced/rejected/completed), oldest first. Each entry is a snapshot taken
-    # at the time -- action, from/to stage id and name, comment, created_at (ISO 8601), and the actor's
-    # employee_id/employee_name -- not a live join, so it stays correct even if a stage is later renamed
-    # or deleted, or the user's name changes. Built and read in app/api/workflows.py (_log, item_history).
-    history = Column(JSONB, nullable=False, default=list, server_default="[]")
-
-    workflow = relationship("Workflow")
-    current_stage = relationship("WorkflowStage")
-
-    def __repr__(self) -> str:
-        return f"<WorkflowItem id={self.id} title={self.title!r}>"

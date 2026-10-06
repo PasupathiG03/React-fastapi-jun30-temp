@@ -6,10 +6,12 @@ import { TablePagination, TableSearchInput, TableExportButton } from "@/componen
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { useTableData } from "@/hooks/useTableData";
 import { exportToCsv } from "@/lib/exportData";
+import { useReportPageLoading } from "@/context/PageLoadingContext";
 
 export default function RoleManagementPage() {
   const [roles, setRoles] = useState<RoleItem[]>([]);
   const [loadingRoles, setLoadingRoles] = useState(true);
+  useReportPageLoading("role-management", loadingRoles);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [itemToDelete, setItemToDelete] = useState<RoleItem | null>(null);

@@ -3,8 +3,6 @@ import { Navigate } from "react-router-dom";
 import { Lock } from "lucide-react";
 import { API_BASE_URL } from "@/lib/constants";
 import { fetchMenus, type MenuItem } from "@/services/menu";
-import { fetchMyStages } from "@/services/workflow";
-import { buildStageRoutes } from "@/lib/slug";
 import { useLive } from "@/context/LiveContext";
 import PageContainer from "@/components/PageContainer";
 import DashboardSkeleton from "@/components/DashboardSkeleton";
@@ -19,7 +17,7 @@ type Decision =
 
 /**
  * The Dashboard is only for Developers. Everyone else has no dashboard permission, so they are sent to
- * the first screen or workflow stage their role can open (or told that nothing is assigned yet).
+ * the first screen their role can open (or told that nothing is assigned yet).
  */
 export default function DashboardGate() {
   const { accessVersion } = useLive();
@@ -28,12 +26,11 @@ export default function DashboardGate() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [meRes, menusRes, stagesRes] = await Promise.allSettled([
+      const [meRes, menusRes] = await Promise.allSettled([
         fetch(`${API_BASE_URL}/api/auth/me`).then((r) =>
           r.ok ? r.json() : null
         ),
         fetchMenus(),
-        fetchMyStages(),
       ]);
       if (cancelled) return;
 
@@ -52,21 +49,7 @@ export default function DashboardGate() {
         return;
       }
 
-      const workflows = stagesRes.status === "fulfilled" ? stagesRes.value : [];
-      const firstStage = buildStageRoutes(
-        workflows.flatMap((w) =>
-          w.stages.map((s) => ({
-            workflow_id: w.id,
-            workflow_name: w.name,
-            stage_id: s.id,
-            stage_name: s.name,
-            stage_type: s.stage_type,
-            sequence_order: s.sequence_order,
-            count: 0,
-          }))
-        )
-      )[0];
-      setDecision(firstStage ? { kind: "redirect", to: firstStage.path } : { kind: "none" });
+      setDecision({ kind: "none" });
     })();
     return () => {
       cancelled = true;

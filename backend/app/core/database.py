@@ -54,8 +54,6 @@ _LIVE_TABLES = {
     "role_menu_access": "access",
     "roles": "access",
     "users": "access",
-    "workflow_items": "work",
-    "workflow_item_history": "work",
 }
 
 

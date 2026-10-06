@@ -1,9 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronDown,
-  GitBranch,
   Layers,
   LayoutDashboard,
   ShieldCheck,
@@ -18,12 +17,8 @@ import { Cog } from "flowbite-react-icons/outline";
 import { logout } from "@/lib/auth";
 import { ICON_MAP } from "@/lib/icons";
 import { fetchMenus, type MenuItem } from "@/services/menu";
-import { fetchMyStages, type MyWorkflow } from "@/services/workflow";
 import PulseLogo from "@/components/PulseLogo";
-import { usePending } from "@/context/PendingContext";
 import { useLive } from "@/context/LiveContext";
-import { buildStageRoutes } from "@/lib/slug";
-import { getStageIcon } from "@/lib/stageIcons";
 import { API_BASE_URL } from "@/lib/constants";
 import { useReportPageLoading } from "@/context/PageLoadingContext";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -143,7 +138,10 @@ function FlyoutGroup({
           }`}
       >
         <span className="flex items-center justify-center w-5 h-5">
-          <Icon className={`w-[18px] h-[18px] ${active ? "text-sky-400 [html:not(.dark)_&]:text-[#0284c7]" : ""}`} />
+          <Icon
+            className={`w-[18px] h-[18px] transition-transform duration-200 group-hover:scale-110 ${active ? "text-sky-400 [html:not(.dark)_&]:text-[#0284c7]" : ""
+              }`}
+          />
         </span>
       </button>
       {pos &&
@@ -154,7 +152,7 @@ function FlyoutGroup({
           className="fixed z-[1000]"
           style={{ top: pos.top, left: pos.left, paddingLeft: pos.gap, maxHeight: `calc(100vh - ${pos.top}px - 8px)` }}
         >
-          <div className="w-60 max-h-[inherit] overflow-y-auto rounded-2xl p-2 shadow-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0c1427]">
+          <div className="sidebar-flyout-in w-60 max-h-[inherit] overflow-y-auto rounded-2xl p-2 shadow-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0c1427]">
             <p className="px-3 pt-1 pb-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
               {label}
             </p>
@@ -165,12 +163,12 @@ function FlyoutGroup({
                   key={href}
                   to={href}
                   role="menuitem"
-                  className={`flex items-center gap-3 px-3 py-2 rounded-xl text-[13.5px] font-medium transition-all duration-150 ${current
+                  className={`group flex items-center gap-3 px-3 py-2 rounded-xl text-[13.5px] font-medium transition-all duration-150 ${current
                     ? "bg-sky-200 text-sky-800 dark:bg-sky-500/30 dark:text-sky-200"
                     : "text-slate-600 dark:text-slate-300 hover:text-sky-700 dark:hover:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-500/25 hover:translate-x-0.5 hover:shadow-sm"
                     }`}
                 >
-                  <ItemIcon className="w-[18px] h-[18px] shrink-0" />
+                  <ItemIcon className="w-[18px] h-[18px] shrink-0 transition-transform duration-150 group-hover:scale-110" />
                   <span className="truncate flex-1">{text}</span>
                   {badge > 0 && (
                     <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
@@ -207,10 +205,8 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
     return () => window.removeEventListener("keydown", onKey);
   }, [mobileOpen, onCloseMobile]);
 
-  const { countFor } = usePending();
   const { accessVersion } = useLive();
   const [dynamicMenus, setDynamicMenus] = useState<MenuItem[]>([]);
-  const [myWorkflows, setMyWorkflows] = useState<MyWorkflow[]>([]);
   const [fetching, setFetching] = useState(true);
   // Despite the name, this is true for any superuser too, not just the Developer role (mirrors
   // has_full_access in backend/app/core/dependencies.py) -- both get the fully hardcoded nav below.
@@ -278,35 +274,6 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
     setProcessChoice((prev) => ({ ...prev, [g.key]: !isProcessOpen(g) }));
   }
 
-  // Workflow groups: each workflow is a group, its stages (names come from the database) are sub-menus.
-  // Addresses come from this component's own workflow list (not from the pending-counts request), so
-  // every stage always has its own unique address. Using a shared fallback like "/dashboard" while the
-  // other request was still loading gave all stages the same React key and duplicated the rows.
-  const stageRoutes = useMemo(
-    () =>
-      buildStageRoutes(
-        myWorkflows.flatMap((w) =>
-          w.stages.map((s) => ({
-            workflow_id: w.id,
-            workflow_name: w.name,
-            stage_id: s.id,
-            stage_name: s.name,
-            stage_type: s.stage_type,
-            sequence_order: s.sequence_order,
-            count: 0,
-          }))
-        )
-      ),
-    [myWorkflows]
-  );
-  const stagePath = (_w: MyWorkflow, stageId: number) =>
-    stageRoutes.find((r) => r.stageId === stageId)?.path ?? `/workflows/stage-${stageId}`;
-  const isWorkflowActive = (w: MyWorkflow) => w.stages.some((s) => pathname === stagePath(w, s.id));
-  const isWorkflowOpen = (w: MyWorkflow) => processChoice[-w.id] ?? false;
-  function toggleWorkflow(w: MyWorkflow) {
-    setProcessChoice((prev) => ({ ...prev, [-w.id]: !isWorkflowOpen(w) }));
-  }
-
   const [adminOpen, setAdminOpen] = useState<boolean | null>(null);
   const [devOpen, setDevOpen] = useState<boolean | null>(null);
 
@@ -316,10 +283,6 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
       .then((data) => setIsDeveloper(Boolean(data?.is_superuser && data?.role?.name?.trim().toLowerCase() === "developer")))
       .catch(() => { })
       .finally(() => setRoleReady(true));
-
-    fetchMyStages()
-      .then(setMyWorkflows)
-      .catch(() => { });
 
     fetchMenus()
       .then(setDynamicMenus)
@@ -343,7 +306,7 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
         className={`group relative flex items-center ${indent && !collapsed ? "ml-1" : "mx-1"} px-3 py-2 rounded-xl mb-1 transition-all duration-200 text-[13.5px] border ${collapsed ? "justify-center gap-0 px-2" : "gap-3"
           } ${active
             ? "font-medium text-white dark:text-white bg-sky-500/15 border-sky-500/30 dark:bg-sky-500/20 dark:border-sky-500/30 text-[#0284c7] light:bg-[#e0f2fe] light:text-[#0284c7] light:border-transparent dark:shadow-[0_0_15px_rgba(14,165,233,0.15)] [html:not(.dark)_&]:bg-[#e0f2fe] [html:not(.dark)_&]:text-[#0284c7] [html:not(.dark)_&]:border-transparent [html:not(.dark)_&]:font-semibold"
-            : "font-medium border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/70 dark:hover:bg-white/[0.06]"
+            : "font-medium border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/70 dark:hover:bg-white/[0.06] hover:translate-x-0.5"
           }`}
       >
         <span
@@ -352,9 +315,16 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
             : "text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white"
             }`}
         >
-          <Icon className="w-[18px] h-[18px]" />
+          <Icon
+            className={`w-[18px] h-[18px] transition-transform duration-200 group-hover:scale-110 ${active ? "scale-105" : ""}`}
+          />
         </span>
-        {!collapsed && <span className="truncate flex-1">{label}</span>}
+        <span
+          className={`overflow-hidden truncate transition-[opacity,max-width,margin] duration-200 ease-out whitespace-nowrap ${collapsed ? "opacity-0 max-w-0 ml-0" : "opacity-100 max-w-[180px] flex-1"
+            }`}
+        >
+          {label}
+        </span>
         {badge > 0 && (
           <span
             className={`min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center ${collapsed ? "absolute -top-1 -right-1 ring-2 ring-white dark:ring-[#0c1427]" : ""
@@ -389,7 +359,7 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
             }`}
         >
           <span className="shrink-0 flex items-center justify-center w-5 h-5 text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white">
-            <Icon className="w-[18px] h-[18px]" />
+            <Icon className="w-[18px] h-[18px] transition-transform duration-200 group-hover:scale-110" />
           </span>
           <span className="flex-1 text-left truncate">{label}</span>
           <ChevronDown
@@ -486,17 +456,6 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
                 ))}
               </div>
             )}
-
-            {/* Section 4: Workflows */}
-            {!collapsed && (
-              <div className="px-3 pt-1.5 pb-0.5">
-                <div className="h-2 w-20 bg-slate-200/80 dark:bg-white/10 rounded animate-pulse" />
-              </div>
-            )}
-            <div className={`flex items-center px-3 py-2 rounded-xl gap-3 animate-pulse bg-white/30 dark:bg-white/[0.03] ${collapsed ? "justify-center" : ""}`}>
-              <div className="w-5 h-5 rounded-md bg-slate-200 dark:bg-white/10 shrink-0" />
-              {!collapsed && <div className="h-3.5 w-20 bg-slate-200 dark:bg-white/10 rounded" />}
-            </div>
           </div>
         ) : (
           <>
@@ -641,43 +600,6 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
                 )}
               </>
             )}
-
-            {/* Workflow stages the user's role may open */}
-            {myWorkflows.length > 0 && (
-              <>
-                {!collapsed && (
-                  <p className="px-3 pt-3 pb-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                    Workflows
-                  </p>
-                )}
-                {collapsed
-                  ? myWorkflows.map((w) => (
-                    <FlyoutGroup
-                      key={`wf-${w.id}`}
-                      label={w.name}
-                      Icon={GitBranch}
-                      active={isWorkflowActive(w)}
-                      items={w.stages.map((s) => ({
-                        href: stagePath(w, s.id),
-                        label: s.name,
-                        Icon: getStageIcon(s.stage_type),
-                        badge: countFor(s.id),
-                      }))}
-                    />
-                  ))
-                  : myWorkflows.map((w) =>
-                    renderGroup(
-                      w.name,
-                      GitBranch,
-                      isWorkflowOpen(w),
-                      isWorkflowActive(w),
-                      () => toggleWorkflow(w),
-                      w.stages.map((s) => renderItem(stagePath(w, s.id), s.name, getStageIcon(s.stage_type), true, countFor(s.id))),
-                      `wf-${w.id}`
-                    )
-                  )}
-              </>
-            )}
           </>
         )}
       </nav>
@@ -697,11 +619,16 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
             type="button"
             onClick={handleLogout}
             title={collapsed ? "Logout" : undefined}
-            className={`flex items-center px-3 py-2.5 rounded-xl w-full text-[13.5px] font-medium transition-all duration-200 border border-slate-200/90 dark:border-slate-800 bg-white/30 dark:bg-[#0e172e]/60 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-200 dark:hover:border-rose-900/50 hover:bg-rose-50/50 dark:hover:bg-rose-500/10 ${collapsed ? "justify-center gap-0" : "gap-3"
+            className={`group flex items-center px-3 py-2.5 rounded-xl w-full text-[13.5px] font-medium transition-all duration-200 border border-slate-200/90 dark:border-slate-800 bg-white/30 dark:bg-[#0e172e]/60 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-200 dark:hover:border-rose-900/50 hover:bg-rose-50/50 dark:hover:bg-rose-500/10 ${collapsed ? "justify-center gap-0" : "gap-3"
               }`}
           >
-            <LogOut className="shrink-0 w-4 h-4" />
-            {!collapsed && <span>Logout</span>}
+            <LogOut className="shrink-0 w-4 h-4 transition-transform duration-200 group-hover:-translate-x-0.5" />
+            <span
+              className={`overflow-hidden whitespace-nowrap transition-[opacity,max-width] duration-200 ease-out ${collapsed ? "opacity-0 max-w-0" : "opacity-100 max-w-[120px]"
+                }`}
+            >
+              Logout
+            </span>
           </button>
         )}
       </div>

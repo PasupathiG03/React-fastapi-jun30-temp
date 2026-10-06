@@ -11,8 +11,6 @@ const RoleManagement = lazy(() => import("./pages/RoleManagement"));
 const MenuAccess = lazy(() => import("./pages/MenuAccess"));
 const MenuManagement = lazy(() => import("./pages/MenuManagement"));
 const WorkflowManagement = lazy(() => import("./pages/WorkflowManagement"));
-const StageWorkspace = lazy(() => import("./pages/StageWorkspace"));
-const LegacyStageRedirect = lazy(() => import("./pages/LegacyStageRedirect"));
 
 // The layout is a parent route, so the sidebar, top bar and live connection stay mounted while the
 // user moves between pages (only the page content changes) instead of loading again every time.
@@ -50,9 +48,8 @@ export default function App() {
             <Route path="/developer-management/process" element={<Navigate to="/developer-management/process-screen" replace />} />
             <Route path="/developer-management/screen" element={<Navigate to="/developer-management/process-screen" replace />} />
             <Route path="/developer-management/process-screen" element={<MenuManagement />} />
-            <Route path="/workflows/:workflowSlug/:stageSlug" element={<StageWorkspace />} />
-            {/* Old id-based links redirect to the readable address */}
-            <Route path="/workflows/:workflowId/stages/:stageId" element={<LegacyStageRedirect />} />
+            <Route path="/workflows/:workflowSlug/:stageSlug" element={<Navigate to="/access-control/workflow-management" replace />} />
+            <Route path="/workflows/:workflowId/stages/:stageId" element={<Navigate to="/access-control/workflow-management" replace />} />
           </Route>
 
           {/* Old flat URLs still work */}

@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  BarChart2,
-  Inbox,
   Layers,
   LayoutDashboard,
   Shield,
@@ -18,8 +16,8 @@ import { fetchWorkflows } from "@/services/workflow";
 import { fetchMenus, type MenuItem } from "@/services/menu";
 import { API_BASE_URL } from "@/lib/constants";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
-import { usePending } from "@/context/PendingContext";
 import { useLive } from "@/context/LiveContext";
+import { useReportPageLoading } from "@/context/PageLoadingContext";
 
 interface Me {
   employee_name: string | null;
@@ -46,12 +44,11 @@ const QUICK_ACTIONS = [
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
+  useReportPageLoading("dashboard", loading);
   const [stats, setStats] = useState<Stat[]>([]);
   const [me, setMe] = useState<Me | null>(null);
   const [menus, setMenus] = useState<MenuItem[]>([]);
-  const { stages: pendingStages, total: pendingTotal, pathFor } = usePending();
   const { accessVersion } = useLive();
-  const waitingStages = pendingStages.filter((s) => s.count > 0);
   const isAdmin = !!me && (me.is_superuser && me.role?.name?.trim().toLowerCase() === "developer");
 
   useEffect(() => {
@@ -167,78 +164,25 @@ export default function DashboardPage() {
           ))}
       </div>
 
-      {/* ── Quick Actions + Activity ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Quick Actions */}
-        <div className="glass-card rounded-2xl p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <TrendingUp className="w-4 h-4 text-sky-500" />
-            <h3 className="font-bold text-slate-900 dark:text-white text-sm">Quick Actions</h3>
-          </div>
-          <div className="space-y-2">
-            {quickActions.map(({ label, href }) => (
-              <Link
-                key={href}
-                to={href}
-                className="flex items-center justify-between px-4 py-3 rounded-xl border border-slate-100 dark:border-white/[0.06] hover:border-sky-500/30 dark:hover:border-sky-500/30 bg-white/30 dark:bg-white/[0.02] hover:bg-sky-50/50 dark:hover:bg-sky-500/10 transition-all group"
-              >
-                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 group-hover:text-sky-600 dark:group-hover:text-sky-400">
-                  {label}
-                </span>
-                <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors" />
-              </Link>
-            ))}
-          </div>
+      {/* ── Quick Actions ── */}
+      <div className="glass-card rounded-2xl p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <TrendingUp className="w-4 h-4 text-sky-500" />
+          <h3 className="font-bold text-slate-900 dark:text-white text-sm">Quick Actions</h3>
         </div>
-
-        {/* Work waiting for this user's stages */}
-        <div className="lg:col-span-2 glass-card rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Inbox className="w-4 h-4 text-sky-500" />
-              <h3 className="font-bold text-slate-900 dark:text-white text-sm">Work waiting for you</h3>
-            </div>
-            {pendingTotal > 0 && (
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400">
-                {pendingTotal} open
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {quickActions.map(({ label, href }) => (
+            <Link
+              key={href}
+              to={href}
+              className="flex items-center justify-between px-4 py-3 rounded-xl border border-slate-100 dark:border-white/[0.06] hover:border-sky-500/30 dark:hover:border-sky-500/30 bg-white/30 dark:bg-white/[0.02] hover:bg-sky-50/50 dark:hover:bg-sky-500/10 transition-all group"
+            >
+              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 group-hover:text-sky-600 dark:group-hover:text-sky-400">
+                {label}
               </span>
-            )}
-          </div>
-
-          {waitingStages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10 text-center">
-              <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-white/5 flex items-center justify-center mb-2.5 text-slate-400">
-                <BarChart2 className="w-6 h-6" />
-              </div>
-              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">You are all caught up</p>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                Items that reach one of your workflow stages will show up here.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {waitingStages.map((s) => (
-                <Link
-                  key={s.stage_id}
-                  to={pathFor(s.stage_id)}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-100 dark:border-white/[0.06] hover:border-sky-500/30 bg-white/30 dark:bg-white/[0.02] hover:bg-sky-50/50 dark:hover:bg-sky-500/10 transition-all group"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate group-hover:text-sky-600 dark:group-hover:text-sky-400">
-                      {s.stage_name}
-                    </p>
-                    <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
-                      {s.workflow_name} · Stage {s.sequence_order}
-                    </p>
-                  </div>
-                  <span className="min-w-[26px] h-6 px-2 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 text-xs font-bold flex items-center justify-center">
-                    {s.count}
-                  </span>
-                  <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors" />
-                </Link>
-              ))}
-            </div>
-          )}
+              <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors" />
+            </Link>
+          ))}
         </div>
       </div>
     </PageContainer>

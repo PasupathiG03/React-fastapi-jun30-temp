@@ -1,4 +1,10 @@
-import type { PendingStage } from "@/services/workflow";
+export interface PendingStage {
+  workflow_id: number;
+  workflow_name: string;
+  stage_id: number;
+  stage_name: string;
+  sequence_order: number;
+}
 
 /** "QC Review (Final)" -> "qc-review-final". */
 export function slugify(name: string): string {
