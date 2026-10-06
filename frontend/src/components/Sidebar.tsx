@@ -44,7 +44,7 @@ const ADMIN_SCREEN_URLS = new Set([
 // comes from the database and shows alongside them (see visibleMenus below, which excludes these URLs so
 // the database's own copies, once ensure_default_menus recreates them, don't render twice).
 const DEV_DASHBOARD = { href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard };
-const DEV_ROUTER_SETUP = { href: "/developer-management/process-screen", label: "Router Setup", Icon: Layers };
+const DEV_ROUTER_SETUP = { href: "/developer-management/router-setup", label: "Router Setup", Icon: Layers };
 const DEV_ACCESS_CONTROL: FlyoutItem[] = [
   { href: "/access-control/role-management", label: "Role Management", Icon: Shield },
   { href: "/access-control/user-management", label: "User Management", Icon: Users },
@@ -76,7 +76,7 @@ export function getScreenIcon(name: string, url: string, iconKey?: string | null
   if (lowerUrl.includes("role-management") || lowerName.includes("role")) return Shield;
   if (lowerUrl.includes("menu-access") || lowerName.includes("access") || lowerName.includes("permission")) return ShieldCheck;
   if (lowerUrl.includes("workflow") || lowerName.includes("workflow")) return Network;
-  if (lowerUrl.includes("process-screen") || lowerName.includes("process") || lowerName.includes("screen")) return Layers;
+  if (lowerUrl.includes("router-setup") || lowerName.includes("process") || lowerName.includes("screen")) return Layers;
   if (lowerUrl.includes("dashboard") || lowerName.includes("dashboard")) return LayoutDashboard;
 
   return Cog;

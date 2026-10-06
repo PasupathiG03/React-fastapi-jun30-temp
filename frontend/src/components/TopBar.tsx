@@ -185,8 +185,10 @@ export default function TopBar({ onToggle, loading = false }: Props) {
             that context), with its own ellipsis-truncation. From `sm` up, the full trail shows as before. */}
         <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs min-w-0 flex-1 overflow-hidden">
           {pageLoading ? (
-            // The page itself asked for this (useReportPageLoading): its breadcrumb depends on data
-            // that hasn't loaded yet, so a skeleton stands in rather than a blank or wrong label.
+            // pageLoading only reflects the sidebar's own initial role/menu fetch (see
+            // Sidebar.tsx's useReportPageLoading) -- a skeleton here during that one bootstrap
+            // window, not on every later navigation, since individual pages no longer report into
+            // this shared flag (each shows its own in-page skeleton for its own data instead).
             <div className="flex items-center gap-1.5 min-w-0" aria-hidden="true">
               <div className="hidden sm:block h-3 w-20 bg-slate-200 dark:bg-white/10 rounded animate-pulse shrink-0" />
               <ChevronRight className="hidden sm:block w-3.5 h-3.5 text-slate-300 dark:text-slate-600 shrink-0" />

@@ -9,13 +9,11 @@ import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { CustomSelect } from "@/components/CustomSelect";
 import { useTableData } from "@/hooks/useTableData";
 import { exportToCsv } from "@/lib/exportData";
-import { useReportPageLoading } from "@/context/PageLoadingContext";
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState<UserItem[]>([]);
   const [roles, setRoles] = useState<RoleItem[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
-  useReportPageLoading("user-management", loadingUsers);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [itemToDelete, setItemToDelete] = useState<UserItem | null>(null);

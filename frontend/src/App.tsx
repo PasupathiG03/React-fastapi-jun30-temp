@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import DashboardLayout from "./components/DashboardLayout";
+import RouteLoader from "./components/RouteLoader";
 import { ThemeProvider } from "./context/ThemeContext";
 
 // Every page is loaded on demand, so its code is only downloaded when the route is opened.
@@ -15,10 +16,14 @@ const WorkflowManagement = lazy(() => import("./pages/WorkflowManagement"));
 // The layout is a parent route, so the sidebar, top bar and live connection stay mounted while the
 // user moves between pages (only the page content changes) instead of loading again every time.
 function AppLayout() {
+  const location = useLocation();
   return (
     <DashboardLayout>
-      <Suspense fallback={null}>
-        <Outlet />
+      <Suspense fallback={<RouteLoader />}>
+        {/* Keyed by path so the fade replays on every page change, not just the first mount */}
+        <div key={location.pathname} className="route-fade-in h-full">
+          <Outlet />
+        </div>
       </Suspense>
     </DashboardLayout>
   );
@@ -28,7 +33,7 @@ export default function App() {
   return (
     <ThemeProvider>
       <BrowserRouter>
-        <Suspense fallback={null}>
+        <Suspense fallback={<RouteLoader />}>
         <Routes>
           <Route path="/login" element={<Login />} />
 
@@ -44,16 +49,16 @@ export default function App() {
             <Route path="/access-control/workflow-management" element={<WorkflowManagement />} />
 
             {/* Developer Management */}
-            <Route path="/developer-management" element={<Navigate to="/developer-management/process-screen" replace />} />
-            <Route path="/developer-management/process" element={<Navigate to="/developer-management/process-screen" replace />} />
-            <Route path="/developer-management/screen" element={<Navigate to="/developer-management/process-screen" replace />} />
-            <Route path="/developer-management/process-screen" element={<MenuManagement />} />
+            <Route path="/developer-management" element={<Navigate to="/developer-management/router-setup" replace />} />
+            <Route path="/developer-management/process" element={<Navigate to="/developer-management/router-setup" replace />} />
+            <Route path="/developer-management/screen" element={<Navigate to="/developer-management/router-setup" replace />} />
+            <Route path="/developer-management/router-setup" element={<MenuManagement />} />
             <Route path="/workflows/:workflowSlug/:stageSlug" element={<Navigate to="/access-control/workflow-management" replace />} />
             <Route path="/workflows/:workflowId/stages/:stageId" element={<Navigate to="/access-control/workflow-management" replace />} />
           </Route>
 
           {/* Old flat URLs still work */}
-          <Route path="/menu-management" element={<Navigate to="/developer-management/process-screen" replace />} />
+          <Route path="/menu-management" element={<Navigate to="/developer-management/router-setup" replace />} />
           <Route path="/user-management" element={<Navigate to="/access-control/user-management" replace />} />
           <Route path="/role-management" element={<Navigate to="/access-control/role-management" replace />} />
           <Route path="/workflow-management" element={<Navigate to="/access-control/workflow-management" replace />} />

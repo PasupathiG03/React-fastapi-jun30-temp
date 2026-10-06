@@ -1,13 +1,17 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 
-// Lets any part of the shell (the current page, the sidebar) tell the rest of it that a first data
-// request is still in flight, so chrome whose content depends on that data (the breadcrumb, the
-// hamburger/theme/bell icons in TopBar) can show a skeleton instead of something blank or wrong.
+// Lets a part of the app shell (in practice, just the sidebar's own initial role/menu fetch) tell the
+// rest of it that a first data request is still in flight, so chrome whose content depends on that data
+// (the breadcrumb, the hamburger/theme/bell icons in TopBar) can show a skeleton instead of something
+// blank or wrong during that one bootstrap window.
 //
-// Tracked as a set of named reporters, not one boolean: the page and the sidebar load independently and
-// finish at different times, so a single "last write wins" flag would let whichever one finishes last
-// erase the other's "still loading" state -- which is exactly what made the top bar look ready while the
-// sidebar underneath was still skeleton. pageLoading is true as long as ANY reporter is still loading.
+// Individual PAGES deliberately do NOT report into this: a page remounts fresh on every navigation, so
+// doing that made the whole top bar flash back to skeleton on every single menu click, not just the
+// app's initial load. Each page already shows its own in-page skeleton for its own data instead.
+//
+// Tracked as a set of named reporters, not one boolean, so adding a second legitimate reporter later
+// (today there's only "sidebar") can't have one's "finished" overwrite the other's "still loading".
+// pageLoading is true as long as ANY reporter is still loading.
 
 interface PageLoadingContextValue {
   pageLoading: boolean;

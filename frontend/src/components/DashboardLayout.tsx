@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import TopBar from "@/components/TopBar";
 import Sidebar from "@/components/Sidebar";
@@ -29,6 +29,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { theme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -38,9 +39,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setLoading(false);
   }, [navigate]);
 
-  // Close the drawer whenever the route changes, so it never lingers over the new page.
+  // Close the drawer whenever the route changes, so it never lingers over the new page. Also reset
+  // scroll to the top -- otherwise a page opened while scrolled down jumps straight into the middle
+  // of the next one instead of starting at its top.
   useEffect(() => {
     setMobileNavOpen(false);
+    mainRef.current?.scrollTo({ top: 0 });
   }, [location.pathname]);
 
   function handleToggleNav() {
@@ -75,7 +79,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {/* Right Column: TopBar + Page Content */}
             <div className="flex flex-col flex-1 h-full min-w-0 overflow-hidden gap-3.5">
               <TopBar collapsed={collapsed} onToggle={handleToggleNav} loading={loading} />
-              <main className="flex-1 overflow-y-auto pr-1 pb-6 min-w-0 [scrollbar-width:thin]">
+              <main ref={mainRef} className="flex-1 overflow-y-auto pr-1 pb-6 min-w-0 [scrollbar-width:thin]">
                 {children}
               </main>
               <LayoutFooter loading={loading} />

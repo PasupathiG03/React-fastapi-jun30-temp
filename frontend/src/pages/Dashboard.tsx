@@ -17,7 +17,6 @@ import { fetchMenus, type MenuItem } from "@/services/menu";
 import { API_BASE_URL } from "@/lib/constants";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { useLive } from "@/context/LiveContext";
-import { useReportPageLoading } from "@/context/PageLoadingContext";
 
 interface Me {
   employee_name: string | null;
@@ -38,13 +37,12 @@ const QUICK_ACTIONS = [
   { label: "Manage Users", href: "/access-control/user-management" },
   { label: "Manage Roles", href: "/access-control/role-management" },
   { label: "Menu Access", href: "/access-control/menu-access" },
-  { label: "Manage Menus", href: "/developer-management/process-screen" },
+  { label: "Manage Menus", href: "/developer-management/router-setup" },
   { label: "Manage Workflows", href: "/access-control/workflow-management" },
 ];
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
-  useReportPageLoading("dashboard", loading);
   const [stats, setStats] = useState<Stat[]>([]);
   const [me, setMe] = useState<Me | null>(null);
   const [menus, setMenus] = useState<MenuItem[]>([]);

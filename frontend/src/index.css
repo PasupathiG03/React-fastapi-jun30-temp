@@ -215,6 +215,18 @@ input:-webkit-autofill:focus {
   .sidebar-flyout-in { animation: none; }
 }
 
+/* Page content on route change: a quick fade instead of the previous page cutting straight to the next */
+.route-fade-in {
+  animation: route-fade-in 0.18s ease-out;
+}
+@keyframes route-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .route-fade-in { animation: none; }
+}
+
 /* Gradient (primary) buttons get a small lift and press */
 button:where([class*="bg-gradient-to-r"]):not(:disabled) {
   transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;

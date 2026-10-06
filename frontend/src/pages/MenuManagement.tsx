@@ -7,7 +7,6 @@ import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { getProcessIcon, getScreenIcon } from "@/components/Sidebar";
 import { useTableData } from "@/hooks/useTableData";
 import { exportToCsv } from "@/lib/exportData";
-import { useReportPageLoading } from "@/context/PageLoadingContext";
 import { useLive } from "@/context/LiveContext";
 import {
   createProcess,
@@ -347,7 +346,6 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
   const [screens, setScreens] = useState<MenuItem[]>([]);
   const [loadingProcesses, setLoadingProcesses] = useState(true);
   const [loadingScreens, setLoadingScreens] = useState(false);
-  useReportPageLoading("router-setup", loadingProcesses);
 
   const [processModalOpen, setProcessModalOpen] = useState(false);
   const [editingProcess, setEditingProcess] = useState<ProcessItem | null>(null);

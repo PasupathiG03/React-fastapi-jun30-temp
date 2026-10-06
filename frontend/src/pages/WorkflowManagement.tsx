@@ -14,7 +14,6 @@ import { CustomSelect } from "@/components/CustomSelect";
 import RoleMultiSelect from "@/components/RoleMultiSelect";
 import { getStageIcon } from "@/lib/stageIcons";
 import { fetchRoles, type RoleItem } from "@/services/role";
-import { useReportPageLoading } from "@/context/PageLoadingContext";
 import {
   createStage,
   copyWorkflowAccess,
@@ -858,7 +857,6 @@ function CreateWorkflowWizardModal({
 export default function WorkflowManagementPage() {
   const [workflows, setWorkflows] = useState<WorkflowDetail[]>([]);
   const [loadingWorkflows, setLoadingWorkflows] = useState(true);
-  useReportPageLoading("workflow-management", loadingWorkflows);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editingWorkflow, setEditingWorkflow] = useState<WorkflowItem | null>(null);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);

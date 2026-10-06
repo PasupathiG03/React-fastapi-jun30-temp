@@ -14,7 +14,7 @@ from app.models.process import Process
 
 # Screen URLs. require_screen() uses these, so they must match the `url` stored in the menus table.
 DASHBOARD_SCREEN = "/dashboard"
-ROUTER_SETUP_SCREEN = "/developer-management/process-screen"
+ROUTER_SETUP_SCREEN = "/developer-management/router-setup"
 USER_SCREEN = "/access-control/user-management"
 ROLE_SCREEN = "/access-control/role-management"
 MENU_ACCESS_SCREEN = "/access-control/menu-access"

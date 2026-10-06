@@ -12,7 +12,6 @@ import { fetchWorkflows, type WorkflowDetail } from "@/services/workflow";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { CustomSelect } from "@/components/CustomSelect";
 import { CustomCheckbox } from "@/components/CustomCheckbox";
-import { useReportPageLoading } from "@/context/PageLoadingContext";
 
 const key = (roleId: number, menuId: number) => `${roleId}:${menuId}`;
 
@@ -59,7 +58,6 @@ export default function MenuAccessPage() {
   // Until the process/workflow list arrives we don't know whether this is a screen or a stage matrix,
   // so the labels that depend on it stay as skeletons instead of flashing "Screens" and then "Stages".
   const booting = loading && target === null;
-  useReportPageLoading("menu-access", booting);
 
   const granted = useMemo(() => new Set(matrix?.grants.map((g) => key(g.role_id, g.menu_id))), [matrix]);
 
