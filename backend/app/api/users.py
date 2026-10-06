@@ -85,7 +85,11 @@ def bulk_import_users(
 ):
     """Create many users at once (e.g. from an imported spreadsheet). Each row succeeds or fails on its
     own -- one bad row (duplicate id, unknown role, validation error) does not roll back the others. All
-    created users get the same default password as a single Add User would."""
+    created users get the same default password as a single Add User would.
+
+    A row whose employee ID matches a previously *deactivated* user reactivates that account (with the
+    row's name/location/role) instead of failing -- deactivating someone in User Management is meant to
+    be reversible, not a permanent block on ever reusing their ID."""
     if not payload:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No rows to import")
     if len(payload) > MAX_BULK_IMPORT_ROWS:
@@ -98,6 +102,7 @@ def bulk_import_users(
     seen_ids: set[str] = set()
     rows_out: List[BulkImportRowResult] = []
     created = 0
+    reactivated = 0
 
     for idx, row in enumerate(payload, start=1):
         try:
@@ -119,11 +124,25 @@ def bulk_import_users(
             if candidate.employee_id in seen_ids:
                 raise ValueError("Duplicate employee ID earlier in this file")
 
-            _protect_superusers(db, current_user, None, candidate.model_dump())
-
             existing_user = db.query(User).filter(User.employee_id == candidate.employee_id).first()
-            if existing_user:
+
+            if existing_user and existing_user.is_active:
                 raise ValueError("A user with this employee ID already exists")
+
+            if existing_user:
+                # Deactivated: reactivate in place rather than fail, with this row's data.
+                _protect_superusers(db, current_user, existing_user, candidate.model_dump())
+                for key, value in candidate.model_dump().items():
+                    setattr(existing_user, key, value)
+                existing_user.is_active = True
+                db.commit()
+
+                seen_ids.add(candidate.employee_id)
+                reactivated += 1
+                rows_out.append(BulkImportRowResult(row=idx, employee_id=candidate.employee_id, status="reactivated"))
+                continue
+
+            _protect_superusers(db, current_user, None, candidate.model_dump())
 
             user_data = candidate.model_dump()
             user_data["hashed_password"] = hash_password(DEFAULT_PASSWORD)
@@ -145,7 +164,8 @@ def bulk_import_users(
             db.rollback()
             rows_out.append(BulkImportRowResult(row=idx, employee_id=row.employee_id, status="error", message=str(exc)))
 
-    return BulkImportResult(created=created, failed=len(rows_out) - created, rows=rows_out)
+    failed = len(rows_out) - created - reactivated
+    return BulkImportResult(created=created, reactivated=reactivated, failed=failed, rows=rows_out)
 
 
 @router.put("/{user_id}", response_model=UserOut)

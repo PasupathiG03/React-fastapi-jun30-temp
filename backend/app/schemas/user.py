@@ -96,11 +96,12 @@ class BulkUserInput(BaseModel):
 class BulkImportRowResult(BaseModel):
     row: int
     employee_id: str
-    status: str  # "created" | "error"
+    status: str  # "created" | "reactivated" | "error"
     message: str | None = None
 
 
 class BulkImportResult(BaseModel):
     created: int
+    reactivated: int
     failed: int
     rows: list[BulkImportRowResult]
