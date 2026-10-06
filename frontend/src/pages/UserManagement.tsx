@@ -262,11 +262,15 @@ export default function UserManagementPage() {
     setBulkParseError("");
     try {
       const result = await bulkImportUsers(bulkRows);
-      if (result.created > 0) await loadUsers();
+      if (result.created > 0 || result.reactivated > 0) await loadUsers();
       if (result.failed === 0) {
         // Nothing for the user to review -- close and report it the same way a single Add User does.
         handleCloseBulk();
-        setSuccess(`${result.created} user${result.created !== 1 ? "s" : ""} imported successfully`);
+        const parts = [
+          result.created > 0 && `${result.created} created`,
+          result.reactivated > 0 && `${result.reactivated} reactivated`,
+        ].filter(Boolean);
+        setSuccess(`${parts.join(", ")} successfully`);
         setTimeout(() => setSuccess(""), 4000);
       } else {
         setBulkResult(result);
@@ -561,11 +565,19 @@ export default function UserManagementPage() {
                 </>
               ) : (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-semibold">
-                      <CheckCircle2 className="w-4 h-4" />
-                      {bulkResult.created} created
-                    </div>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    {bulkResult.created > 0 && (
+                      <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-semibold">
+                        <CheckCircle2 className="w-4 h-4" />
+                        {bulkResult.created} created
+                      </div>
+                    )}
+                    {bulkResult.reactivated > 0 && (
+                      <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-50 dark:bg-sky-500/10 border border-sky-200 dark:border-sky-500/20 text-sky-700 dark:text-sky-400 text-xs font-semibold">
+                        <CheckCircle2 className="w-4 h-4" />
+                        {bulkResult.reactivated} reactivated
+                      </div>
+                    )}
                     {bulkResult.failed > 0 && (
                       <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-xs font-semibold">
                         <AlertCircle className="w-4 h-4" />
@@ -761,7 +773,7 @@ export default function UserManagementPage() {
                     <button
                       onClick={() => handleDelete(user)}
                       className="text-slate-300 dark:text-slate-600 hover:text-rose-500 transition-colors shrink-0 ml-1.5"
-                      title="Delete user"
+                      title="Deactivate user"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

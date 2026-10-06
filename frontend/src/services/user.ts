@@ -32,12 +32,13 @@ export interface BulkUserInput {
 export interface BulkImportRowResult {
   row: number;
   employee_id: string;
-  status: "created" | "error";
+  status: "created" | "reactivated" | "error";
   message?: string | null;
 }
 
 export interface BulkImportResult {
   created: number;
+  reactivated: number;
   failed: number;
   rows: BulkImportRowResult[];
 }
