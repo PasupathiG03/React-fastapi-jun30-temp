@@ -144,13 +144,7 @@ export default function UserManagementPage() {
   async function handleToggleStatus(user: UserItem) {
     try {
       const updated = await updateUser(user.id, { is_active: !user.is_active });
-      if (!updated.is_active) {
-        setUsers((prev) => prev.filter((u) => u.id !== updated.id));
-        setSuccess("User deactivated and removed from view");
-        setTimeout(() => setSuccess(""), 3000);
-      } else {
-        setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
-      }
+      setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
     } catch {
       setError("Failed to update user status");
     }
@@ -164,8 +158,10 @@ export default function UserManagementPage() {
     if (!itemToDelete) return;
     try {
       await deleteUser(itemToDelete.id);
-      setUsers((prev) => prev.filter((u) => u.id !== itemToDelete.id));
-      setSuccess("User deleted successfully");
+      // The API soft-deletes (is_active -> false); the row stays visible, just flagged Inactive.
+      const deletedId = itemToDelete.id;
+      setUsers((prev) => prev.map((u) => (u.id === deletedId ? { ...u, is_active: false } : u)));
+      setSuccess("User deactivated");
       setItemToDelete(null);
       setTimeout(() => setSuccess(""), 3000);
     } catch {
@@ -800,9 +796,9 @@ export default function UserManagementPage() {
             <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto mb-4">
               <Trash2 className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">Delete User?</h3>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">Deactivate User?</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
-              Are you sure you want to permanently delete <span className="font-semibold text-slate-800 dark:text-slate-200">{itemToDelete.employee_name || itemToDelete.employee_id}</span>? This action cannot be undone.
+              Are you sure you want to deactivate <span className="font-semibold text-slate-800 dark:text-slate-200">{itemToDelete.employee_name || itemToDelete.employee_id}</span>? They'll lose access immediately, but stay listed as Inactive and can be re-enabled later.
             </p>
             <div className="flex items-center justify-center gap-3">
               <button
@@ -817,7 +813,7 @@ export default function UserManagementPage() {
                 onClick={handleDeleteConfirm}
                 className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-rose-500 hover:bg-rose-600 transition-colors shadow-sm"
               >
-                Delete
+                Deactivate
               </button>
             </div>
           </div>
