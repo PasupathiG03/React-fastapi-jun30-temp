@@ -169,7 +169,7 @@ function FlyoutGroup({
                   role="menuitem"
                   className={`group flex items-center gap-3 px-3 py-2 rounded-xl text-[13.5px] font-medium transition-all duration-150 ${current
                     ? "dark:bg-sky-500/20 dark:text-white [html:not(.dark)_&]:bg-[#e0f2fe] [html:not(.dark)_&]:text-[#0284c7] [html:not(.dark)_&]:font-semibold"
-                    : "text-slate-600 dark:text-slate-300 hover:text-sky-700 dark:hover:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-500/25 hover:translate-x-0.5 hover:shadow-sm"
+                    : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/70 dark:hover:bg-white/[0.06] hover:translate-x-0.5 hover:shadow-sm"
                     }`}
                 >
                   <ItemIcon className="w-[18px] h-[18px] shrink-0 transition-transform duration-150 group-hover:scale-110" />
@@ -340,7 +340,7 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
         aria-current={active ? "page" : undefined}
         className={`group relative flex items-center ${indent && !collapsed ? "ml-1" : "mx-1"} px-3 py-2 rounded-xl mb-1 transition-all duration-200 text-[13.5px] border ${collapsed ? "justify-center gap-0 px-2" : "gap-3"
           } ${active
-            ? "font-medium text-white dark:text-white bg-sky-500/15 border-sky-500/30 dark:bg-sky-500/20 dark:border-sky-500/30 text-[#0284c7] light:bg-[#e0f2fe] light:text-[#0284c7] light:border-transparent dark:shadow-[0_0_15px_rgba(14,165,233,0.15)] [html:not(.dark)_&]:bg-[#e0f2fe] [html:not(.dark)_&]:text-[#0284c7] [html:not(.dark)_&]:border-transparent [html:not(.dark)_&]:font-semibold"
+            ? "font-medium dark:text-white dark:bg-sky-500/20 dark:border-sky-500/30 dark:shadow-[0_0_15px_rgba(14,165,233,0.15)] [html:not(.dark)_&]:bg-[#e0f2fe] [html:not(.dark)_&]:text-[#0284c7] [html:not(.dark)_&]:border-transparent [html:not(.dark)_&]:font-semibold"
             : "font-medium border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/70 dark:hover:bg-white/[0.06] hover:translate-x-0.5"
           }`}
       >
