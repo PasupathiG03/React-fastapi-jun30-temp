@@ -22,14 +22,17 @@ kill_port() {
     local PIDS=$(lsof -t -i:$PORT)
     if [ ! -z "$PIDS" ]; then
       echo "[*] Port $PORT is in use. Killing process(es): $PIDS..."
-      kill -9 $PIDS
+      kill -9 $PIDS || true
     fi
   elif command -v netstat >/dev/null 2>&1 && command -v taskkill >/dev/null 2>&1; then
     local PIDS=$(netstat -ano | awk -v p=":$PORT" '$2 ~ p"$" && $4=="LISTENING" {print $5}' | sort -u)
     if [ ! -z "$PIDS" ]; then
       echo "[*] Port $PORT is in use. Killing process(es): $PIDS..."
       for PID in $PIDS; do
-        taskkill //PID "$PID" //F >/dev/null 2>&1
+        # Best-effort: the PID netstat reports can already be gone (or belong to another
+        # session taskkill can't see), which exits non-zero and, under `set -e`, would abort
+        # this whole script before uvicorn ever started. Never let cleanup block startup.
+        taskkill //PID "$PID" //F >/dev/null 2>&1 || true
       done
     fi
   fi
