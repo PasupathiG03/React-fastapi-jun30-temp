@@ -534,19 +534,6 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
               </>
             )}
 
-            {/* Project Config: its own section, hard-coded alongside Developer Management/Access Control
-                above (not Menu Access-granted yet -- this is a placeholder page, see DEV_* above). */}
-            {isDeveloper && (
-              <>
-                {!collapsed && (
-                  <p className="px-3 pt-3 pb-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                    Project Config
-                  </p>
-                )}
-                {renderItem(DEV_PROJECT_CONFIG.href, DEV_PROJECT_CONFIG.label, DEV_PROJECT_CONFIG.Icon)}
-              </>
-            )}
-
             {/* Main menu section */}
             {!collapsed && (isDeveloper || menuGroups.entries.length > 0) && (
               <p className="px-3 pt-1 pb-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
@@ -658,6 +645,19 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
                   );
                 })
                 )}
+              </>
+            )}
+
+            {/* Project Config: its own section, hard-coded alongside Developer Management/Access Control
+                above (not Menu Access-granted yet -- this is a placeholder page, see DEV_* above). */}
+            {isDeveloper && (
+              <>
+                {!collapsed && (
+                  <p className="px-3 pt-3 pb-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                    Project Config
+                  </p>
+                )}
+                {renderItem(DEV_PROJECT_CONFIG.href, DEV_PROJECT_CONFIG.label, DEV_PROJECT_CONFIG.Icon)}
               </>
             )}
 
