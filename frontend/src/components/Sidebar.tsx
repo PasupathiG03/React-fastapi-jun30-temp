@@ -45,13 +45,14 @@ const ADMIN_SCREEN_URLS = new Set([
 // the database's own copies, once ensure_default_menus recreates them, don't render twice).
 const DEV_DASHBOARD = { href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard };
 const DEV_ROUTER_SETUP = { href: "/developer-management/router-setup", label: "Router Setup", Icon: Layers };
+const DEV_PROJECT_CONFIG = { href: "/project-config", label: "Project Config", Icon: Cog };
 const DEV_ACCESS_CONTROL: FlyoutItem[] = [
   { href: "/access-control/role-management", label: "Role Management", Icon: Shield },
   { href: "/access-control/user-management", label: "User Management", Icon: Users },
   { href: "/access-control/menu-access", label: "Menu Access", Icon: ShieldCheck },
   { href: "/access-control/workflow-management", label: "Workflow Management", Icon: Network },
 ];
-const BUILT_IN_URLS = new Set([DEV_DASHBOARD.href, DEV_ROUTER_SETUP.href, ...DEV_ACCESS_CONTROL.map((i) => i.href)]);
+const BUILT_IN_URLS = new Set([DEV_DASHBOARD.href, DEV_ROUTER_SETUP.href, DEV_PROJECT_CONFIG.href, ...DEV_ACCESS_CONTROL.map((i) => i.href)]);
 
 export function getProcessIcon(name: string): React.ElementType {
   const n = name.trim().toLowerCase();
@@ -530,6 +531,19 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
                     renderItem(DEV_ROUTER_SETUP.href, DEV_ROUTER_SETUP.label, DEV_ROUTER_SETUP.Icon, true)
                   )
                 )}
+              </>
+            )}
+
+            {/* Project Config: its own section, hard-coded alongside Developer Management/Access Control
+                above (not Menu Access-granted yet -- this is a placeholder page, see DEV_* above). */}
+            {isDeveloper && (
+              <>
+                {!collapsed && (
+                  <p className="px-3 pt-3 pb-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                    Project Config
+                  </p>
+                )}
+                {renderItem(DEV_PROJECT_CONFIG.href, DEV_PROJECT_CONFIG.label, DEV_PROJECT_CONFIG.Icon)}
               </>
             )}
 

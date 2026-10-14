@@ -13,6 +13,7 @@ const RoleManagement = lazy(() => import("./pages/RoleManagement"));
 const MenuAccess = lazy(() => import("./pages/MenuAccess"));
 const MenuManagement = lazy(() => import("./pages/MenuManagement"));
 const WorkflowManagement = lazy(() => import("./pages/WorkflowManagement"));
+const ProjectConfig = lazy(() => import("./pages/ProjectConfig"));
 
 // The layout is a parent route, so the sidebar, top bar and live connection stay mounted while the
 // user moves between pages (only the page content changes) instead of loading again every time.
@@ -55,6 +56,9 @@ export default function App() {
             <Route path="/developer-management/process" element={<Navigate to="/developer-management/router-setup" replace />} />
             <Route path="/developer-management/screen" element={<Navigate to="/developer-management/router-setup" replace />} />
             <Route path="/developer-management/router-setup" element={<MenuManagement />} />
+
+            {/* Project Config */}
+            <Route path="/project-config" element={<ProjectConfig />} />
             <Route path="/workflows/:workflowSlug/:stageSlug" element={<Navigate to="/access-control/workflow-management" replace />} />
             <Route path="/workflows/:workflowId/stages/:stageId" element={<Navigate to="/access-control/workflow-management" replace />} />
           </Route>

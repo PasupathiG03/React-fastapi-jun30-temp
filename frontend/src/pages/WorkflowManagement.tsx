@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { showError, showSuccess, showDelete, showUpdate } from "../lib/toast";
 import {
@@ -822,6 +822,19 @@ export default function WorkflowManagementPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editingWorkflow, setEditingWorkflow] = useState<WorkflowItem | null>(null);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const openMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // Close the card's "..." menu on outside click, same pattern as TopBar's profile/notification dropdowns.
+  useEffect(() => {
+    if (openMenuId === null) return;
+    function handleClick(e: MouseEvent) {
+      if (openMenuRef.current && !openMenuRef.current.contains(e.target as Node)) {
+        setOpenMenuId(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [openMenuId]);
 
   const [stageModal, setStageModal] = useState<{
     workflow: WorkflowDetail;
@@ -1028,7 +1041,7 @@ export default function WorkflowManagementPage() {
                   {w.is_active ? "● Active" : "Inactive"}
                 </span>
 
-                <div className="relative ml-auto">
+                <div className="relative ml-auto" ref={openMenuId === w.id ? openMenuRef : null}>
                   <button
                     onClick={() => setOpenMenuId((prev) => (prev === w.id ? null : w.id))}
                     className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
