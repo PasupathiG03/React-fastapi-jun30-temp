@@ -12,6 +12,13 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Without this, body falls back to the OS-driven color-scheme canvas colour (often white) for one
+     frame whenever a portal-mounted modal backdrop (fixed + backdrop-filter, a direct child of body)
+     mounts or unmounts and forces a recomposite -- visible as a flash in dark mode on a light-OS system. */
+  background-color: #eef4fc;
+}
+html.dark body {
+  background-color: #070c1e;
 }
 
 /* Custom scrollbars */

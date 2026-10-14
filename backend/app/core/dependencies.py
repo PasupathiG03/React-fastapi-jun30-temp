@@ -14,6 +14,10 @@ from app.core.session import set_session_cookie
 # auto_error=False: the browser sends the session cookie, the Authorization header is only a fallback for tools.
 bearer_scheme = HTTPBearer(auto_error=False)
 
+# While a user's must_change_password flag is set, every endpoint that goes through get_current_user is
+# blocked except these -- the account is unusable until the shared default password has been rotated.
+_ALLOWED_WHILE_PASSWORD_RESET_REQUIRED = {"/api/auth/me", "/api/auth/change-password"}
+
 
 def get_db() -> Generator:
     db = SessionLocal()
@@ -55,6 +59,12 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Your session has expired. Please sign in again.",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if user.must_change_password and request.url.path not in _ALLOWED_WHILE_PASSWORD_RESET_REQUIRED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You must change your password before continuing",
         )
 
     # Sliding session: while the user keeps working, push the idle expiry forward. This only happens once

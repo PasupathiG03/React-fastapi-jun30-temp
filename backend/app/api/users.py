@@ -26,14 +26,20 @@ router = APIRouter()
 DEFAULT_PASSWORD = settings.DEFAULT_PASSWORD
 
 
+_SENSITIVE_SELF_EDIT_FIELDS = {"role_id", "is_superuser", "is_active"}
+
+
 def _protect_superusers(db: Session, actor: User, target: User | None, data: dict) -> None:
     """A role that only has the User Management screen must not be able to gain or remove full access:
-    it cannot change a superuser or Developer account, make anyone a superuser, or give anyone the
-    Developer role (including itself)."""
+    it cannot change ANY superuser account (not just Developer ones), make anyone a superuser, give
+    anyone the Developer role, or change its own role/superuser/active status (including reassigning
+    itself to a more privileged role) -- all of that requires a Developer."""
     if has_full_access(actor):
         return
-    if target is not None and has_full_access(target):
+    if target is not None and (has_full_access(target) or target.is_superuser):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only a Developer can change a Developer or superuser account")
+    if target is not None and actor.id == target.id and _SENSITIVE_SELF_EDIT_FIELDS & data.keys():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot change your own role, superuser status, or active status")
     if data.get("is_superuser"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only a Developer can grant superuser access")
     role_id = data.get("role_id")
@@ -69,6 +75,7 @@ def create_user(
     
     user_data = payload.model_dump()
     user_data["hashed_password"] = hash_password(DEFAULT_PASSWORD)
+    user_data["must_change_password"] = True
 
     user = User(**user_data)
     db.add(user)
@@ -146,6 +153,7 @@ def bulk_import_users(
 
             user_data = candidate.model_dump()
             user_data["hashed_password"] = hash_password(DEFAULT_PASSWORD)
+            user_data["must_change_password"] = True
             user = User(**user_data)
             db.add(user)
             db.commit()
@@ -181,6 +189,7 @@ def update_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     _protect_superusers(db, current_user, user, payload.model_dump(exclude_unset=True))
 
+    employee_id_changed = False
     if payload.employee_id and payload.employee_id != user.employee_id:
         existing_user = db.query(User).filter(User.employee_id == payload.employee_id).first()
         if existing_user:
@@ -188,12 +197,16 @@ def update_user(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="A user with this employee ID already exists",
             )
+        employee_id_changed = True
 
     update_data = payload.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(user, key, value)
-    if update_data.get("is_active") is False:
-        user.token_version = (user.token_version or 0) + 1  # end any session this user still has
+    if update_data.get("is_active") is False or employee_id_changed:
+        # Session tokens are bound to employee_id + token_version (see dependencies.py), so a rename
+        # must end any outstanding session too -- otherwise a still-valid old cookie could later match
+        # a different account if the freed employee_id gets reassigned.
+        user.token_version = (user.token_version or 0) + 1
 
     db.commit()
     db.refresh(user)

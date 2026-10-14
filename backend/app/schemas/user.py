@@ -77,6 +77,7 @@ class UserUpdate(BaseModel):
 
 class UserOut(UserBase):
     id: int
+    must_change_password: bool = False
     role: RoleOut | None = None
     created_at: datetime | None = None
     creator: CreatorOut | None = None

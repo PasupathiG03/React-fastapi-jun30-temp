@@ -108,6 +108,7 @@ def change_password(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Please choose a password that is not the default or your username")
 
     current_user.hashed_password = hash_password(payload.new_password)
+    current_user.must_change_password = False
     current_user.token_version = (current_user.token_version or 0) + 1  # signs out every other device
     db.commit()
     clear_session_cookie(response)  # the user signs in again with the new password

@@ -12,6 +12,8 @@ import {
   Moon,
   Sun,
   Bell,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/constants";
 import { isAuthenticated, logout } from "@/lib/auth";
@@ -30,6 +32,7 @@ interface UserInfo {
   employee_name: string | null;
   employee_id: string;
   role: { id: number; name: string } | null;
+  must_change_password?: boolean;
 }
 
 export default function TopBar({ onToggle, loading = false }: Props) {
@@ -37,10 +40,18 @@ export default function TopBar({ onToggle, loading = false }: Props) {
   const [profileLoading, setProfileLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  // True once we know the account is on a shared default password: the backend blocks every endpoint
+  // but /api/auth/me and /api/auth/change-password until it's rotated, so the modal is forced open and
+  // can't be dismissed until the change succeeds (handleChangePassword then signs the user out to
+  // re-login with the new password).
+  const [forcePasswordChange, setForcePasswordChange] = useState(false);
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const [showOldPassword, setShowOldPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
@@ -60,7 +71,14 @@ export default function TopBar({ onToggle, loading = false }: Props) {
     }
     fetch(`${API_BASE_URL}/api/auth/me`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => data && setUser(data))
+      .then((data) => {
+        if (!data) return;
+        setUser(data);
+        if (data.must_change_password) {
+          setForcePasswordChange(true);
+          setShowPasswordModal(true);
+        }
+      })
       .catch(() => { })
       .finally(() => setProfileLoading(false));
   }, []);
@@ -100,9 +118,13 @@ export default function TopBar({ onToggle, loading = false }: Props) {
         }
       );
       setShowPasswordModal(false);
+      setForcePasswordChange(false);
       setOldPassword("");
       setNewPassword("");
       setConfirmPassword("");
+      setShowOldPassword(false);
+      setShowNewPassword(false);
+      setShowConfirmPassword(false);
       showUpdate("Password changed successfully! Please login with your new password.");
       handleLogout();
     } catch (err: any) {
@@ -369,60 +391,101 @@ export default function TopBar({ onToggle, loading = false }: Props) {
             >
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-lg font-bold text-slate-900 dark:text-white">Change Password</h3>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowPasswordModal(false);
-                  }}
-                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-white/10 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                {!forcePasswordChange && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPasswordModal(false);
+                    }}
+                    className="p-1.5 hover:bg-slate-100 dark:hover:bg-white/10 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                )}
               </div>
+
+              {forcePasswordChange && (
+                <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-xs text-amber-700 dark:text-amber-400">
+                  Your account is still on its default password. Set a new one to continue.
+                </div>
+              )}
 
               <form onSubmit={handleChangePassword} className="space-y-4">
                 <div>
                   <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">
                     Current Password
                   </label>
-                  <input
-                    type="password"
-                    value={oldPassword}
-                    onChange={(e) => setOldPassword(e.target.value)}
-                    className="w-full px-3 py-2 glass-field border border-slate-200 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 transition-all"
-                    placeholder="Enter current password"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type={showOldPassword ? "text" : "password"}
+                      value={oldPassword}
+                      onChange={(e) => setOldPassword(e.target.value)}
+                      className="w-full px-3 py-2 pr-9 glass-field border border-slate-200 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 transition-all"
+                      placeholder="Enter current password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowOldPassword((v) => !v)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+                      aria-label={showOldPassword ? "Hide password" : "Show password"}
+                      title={showOldPassword ? "Hide password" : "Show password"}
+                    >
+                      {showOldPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
 
                 <div>
                   <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">
                     New Password
                   </label>
-                  <input
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full px-3 py-2 glass-field border border-slate-200 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 transition-all"
-                    placeholder="Enter new password"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? "text" : "password"}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full px-3 py-2 pr-9 glass-field border border-slate-200 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 transition-all"
+                      placeholder="Enter new password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword((v) => !v)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+                      aria-label={showNewPassword ? "Hide password" : "Show password"}
+                      title={showNewPassword ? "Hide password" : "Show password"}
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
 
                 <div>
                   <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">
                     Confirm New Password
                   </label>
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full px-3 py-2 glass-field border border-slate-200 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 transition-all"
-                    placeholder="Confirm new password"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="w-full px-3 py-2 pr-9 glass-field border border-slate-200 dark:border-white/10 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 transition-all"
+                      placeholder="Confirm new password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((v) => !v)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+                      aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                      title={showConfirmPassword ? "Hide password" : "Show password"}
+                    >
+                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-2 leading-tight">
-                    Must be at least 10 characters and contain a letter, a number and a symbol.
+                    Must be at least 6 characters and contain a letter, a number and a symbol.
                   </p>
                 </div>
 

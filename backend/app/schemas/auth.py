@@ -44,7 +44,7 @@ class UserOut(BaseModel):
 
     model_config = {"from_attributes": True}
 
-MIN_PASSWORD_LENGTH = 10
+MIN_PASSWORD_LENGTH = 6
 
 
 def check_password_strength(v: str) -> str:
