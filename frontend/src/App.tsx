@@ -1,4 +1,5 @@
 import { lazy, Suspense } from "react";
+import { Toaster } from "react-hot-toast";
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import DashboardLayout from "./components/DashboardLayout";
 import RouteLoader from "./components/RouteLoader";
@@ -32,6 +33,7 @@ function AppLayout() {
 export default function App() {
   return (
     <ThemeProvider>
+      <Toaster position="top-right" />
       <BrowserRouter>
         <Suspense fallback={<RouteLoader />}>
         <Routes>

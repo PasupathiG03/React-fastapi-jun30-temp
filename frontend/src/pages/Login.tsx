@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { showError } from "../lib/toast";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Eye,
@@ -31,7 +32,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [capsLock, setCapsLock] = useState(false);
   // Why the user landed here (session ended), shown once above the form.
   const [logoutReason] = useState(() => takeLogoutReason());
@@ -43,7 +43,6 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
     setIsLoading(true);
     try {
       const session = await loginApi({ employee_id: email, password }); // the server sets the HttpOnly session cookie
@@ -51,7 +50,7 @@ export default function LoginPage() {
       setIsSuccess(true);
       setTimeout(() => navigate("/dashboard"), 800);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      showError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setIsLoading(false);
     }
@@ -206,10 +205,7 @@ export default function LoginPage() {
                           id="email"
                           type="text"
                           value={email}
-                          onChange={(e) => {
-                            setEmail(e.target.value);
-                            if (error) setError(null);
-                          }}
+                          onChange={(e) => setEmail(e.target.value)}
                           placeholder="Enter your username"
                           className="w-full bg-transparent text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
                           required
@@ -239,10 +235,7 @@ export default function LoginPage() {
                           id="password"
                           type={isVisible ? "text" : "password"}
                           value={password}
-                          onChange={(e) => {
-                            setPassword(e.target.value);
-                            if (error) setError(null);
-                          }}
+                          onChange={(e) => setPassword(e.target.value)}
                           onKeyUp={(e) => setCapsLock(e.getModifierState("CapsLock"))}
                           onBlur={() => setCapsLock(false)}
                           placeholder="Enter your password"
@@ -272,22 +265,6 @@ export default function LoginPage() {
                         </p>
                       )}
                     </div>
-
-                    {/* Error Banner */}
-                    <AnimatePresence>
-                      {error && (
-                        <motion.div
-                          role="alert"
-                          initial={{ opacity: 0, height: 0, x: 0 }}
-                          animate={{ opacity: 1, height: "auto", x: [0, -6, 6, -4, 4, 0] }}
-                          exit={{ opacity: 0, height: 0 }}
-                          className="flex items-center gap-2 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl px-3.5 py-2.5 text-xs text-red-600 dark:text-red-400 overflow-hidden"
-                        >
-                          <AlertCircle className="w-4 h-4 shrink-0" />
-                          <p>{error}</p>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
 
                     {/* Submit Button */}
                     <button

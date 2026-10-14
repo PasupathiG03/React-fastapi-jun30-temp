@@ -1,5 +1,6 @@
 
 import { useEffect, useState } from "react";
+import { showError, showSuccess, showDelete } from "../lib/toast";
 import { Plus, Trash2, X, Edit2, Cog, GripVertical, Layers } from "lucide-react";
 import { createPortal } from "react-dom";
 import { TablePagination, TableToolbar } from "@/components/DataTableControls";
@@ -93,12 +94,10 @@ function ProcessModal({ nextOrder, editing, onClose, onSaved }: ProcessModalProp
   const [order, setOrder] = useState(editing?.order ?? nextOrder);
   const [isActive, setIsActive] = useState(editing?.is_active ?? true);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
-    if (!name.trim()) return setError("Process Name is required");
+    if (!name.trim()) return showError("Process Name is required");
 
     setSubmitting(true);
     try {
@@ -110,7 +109,7 @@ function ProcessModal({ nextOrder, editing, onClose, onSaved }: ProcessModalProp
       const saved = editing ? await updateProcess(editing.id, payload) : await createProcess(payload);
       onSaved(saved);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save process");
+      showError(err instanceof Error ? err.message : "Failed to save process");
     } finally {
       setSubmitting(false);
     }
@@ -164,12 +163,6 @@ function ProcessModal({ nextOrder, editing, onClose, onSaved }: ProcessModalProp
               <Toggle checked={isActive} onChange={setIsActive} />
               <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Active</span>
             </div>
-
-            {error && (
-              <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-600 dark:text-red-400">
-                {error}
-              </div>
-            )}
           </div>
 
           <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 rounded-b-2xl">
@@ -213,7 +206,6 @@ function ScreenModal({ processId, nextOrder, editing, onClose, onSaved }: Screen
   const [order, setOrder] = useState(Math.max(1, editing?.order ?? nextOrder));
   const [isActive, setIsActive] = useState(editing?.is_active ?? true);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!routeEdited) setRoute(name ? `/${toSlug(name)}` : "");
@@ -221,9 +213,8 @@ function ScreenModal({ processId, nextOrder, editing, onClose, onSaved }: Screen
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
-    if (!name.trim()) return setError("Screen Name is required");
-    if (!route.trim()) return setError("Route is required");
+    if (!name.trim()) return showError("Screen Name is required");
+    if (!route.trim()) return showError("Route is required");
 
     setSubmitting(true);
     try {
@@ -238,7 +229,7 @@ function ScreenModal({ processId, nextOrder, editing, onClose, onSaved }: Screen
         : await createMenu(payload);
       onSaved(saved);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save screen");
+      showError(err instanceof Error ? err.message : "Failed to save screen");
     } finally {
       setSubmitting(false);
     }
@@ -303,12 +294,6 @@ function ScreenModal({ processId, nextOrder, editing, onClose, onSaved }: Screen
               <Toggle checked={isActive} onChange={setIsActive} />
               <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Active</span>
             </div>
-
-            {error && (
-              <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-600 dark:text-red-400">
-                {error}
-              </div>
-            )}
           </div>
 
           <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 rounded-b-2xl">
@@ -355,9 +340,6 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
   const [processToDelete, setProcessToDelete] = useState<ProcessItem | null>(null);
   const [screenToDelete, setScreenToDelete] = useState<MenuItem | null>(null);
 
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-
   const [draggedProcessId, setDraggedProcessId] = useState<number | null>(null);
   const [dragOverProcessId, setDragOverProcessId] = useState<number | null>(null);
   const [draggedScreenId, setDraggedScreenId] = useState<number | null>(null);
@@ -373,7 +355,7 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
     setProcesses(reordered); // optimistic: no refetch, no reload
     reorderProcesses(reordered.map((p) => ({ id: p.id, order: p.order }))).catch(() => {
       setProcesses(before);
-      setError("Failed to save the new process order");
+      showError("Failed to save the new process order");
     });
   }
 
@@ -387,7 +369,7 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
     setScreens(reordered); // optimistic: no refetch, no reload
     updateMenuOrders(reordered.map((s) => ({ id: s.id, order: s.order }))).catch(() => {
       setScreens(before);
-      setError("Failed to save the new screen order");
+      showError("Failed to save the new screen order");
     });
   }
 
@@ -425,11 +407,6 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
     }
   }
 
-  function flash(message: string) {
-    setSuccess(message);
-    setTimeout(() => setSuccess(""), 3000);
-  }
-
   function handleProcessSaved(process: ProcessItem) {
     setProcesses((prev) => {
       const exists = prev.some((p) => p.id === process.id);
@@ -439,7 +416,7 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
     setSelectedProcessId(process.id);
     setProcessModalOpen(false);
     setEditingProcess(null);
-    flash(`Process "${process.name}" saved`);
+    showSuccess(`Process "${process.name}" saved`);
   }
 
   async function handleDeleteProcessConfirm() {
@@ -453,9 +430,9 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
         setScreens([]);
       }
       setProcessToDelete(null);
-      flash("Process deleted successfully");
+      showDelete("Process deleted successfully");
     } catch {
-      setError("Failed to delete process");
+      showError("Failed to delete process");
     }
   }
 
@@ -467,7 +444,7 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
     });
     setScreenModalOpen(false);
     setEditingScreen(null);
-    flash(`Screen "${menu.name}" saved`);
+    showSuccess(`Screen "${menu.name}" saved`);
   }
 
   async function handleDeleteScreenConfirm() {
@@ -476,10 +453,10 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
       await deleteMenu(screenToDelete.id);
       setScreens((prev) => prev.filter((m) => m.id !== screenToDelete.id));
       setScreenToDelete(null);
-      flash("Screen deleted successfully");
+      showDelete("Screen deleted successfully");
     } catch (err) {
       setScreenToDelete(null);
-      setError(err instanceof Error ? err.message : "Failed to delete screen");
+      showError(err instanceof Error ? err.message : "Failed to delete screen");
     }
   }
 
@@ -512,17 +489,6 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
         }
         loading={loadingProcesses}
       />
-
-      {success && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-green-50 border border-green-100 text-sm text-green-700 shadow-sm">
-          ✓ {success}
-        </div>
-      )}
-      {error && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-red-50 border border-red-100 text-sm text-red-600 shadow-sm">
-          {error}
-        </div>
-      )}
 
       <div className="flex flex-col lg:flex-row gap-5 items-stretch lg:items-start">
         {/* ── Processes panel ── */}

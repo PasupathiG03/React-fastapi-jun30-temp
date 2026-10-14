@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { showError, showSuccess, showDelete, showUpdate } from "../lib/toast";
 import { Shield, Plus, Trash2, ToggleLeft, ToggleRight, X, Edit2 } from "lucide-react";
 import { RoleItem, fetchRoles, createRole, updateRole, deleteRole, RoleCreatePayload } from "@/services/role";
 import { createPortal } from "react-dom";
@@ -18,8 +19,6 @@ export default function RoleManagementPage() {
   const [name, setName] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
 
   useEffect(() => {
     loadRoles();
@@ -44,16 +43,13 @@ export default function RoleManagementPage() {
       setEditId(null);
       setName("");
     }
-    setError("");
     setIsModalOpen(true);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
-    setSuccess("");
 
-    if (!name.trim()) return setError("Role Name is required");
+    if (!name.trim()) return showError("Role Name is required");
 
     setSubmitting(true);
     try {
@@ -64,16 +60,15 @@ export default function RoleManagementPage() {
       if (editId) {
         const updated = await updateRole(editId, payload);
         setRoles((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-        setSuccess(`Role "${updated.name}" updated successfully`);
+        showUpdate(`Role "${updated.name}" updated successfully`);
       } else {
         const created = await createRole(payload);
         setRoles((prev) => [created, ...prev]);
-        setSuccess(`Role "${created.name}" created successfully`);
+        showSuccess(`Role "${created.name}" created successfully`);
       }
       setIsModalOpen(false);
-      setTimeout(() => setSuccess(""), 4000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save role");
+      showError(err instanceof Error ? err.message : "Failed to save role");
     } finally {
       setSubmitting(false);
     }
@@ -84,13 +79,12 @@ export default function RoleManagementPage() {
       const updated = await updateRole(role.id, { is_active: !role.is_active });
       if (!updated.is_active) {
         setRoles((prev) => prev.filter((r) => r.id !== updated.id));
-        setSuccess("Role deactivated and removed from view");
-        setTimeout(() => setSuccess(""), 3000);
+        showDelete("Role deactivated and removed from view");
       } else {
         setRoles((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
       }
     } catch {
-      setError("Failed to update role status");
+      showError("Failed to update role status");
     }
   }
 
@@ -103,11 +97,10 @@ export default function RoleManagementPage() {
     try {
       await deleteRole(itemToDelete.id);
       setRoles((prev) => prev.filter((r) => r.id !== itemToDelete.id));
-      setSuccess("Role deleted successfully");
+      showDelete("Role deleted successfully");
       setItemToDelete(null);
-      setTimeout(() => setSuccess(""), 3000);
     } catch {
-      setError("Failed to delete role");
+      showError("Failed to delete role");
     }
   }
 
@@ -191,12 +184,6 @@ export default function RoleManagementPage() {
                   />
                 </div>
 
-                {/* Feedback */}
-                {error && (
-                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-600 dark:text-red-400">
-                    {error}
-                  </div>
-                )}
               </div>
 
               {/* Action buttons */}
@@ -214,13 +201,6 @@ export default function RoleManagementPage() {
           </div>
         </div>,
         document.body
-      )}
-
-      {/* Success Message Banner */}
-      {success && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-xs text-emerald-700 dark:text-emerald-400 shadow-sm">
-          ✓ {success}
-        </div>
       )}
 
       {/* Roles List */}

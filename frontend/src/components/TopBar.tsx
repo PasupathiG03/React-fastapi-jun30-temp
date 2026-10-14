@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { showError, showUpdate } from "../lib/toast";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronDown,
@@ -39,7 +40,6 @@ export default function TopBar({ onToggle, loading = false }: Props) {
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordError, setPasswordError] = useState("");
   const [passwordLoading, setPasswordLoading] = useState(false);
 
   const { theme, toggleTheme } = useTheme();
@@ -85,9 +85,8 @@ export default function TopBar({ onToggle, loading = false }: Props) {
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
-    setPasswordError("");
     if (newPassword !== confirmPassword) {
-      setPasswordError("New passwords do not match.");
+      showError("New passwords do not match.");
       return;
     }
 
@@ -104,10 +103,10 @@ export default function TopBar({ onToggle, loading = false }: Props) {
       setOldPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      alert("Password changed successfully! Please login with your new password.");
+      showUpdate("Password changed successfully! Please login with your new password.");
       handleLogout();
     } catch (err: any) {
-      setPasswordError(err.message || "Failed to change password");
+      showError(err.message || "Failed to change password");
     } finally {
       setPasswordLoading(false);
     }
@@ -374,7 +373,6 @@ export default function TopBar({ onToggle, loading = false }: Props) {
                   type="button"
                   onClick={() => {
                     setShowPasswordModal(false);
-                    setPasswordError("");
                   }}
                   className="p-1.5 hover:bg-slate-100 dark:hover:bg-white/10 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
                 >
@@ -383,12 +381,6 @@ export default function TopBar({ onToggle, loading = false }: Props) {
               </div>
 
               <form onSubmit={handleChangePassword} className="space-y-4">
-                {passwordError && (
-                  <div className="p-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg text-sm text-red-600 dark:text-red-400">
-                    {passwordError}
-                  </div>
-                )}
-
                 <div>
                   <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">
                     Current Password

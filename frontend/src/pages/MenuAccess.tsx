@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { showError } from "../lib/toast";
 import { ShieldCheck } from "lucide-react";
 import { fetchProcesses, type ProcessItem } from "@/services/process";
 import {
@@ -27,7 +28,6 @@ export default function MenuAccessPage() {
   const targetId = target ? Number(target.slice(2)) : null;
   const [matrix, setMatrix] = useState<AccessMatrix | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   useEffect(() => {
     Promise.all([fetchProcesses().catch(() => [] as ProcessItem[]), fetchWorkflows().catch(() => [] as WorkflowDetail[])])
@@ -47,10 +47,9 @@ export default function MenuAccessPage() {
   useEffect(() => {
     if (target == null || targetId == null) return;
     setLoading(true);
-    setError("");
     (isWorkflow ? fetchStageAccessMatrix(targetId) : fetchAccessMatrix(targetId))
       .then(setMatrix)
-      .catch(() => setError(isWorkflow ? "Failed to load stage access" : "Failed to load screen access"))
+      .catch(() => showError(isWorkflow ? "Failed to load stage access" : "Failed to load screen access"))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target]);
@@ -85,7 +84,6 @@ export default function MenuAccessPage() {
     if (!matrix) return;
     const isGrantedNow = granted.has(key(roleId, menuId));
     const allowed = nextAllowed !== undefined ? nextAllowed : !isGrantedNow;
-    setError("");
     const before = matrix;
     setMatrix({
       ...matrix,
@@ -97,7 +95,7 @@ export default function MenuAccessPage() {
       await (isWorkflow ? setStageAccess(roleId, menuId, allowed) : setAccess(roleId, menuId, allowed));
     } catch {
       setMatrix(before);
-      setError("Failed to update access");
+      showError("Failed to update access");
     }
   }
 
@@ -109,12 +107,6 @@ export default function MenuAccessPage() {
         subtitle="Choose which roles can see each screen and workflow stage in the sidebar"
         loading={booting}
       />
-
-      {error && (
-        <div className="px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs font-medium text-red-600 dark:text-red-400 shadow-sm">
-          {error}
-        </div>
-      )}
 
       {/* ── Main Content Card ── */}
       <div className="glass-card rounded-[22px] overflow-hidden">

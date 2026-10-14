@@ -1,5 +1,6 @@
 
 import { useEffect, useRef, useState } from "react";
+import { showError, showSuccess, showDelete, showUpdate } from "../lib/toast";
 import {
   Users,
   Plus,
@@ -57,8 +58,6 @@ export default function UserManagementPage() {
   const [roleId, setRoleId] = useState<number | "">("");
 
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
 
   // Bulk import
   const [isBulkOpen, setIsBulkOpen] = useState(false);
@@ -83,7 +82,7 @@ export default function UserManagementPage() {
       setUsers(usersData);
       setRoles(rolesData.filter(r => r.is_active)); // Only active roles for assignment
     } catch (err: any) {
-      setError(err.message || "Failed to load users");
+      showError(err.message || "Failed to load users");
     } finally {
       setLoadingUsers(false);
     }
@@ -103,16 +102,13 @@ export default function UserManagementPage() {
       setLocation("");
       setRoleId("");
     }
-    setError("");
     setIsModalOpen(true);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
-    setSuccess("");
 
-    if (!employeeId.trim()) return setError("Employee ID is required");
+    if (!employeeId.trim()) return showError("Employee ID is required");
 
     setSubmitting(true);
     try {
@@ -126,16 +122,15 @@ export default function UserManagementPage() {
       if (editId) {
         const updated = await updateUser(editId, payload);
         setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
-        setSuccess(`"${updated.employee_name || updated.employee_id}" updated successfully`);
+        showUpdate(`"${updated.employee_name || updated.employee_id}" updated successfully`);
       } else {
         const created = await createUser(payload);
         setUsers((prev) => [created, ...prev]);
-        setSuccess(`"${created.employee_name || created.employee_id}" added with default password Admin@123#`);
+        showSuccess(`"${created.employee_name || created.employee_id}" added with default password Admin@123#`);
       }
       setIsModalOpen(false);
-      setTimeout(() => setSuccess(""), 4000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save user");
+      showError(err instanceof Error ? err.message : "Failed to save user");
     } finally {
       setSubmitting(false);
     }
@@ -146,7 +141,7 @@ export default function UserManagementPage() {
       const updated = await updateUser(user.id, { is_active: !user.is_active });
       setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
     } catch {
-      setError("Failed to update user status");
+      showError("Failed to update user status");
     }
   }
 
@@ -161,11 +156,10 @@ export default function UserManagementPage() {
       // The API soft-deletes (is_active -> false); the row stays visible, just flagged Inactive.
       const deletedId = itemToDelete.id;
       setUsers((prev) => prev.map((u) => (u.id === deletedId ? { ...u, is_active: false } : u)));
-      setSuccess("User deactivated");
+      showDelete("User deactivated");
       setItemToDelete(null);
-      setTimeout(() => setSuccess(""), 3000);
     } catch {
-      setError("Failed to delete user");
+      showError("Failed to delete user");
     }
   }
 
@@ -210,7 +204,9 @@ export default function UserManagementPage() {
     setBulkFileName(file.name);
     if (!/\.csv$/i.test(file.name)) {
       setBulkRows([]);
-      setBulkParseError("Please upload a .csv file.");
+      const msg = "Please upload a .csv file.";
+      setBulkParseError(msg);
+      showError(msg);
       return;
     }
     try {
@@ -218,14 +214,18 @@ export default function UserManagementPage() {
       const rows = parseCsv(text);
       if (rows.length < 2) {
         setBulkRows([]);
-        setBulkParseError("That file has no data rows below the header.");
+        const msg = "That file has no data rows below the header.";
+        setBulkParseError(msg);
+        showError(msg);
         return;
       }
       const [header, ...dataRows] = rows;
       const colIndex = mapCsvColumns(header, BULK_IMPORT_COLUMNS);
       if (colIndex.employee_id === undefined) {
         setBulkRows([]);
-        setBulkParseError('Couldn\'t find an "Employee ID" column in that file\'s header row.');
+        const msg = 'Couldn\'t find an "Employee ID" column in that file\'s header row.';
+        setBulkParseError(msg);
+        showError(msg);
         return;
       }
       const parsed: BulkUserInput[] = dataRows
@@ -240,7 +240,9 @@ export default function UserManagementPage() {
       setBulkRows(parsed);
     } catch {
       setBulkRows([]);
-      setBulkParseError("Couldn't read that file. Make sure it's a .csv export.");
+      const msg = "Couldn't read that file. Make sure it's a .csv export.";
+      setBulkParseError(msg);
+      showError(msg);
     }
   }
 
@@ -270,13 +272,14 @@ export default function UserManagementPage() {
           result.created > 0 && `${result.created} created`,
           result.reactivated > 0 && `${result.reactivated} reactivated`,
         ].filter(Boolean);
-        setSuccess(`${parts.join(", ")} successfully`);
-        setTimeout(() => setSuccess(""), 4000);
+        showSuccess(`${parts.join(", ")} successfully`);
       } else {
         setBulkResult(result);
       }
     } catch (err) {
-      setBulkParseError(err instanceof Error ? err.message : "Bulk import failed");
+      const msg = err instanceof Error ? err.message : "Bulk import failed";
+      setBulkParseError(msg);
+      showError(msg);
     } finally {
       setBulkSubmitting(false);
     }
@@ -411,14 +414,7 @@ export default function UserManagementPage() {
                   </div>
                 </div>
 
-                {/* Feedback */}
-                {error && (
-                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-600 dark:text-red-400">
-                    {error}
-                  </div>
-                )}
-
-                {!editId && !error && (
+                {!editId && (
                   <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-sky-500/[0.08] dark:bg-sky-500/10 border border-sky-500/20 dark:border-sky-400/20 text-xs text-slate-600 dark:text-slate-300">
                     <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#00c6ff] to-[#0072ff] flex items-center justify-center shrink-0 shadow-[0_2px_8px_rgba(0,132,255,0.35)]">
                       <ShieldAlert className="w-4 h-4 text-white" />
@@ -511,13 +507,6 @@ export default function UserManagementPage() {
                       </p>
                     )}
                   </div>
-
-                  {bulkParseError && (
-                    <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-600 dark:text-red-400">
-                      <AlertCircle className="w-4 h-4 shrink-0" />
-                      {bulkParseError}
-                    </div>
-                  )}
 
                   {bulkRows.length > 0 && !bulkParseError && (
                     <div className="rounded-xl border border-slate-200 dark:border-white/10 overflow-hidden">
@@ -635,20 +624,6 @@ export default function UserManagementPage() {
           </div>
         </div>,
         document.body
-      )}
-
-      {/* Success Message Banner */}
-      {success && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-xs text-emerald-700 dark:text-emerald-400 shadow-sm">
-          ✓ {success}
-        </div>
-      )}
-
-      {/* Error Message Banner */}
-      {error && !isModalOpen && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-600 dark:text-red-400 shadow-sm">
-          ⚠️ {error}
-        </div>
       )}
 
       {/* Users List */}

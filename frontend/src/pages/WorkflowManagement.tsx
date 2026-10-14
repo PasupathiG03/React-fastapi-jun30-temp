@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { showError, showSuccess, showDelete, showUpdate } from "../lib/toast";
 import {
   Copy,
   Edit2,
@@ -166,13 +167,11 @@ function WorkflowFormModal({
 }) {
   const [name, setName] = useState(editing?.name ?? "");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
     const trimmed = name.trim();
-    if (!trimmed) return setError("Workflow name is required");
+    if (!trimmed) return showError("Workflow name is required");
 
     setSubmitting(true);
     try {
@@ -184,7 +183,7 @@ function WorkflowFormModal({
         onSaved(created);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save workflow");
+      showError(err instanceof Error ? err.message : "Failed to save workflow");
     } finally {
       setSubmitting(false);
     }
@@ -222,11 +221,6 @@ function WorkflowFormModal({
               />
             </div>
 
-            {error && (
-              <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-600 dark:text-red-400">
-                {error}
-              </div>
-            )}
           </div>
 
           <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 rounded-b-2xl">
@@ -275,7 +269,6 @@ function StageFormModal({
   const [roleIds, setRoleIds] = useState<number[]>(editing?.role_ids ?? []);
   const [rolesTouched, setRolesTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
   const { roles, loading: rolesLoading } = useAssignableRoles();
 
   // For a new stage, follow the stage type until the user picks roles by hand.
@@ -286,9 +279,8 @@ function StageFormModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
     const trimmed = name.trim();
-    if (!trimmed) return setError("Stage name is required");
+    if (!trimmed) return showError("Stage name is required");
 
     setSubmitting(true);
     try {
@@ -300,7 +292,7 @@ function StageFormModal({
       });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save stage");
+      showError(err instanceof Error ? err.message : "Failed to save stage");
     } finally {
       setSubmitting(false);
     }
@@ -389,12 +381,6 @@ function StageFormModal({
               />
               <NoRolesWarning show={!rolesLoading && roleIds.length === 0} />
             </div>
-
-            {error && (
-              <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-600 dark:text-red-400">
-                {error}
-              </div>
-            )}
           </div>
 
           <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 rounded-b-2xl">
@@ -436,17 +422,15 @@ function CopyAccessModal({
 }) {
   const [sourceId, setSourceId] = useState(0);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!sourceId) return setError("Choose a workflow to copy from");
-    setError("");
+    if (!sourceId) return showError("Choose a workflow to copy from");
     setSubmitting(true);
     try {
       onCopied(await copyWorkflowAccess(target.id, sourceId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to copy access");
+      showError(err instanceof Error ? err.message : "Failed to copy access");
       setSubmitting(false);
     }
   }
@@ -486,12 +470,6 @@ function CopyAccessModal({
                 This replaces the roles currently set on those stages.
               </p>
             </div>
-
-            {error && (
-              <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-600 dark:text-red-400">
-                {error}
-              </div>
-            )}
           </div>
 
           <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 rounded-b-2xl">
@@ -545,13 +523,11 @@ function CreateWorkflowWizardModal({
 
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
 
   const [stageName, setStageName] = useState("");
   const [stageType, setStageType] = useState<StageType>("production");
   const nextOrder = addedStages.length + 1;
   const [stageSubmitting, setStageSubmitting] = useState(false);
-  const [stageError, setStageError] = useState("");
   const [stageRoleIds, setStageRoleIds] = useState<number[]>([]);
   const [rolesTouched, setRolesTouched] = useState(false);
   const { roles, loading: rolesLoading } = useAssignableRoles();
@@ -570,7 +546,7 @@ function CreateWorkflowWizardModal({
         // Replaces the roles picked above with the source workflow's.
         return onDone(await copyWorkflowAccess(workflow.id, copyFrom));
       } catch (err) {
-        setStageError(err instanceof Error ? err.message : "Failed to copy access");
+        showError(err instanceof Error ? err.message : "Failed to copy access");
         setFinishing(false);
         return;
       }
@@ -580,8 +556,7 @@ function CreateWorkflowWizardModal({
 
   async function handleNext(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
-    if (!name.trim()) return setError("Workflow name is required");
+    if (!name.trim()) return showError("Workflow name is required");
     setSubmitting(true);
     try {
       const w = await createWorkflow(name.trim());
@@ -589,7 +564,7 @@ function CreateWorkflowWizardModal({
       setWorkflow(full);
       setStep(2);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create workflow");
+      showError(err instanceof Error ? err.message : "Failed to create workflow");
     } finally {
       setSubmitting(false);
     }
@@ -598,9 +573,8 @@ function CreateWorkflowWizardModal({
   async function handleAddStageDirect(e: React.FormEvent) {
     e.preventDefault();
     if (!workflow) return;
-    setStageError("");
     const trimmed = stageName.trim();
-    if (!trimmed) return setStageError("Stage name is required");
+    if (!trimmed) return showError("Stage name is required");
 
     setStageSubmitting(true);
     try {
@@ -615,7 +589,7 @@ function CreateWorkflowWizardModal({
       setStageType("production");
       setRolesTouched(false);
     } catch (err) {
-      setStageError(err instanceof Error ? err.message : "Failed to add stage");
+      showError(err instanceof Error ? err.message : "Failed to add stage");
     } finally {
       setStageSubmitting(false);
     }
@@ -672,12 +646,6 @@ function CreateWorkflowWizardModal({
                   className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 glass-field text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-colors"
                 />
               </div>
-
-              {error && (
-                <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-600 dark:text-red-400">
-                  {error}
-                </div>
-              )}
             </div>
 
             <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 rounded-b-2xl">
@@ -796,12 +764,6 @@ function CreateWorkflowWizardModal({
                   <NoRolesWarning show={!rolesLoading && stageRoleIds.length === 0} />
                 </div>
 
-                {stageError && (
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-600 dark:text-red-400">
-                    {stageError}
-                  </div>
-                )}
-
                 <button
                   type="submit"
                   disabled={stageSubmitting}
@@ -872,18 +834,11 @@ export default function WorkflowManagementPage() {
     stage: StageItem;
   } | null>(null);
 
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const { roles: assignableRoles } = useAssignableRoles();
 
   useEffect(() => {
     loadWorkflows();
   }, []);
-
-  function flash(msg: string) {
-    setSuccess(msg);
-    setTimeout(() => setSuccess(""), 2500);
-  }
 
   async function loadWorkflows() {
     try {
@@ -899,12 +854,12 @@ export default function WorkflowManagementPage() {
   function handleWorkflowSaved(w: WorkflowItem) {
     setWorkflows((prev) => prev.map((wf) => (wf.id === w.id ? { ...wf, name: w.name, is_active: w.is_active } : wf)));
     setEditingWorkflow(null);
-    flash(`Workflow "${w.name}" saved`);
+    showUpdate(`Workflow "${w.name}" saved`);
   }
 
   async function handleWorkflowCreated(w: WorkflowDetail) {
     setCreateModalOpen(false);
-    flash(`Workflow "${w.name}" created`);
+    showSuccess(`Workflow "${w.name}" created`);
     try {
       const full = await fetchWorkflow(w.id);
       setWorkflows((prev) => (prev.some((p) => p.id === full.id) ? prev.map((p) => p.id === full.id ? full : p) : [...prev, full]));
@@ -919,7 +874,7 @@ export default function WorkflowManagementPage() {
       setWorkflows((prev) => prev.map((w) => (w.id === updated.id ? { ...w, is_active: updated.is_active } : w)));
       setOpenMenuId(null);
     } catch {
-      setError("Failed to update workflow status");
+      showError("Failed to update workflow status");
     }
   }
 
@@ -928,9 +883,9 @@ export default function WorkflowManagementPage() {
     try {
       await deleteWorkflow(workflowToDelete.id);
       setWorkflows((prev) => prev.filter((w) => w.id !== workflowToDelete.id));
-      flash("Workflow deleted successfully");
+      showDelete("Workflow deleted successfully");
     } catch {
-      setError("Failed to delete workflow");
+      showError("Failed to delete workflow");
     } finally {
       setWorkflowToDelete(null);
     }
@@ -960,7 +915,11 @@ export default function WorkflowManagementPage() {
       )
     );
     setStageModal(null);
-    flash(editing ? "Stage updated successfully" : "Stage added successfully");
+    if (editing) {
+      showUpdate("Stage updated successfully");
+    } else {
+      showSuccess("Stage added successfully");
+    }
   }
 
   async function handleDeleteStageConfirm() {
@@ -975,9 +934,9 @@ export default function WorkflowManagementPage() {
             : { ...w, stages: w.stages.filter((s) => s.id !== stage.id) }
         )
       );
-      flash("Stage deleted successfully");
+      showDelete("Stage deleted successfully");
     } catch {
-      setError("Failed to delete stage");
+      showError("Failed to delete stage");
     } finally {
       setStageToDelete(null);
     }
@@ -999,17 +958,6 @@ export default function WorkflowManagementPage() {
           </button>
         }
       />
-
-      {success && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-xs text-emerald-700 dark:text-emerald-400 shadow-sm">
-          ✓ {success}
-        </div>
-      )}
-      {error && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-600 dark:text-red-400 shadow-sm">
-          {error}
-        </div>
-      )}
 
       {loadingWorkflows ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -1214,7 +1162,7 @@ export default function WorkflowManagementPage() {
           onCopied={(updated) => {
             setWorkflows((prev) => prev.map((w) => (w.id === updated.id ? updated : w)));
             setCopyAccessTarget(null);
-            flash(`Access copied to "${updated.name}"`);
+            showSuccess(`Access copied to "${updated.name}"`);
           }}
         />
       )}
