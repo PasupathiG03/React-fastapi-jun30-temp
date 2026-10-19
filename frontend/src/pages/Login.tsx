@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { showError } from "../lib/toast";
 import { motion, AnimatePresence } from "framer-motion";
@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { loginApi } from "@/services/auth";
 import { preloadRoute } from "@/lib/lazyPages";
-import { markSignedIn, takeLogoutReason } from "@/lib/auth";
+import { clearLogoutReason, markSignedIn, peekLogoutReason } from "@/lib/auth";
 import { useTheme } from "@/context/ThemeContext";
 import { getAppBackground } from "@/lib/appBackground";
 import Copyright from "@/components/Copyright";
@@ -35,7 +35,10 @@ export default function LoginPage() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
   // Why the user landed here (session ended), shown once above the form.
-  const [logoutReason] = useState(() => takeLogoutReason());
+  // Peek during render, clear once the page is really on screen: the first render can be discarded while
+  // the page loads, and taking (removing) it there lost the message.
+  const [logoutReason] = useState(() => peekLogoutReason());
+  useEffect(() => clearLogoutReason(), []);
 
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
@@ -188,7 +191,13 @@ export default function LoginPage() {
                       <p>
                         {logoutReason === "idle"
                           ? "You were signed out because you were inactive for a while. Please sign in again."
-                          : "Your session has expired. Please sign in again."}
+                          : logoutReason === "replaced"
+                            ? "You were signed out because your account was signed in on another browser or device."
+                          : logoutReason === "url"
+                            ? "You were signed out because the page address was changed manually. Please sign in again and use the menu to move between screens."
+                          : logoutReason === "tabs"
+                            ? "You were signed out because the app was opened in more than one tab. Please use a single tab."
+                            : "Your session has expired. Please sign in again."}
                       </p>
                     </div>
                   )}

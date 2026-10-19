@@ -42,6 +42,24 @@ def authenticate_session(db: Session, token: str | None):
     return user, claims
 
 
+SESSION_REPLACED = "replaced"
+SESSION_ENDED_HEADER = "X-Session-Ended"
+
+
+def session_end_reason(db: Session, token: str | None) -> str | None:
+    """Why an otherwise well-formed token no longer works: SESSION_REPLACED when the account signed in again
+    (somewhere else) after this session started, else None (expired, logged out, deactivated...)."""
+    from app.models.user import User
+
+    claims = decode_access_token(token) if token else None
+    if not claims:
+        return None
+    user = db.query(User).filter(User.employee_id == claims["sub"]).first()
+    if not user or not user.last_login_at or int(claims.get("ver", 0)) == (user.token_version or 0):
+        return None
+    return SESSION_REPLACED if int(claims.get("auth", 0)) < int(user.last_login_at.timestamp()) else None
+
+
 def authenticate_token(db: Session, token: str | None):
     return authenticate_session(db, token)[0]
 
@@ -55,6 +73,12 @@ async def get_current_user(
     token = request.cookies.get(settings.COOKIE_NAME) or (credentials.credentials if credentials else None)
     user, claims = authenticate_session(db, token)
     if not user:
+        if session_end_reason(db, token) == SESSION_REPLACED:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="You were signed out because your account was signed in on another browser or device.",
+                headers={"WWW-Authenticate": "Bearer", SESSION_ENDED_HEADER: SESSION_REPLACED},
+            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Your session has expired. Please sign in again.",
@@ -94,14 +118,16 @@ def has_full_access(user) -> bool:
 
 
 def get_superuser(current_user=Depends(get_current_user)):
-    """Developer-only APIs (Router Setup, Dashboard, process and screen setup): superusers and Developers."""
+    """Developer-only APIs (Router Setup, Dashboard, process and screen setup): full access only, i.e. a
+    superuser whose role is Developer (has_full_access). A superuser with another role is refused."""
     if not has_full_access(current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Developer access required")
     return current_user
 
 
 def require_screen(*urls: str):
-    """Allow superusers and Developers, and users whose role was granted at least one of these screens in Menu Access.
+    """Allow full-access users (superuser AND Developer role), and users whose role was granted at least one of these
+    screens in Menu Access.
     This ties the API to the same permission that shows the screen in the sidebar, so a screen a role can open
     also works, while everything else stays closed."""
 

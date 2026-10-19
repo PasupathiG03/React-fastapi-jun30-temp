@@ -54,6 +54,7 @@ app.add_middleware(
     allow_credentials=True,  # the session cookie; safe because origins are an explicit list, never "*"
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
+    expose_headers=["X-Session-Ended"],  # lets the UI say "signed in elsewhere" instead of "expired"
 )
 
 app.include_router(api_router)

@@ -5,7 +5,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.dependencies import authenticate_token, get_current_user, get_db
+from app.core.events import publish
+from app.core.dependencies import authenticate_token, get_current_user, get_db, has_full_access
 from app.core.ratelimit import SlidingWindowLimiter
 from app.core.security import DUMMY_HASH, hash_password, verify_password
 from app.core.session import clear_session_cookie, set_session_cookie
@@ -66,8 +67,17 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
 
     user.failed_attempts = 0
     user.locked_until = None
+    # One active session per account, except for full access (superuser AND Developer role): for everyone
+    # else a new sign-in ends every earlier one (other browsers and devices). Full-access users may stay
+    # signed in on several browsers at once.
+    single_session = not has_full_access(user)
+    if single_session:
+        user.token_version = (user.token_version or 0) + 1
+        user.last_login_at = now  # lets the older browser be told "signed in elsewhere", not "expired"
     db.commit()
-    set_session_cookie(response, user.employee_id, user.token_version or 0)
+    set_session_cookie(response, user.employee_id, user.token_version or 0, int(now.timestamp()))
+    if single_session:
+        publish({"session"})  # open live streams re-check right away, so the old browser is signed out at once
     return LoginResponse(
         idle_minutes=settings.SESSION_IDLE_MINUTES,
         expires_in_minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -100,10 +110,10 @@ def change_password(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Passwords do not match")
 
     if not verify_password(payload.old_password, current_user.hashed_password):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect old password")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect current password")
 
     if payload.new_password == payload.old_password:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The new password must be different from the old one")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The new password must be different from your current password")
     if payload.new_password == DEFAULT_PASSWORD or payload.new_password.lower() == current_user.employee_id.lower():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Please choose a password that is not the default or your username")
 

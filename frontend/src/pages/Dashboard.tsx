@@ -17,6 +17,7 @@ import { fetchMenus, type MenuItem } from "@/services/menu";
 import { API_BASE_URL } from "@/lib/constants";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { useLive } from "@/context/LiveContext";
+import { hasFullAccess } from "@/lib/access";
 
 interface Me {
   employee_name: string | null;
@@ -47,7 +48,7 @@ export default function DashboardPage() {
   const [me, setMe] = useState<Me | null>(null);
   const [menus, setMenus] = useState<MenuItem[]>([]);
   const { accessVersion } = useLive();
-  const isAdmin = !!me && (me.is_superuser && me.role?.name?.trim().toLowerCase() === "developer");
+  const isAdmin = hasFullAccess(me);
 
   useEffect(() => {
     loadStats();
@@ -66,7 +67,7 @@ export default function DashboardPage() {
     setMe(meData);
     setMenus(myMenus);
 
-    const admin = !!meData && (meData.is_superuser && meData.role?.name?.trim().toLowerCase() === "developer");
+    const admin = hasFullAccess(meData);
     if (admin) {
       const [usersResult, rolesResult, workflowsResult] = await Promise.allSettled([
         fetchUsers(),

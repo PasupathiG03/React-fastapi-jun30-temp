@@ -22,7 +22,8 @@ export function installApiFetch(): void {
     const response = await trackRequest(nativeFetch(input, { ...init, credentials: "include" }));
     const isAuthCall = url.includes("/api/auth/login") || url.includes("/api/auth/logout");
     if (response.status === 401 && !isAuthCall && window.location.pathname !== "/login") {
-      setLogoutReason("expired");
+      // "replaced": the account signed in on another browser/device (one active session per account).
+      setLogoutReason(response.headers.get("X-Session-Ended") === "replaced" ? "replaced" : "expired");
       clearSession();
       window.location.assign("/login");
     }

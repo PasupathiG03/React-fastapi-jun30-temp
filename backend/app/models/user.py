@@ -101,6 +101,9 @@ class User(AuditMixin, Base):
     locked_until = Column(DateTime(timezone=True), nullable=True)
     # Bumped on password change, logout and deactivation; tokens carrying an older number stop working.
     token_version = Column(Integer, default=0, nullable=False, server_default="0")
+    # When the latest sign-in happened. A session older than this was replaced by a newer sign-in (one
+    # active session per account: see login in app/api/auth.py).
+    last_login_at = Column(DateTime(timezone=True), nullable=True)
 
     role = relationship("Role", foreign_keys="[User.role_id]")
 

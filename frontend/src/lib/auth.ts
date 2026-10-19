@@ -9,7 +9,7 @@ const DEADLINE_KEY = "session_deadline"; // absolute end of this sign-in (epoch 
 const ACTIVITY_KEY = "session_last_activity"; // shared between tabs so activity in one keeps all alive
 const REASON_KEY = "logout_reason";
 
-export type LogoutReason = "expired" | "idle";
+export type LogoutReason = "expired" | "idle" | "replaced" | "url" | "tabs";
 
 export function markSignedIn(idleMinutes: number, maxMinutes: number): void {
   localStorage.setItem(SESSION_FLAG, "1");
@@ -48,10 +48,13 @@ export function setLogoutReason(reason: LogoutReason): void {
   sessionStorage.setItem(REASON_KEY, reason);
 }
 
-export function takeLogoutReason(): LogoutReason | null {
-  const reason = sessionStorage.getItem(REASON_KEY) as LogoutReason | null;
+/** Read the reason without removing it: safe in a render that React may throw away and run again. */
+export function peekLogoutReason(): LogoutReason | null {
+  return sessionStorage.getItem(REASON_KEY) as LogoutReason | null;
+}
+
+export function clearLogoutReason(): void {
   sessionStorage.removeItem(REASON_KEY);
-  return reason;
 }
 
 /** Forget the local sign-in state (the server-side session is ended by logout()). */

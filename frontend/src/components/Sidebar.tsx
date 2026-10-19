@@ -27,6 +27,7 @@ import { getStageIcon } from "@/lib/stageIcons";
 import { API_BASE_URL } from "@/lib/constants";
 import { useReportPageLoading } from "@/context/PageLoadingContext";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { hasFullAccess } from "@/lib/access";
 
 // Mirrors backend/app/core/builtin_screens.py's built-in access-control screens. A group made up only of
 // these (whatever it is, or isn't, grouped under in the database) is shown as the fixed "Access Control"
@@ -215,8 +216,8 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
   const [dynamicMenus, setDynamicMenus] = useState<MenuItem[]>([]);
   const [myWorkflows, setMyWorkflows] = useState<MyWorkflow[]>([]);
   const [fetching, setFetching] = useState(true);
-  // Despite the name, this is true for any superuser too, not just the Developer role (mirrors
-  // has_full_access in backend/app/core/dependencies.py) -- both get the fully hardcoded nav below.
+  // True only for full access: a superuser whose role is Developer (hasFullAccess in lib/access.ts, which
+  // mirrors has_full_access in the backend). Only they get the fully hardcoded nav below.
   const [isDeveloper, setIsDeveloper] = useState(false);
   const [roleReady, setRoleReady] = useState(false);
   // The top bar's chrome (breadcrumb, hamburger, theme toggle, bell) waits on this too, so it never
@@ -313,7 +314,7 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/auth/me`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => setIsDeveloper(Boolean(data?.is_superuser && data?.role?.name?.trim().toLowerCase() === "developer")))
+      .then((data) => setIsDeveloper(hasFullAccess(data)))
       .catch(() => { })
       .finally(() => setRoleReady(true));
 

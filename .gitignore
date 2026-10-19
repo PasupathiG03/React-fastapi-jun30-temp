@@ -34,7 +34,9 @@ dist/
 out/
 .turbo/
 *.tsbuildinfo
-package-lock.json
+# The root lockfile is a stray (there is no root package.json); frontend/package-lock.json IS committed:
+# CI installs with `npm ci` from it, so every install gets the exact, audited versions.
+/package-lock.json
 
 # ── OS ─────────────────────────────────────────────────────────────────────
 .DS_Store

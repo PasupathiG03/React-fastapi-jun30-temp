@@ -69,6 +69,13 @@ export async function fetchUsers(): Promise<UserItem[]> {
   return res.json();
 }
 
+/** The initial password new users get. It is set in the server's .env, never in the frontend code. */
+export async function fetchDefaultPassword(): Promise<string> {
+  const res = await fetch(`${API_BASE_URL}/api/users/default-password`, { headers: authHeaders() });
+  if (!res.ok) throw new Error("Failed to load the default password");
+  return (await res.json()).default_password;
+}
+
 export async function createUser(payload: UserCreatePayload): Promise<UserItem> {
   const res = await fetch(`${API_BASE_URL}/api/users/`, {
     method: "POST",

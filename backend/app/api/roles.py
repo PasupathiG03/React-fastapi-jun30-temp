@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 def _protect_developer_role(actor, role: Role) -> None:
-    """Only a superuser or Developer may change the Developer role (it carries full access)."""
+    """Only a full-access user (superuser AND Developer role) may change the Developer role."""
     if is_developer_role(role) and not has_full_access(actor):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only a Developer can change the Developer role")
 

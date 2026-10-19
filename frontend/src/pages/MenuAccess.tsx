@@ -13,6 +13,7 @@ import { fetchWorkflows, type WorkflowDetail } from "@/services/workflow";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { CustomSelect } from "@/components/CustomSelect";
 import { CustomCheckbox } from "@/components/CustomCheckbox";
+import { isDeveloperRoleName } from "@/lib/access";
 
 const key = (roleId: number, menuId: number) => `${roleId}:${menuId}`;
 
@@ -63,7 +64,7 @@ export default function MenuAccessPage() {
   // The Developer role has full system access by default, so we only display configurable roles in the matrix
   const orderedRoles = useMemo(() => {
     if (!matrix?.roles) return [];
-    const roles = matrix.roles.filter((r) => r.name.trim().toLowerCase() !== "developer");
+    const roles = matrix.roles.filter((r) => !isDeveloperRoleName(r.name));
 
     // For a workflow, line the role columns up with the stage rows: Admin first, then the roles named
     // after each stage type in the order those stages run (Production, QC, QA), then everyone else.

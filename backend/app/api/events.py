@@ -1,4 +1,5 @@
 import asyncio
+import json
 import time
 from collections import defaultdict
 
@@ -8,7 +9,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.dependencies import authenticate_token
+from app.core.dependencies import authenticate_token, session_end_reason
 from app.core.events import broadcaster
 
 router = APIRouter()
@@ -23,6 +24,19 @@ def _user_id_for(token: str | None) -> int | None:
         return user.id if user else None
     finally:
         db.close()
+
+
+def _end_reason(token: str | None) -> str | None:
+    db = SessionLocal()
+    try:
+        return session_end_reason(db, token)
+    finally:
+        db.close()
+
+
+async def _ended_event(token: str | None) -> str:
+    reason = await run_in_threadpool(_end_reason, token)
+    return f"event: session-ended\ndata: {json.dumps({'reason': reason or 'expired'})}\n\n"
 
 
 RECHECK_EVERY_SECONDS = 60
@@ -53,10 +67,16 @@ async def stream_changes(request: Request):
                 if time.monotonic() - last_check > RECHECK_EVERY_SECONDS:
                     last_check = time.monotonic()
                     if await run_in_threadpool(_user_id_for, token) is None:
-                        yield "event: session-ended\ndata: {}\n\n"
+                        yield await _ended_event(token)
                         break
                 try:
                     message = await asyncio.wait_for(queue.get(), timeout=20)
+                    # Someone signed in: if it was this account elsewhere, this stream's session just ended.
+                    if "session" in json.loads(message).get("kinds", []):
+                        if await run_in_threadpool(_user_id_for, token) is None:
+                            yield await _ended_event(token)
+                            break
+                        continue
                     yield f"data: {message}\n\n"
                 except asyncio.TimeoutError:
                     yield ": ping\n\n"  # keeps proxies from closing an idle connection

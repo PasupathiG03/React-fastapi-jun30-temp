@@ -19,6 +19,7 @@ import {
 import {
   UserItem,
   fetchUsers,
+  fetchDefaultPassword,
   createUser,
   updateUser,
   deleteUser,
@@ -45,6 +46,8 @@ export default function UserManagementPage() {
   const [users, setUsers] = useState<UserItem[]>([]);
   const [roles, setRoles] = useState<RoleItem[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
+  // Comes from the server's .env (GET /api/users/default-password), so it is never in the frontend bundle.
+  const [defaultPassword, setDefaultPassword] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [itemToDelete, setItemToDelete] = useState<UserItem | null>(null);
@@ -73,10 +76,12 @@ export default function UserManagementPage() {
 
   async function loadUsers() {
     try {
-      const [usersData, rolesData] = await Promise.all([
+      const [usersData, rolesData, defaultPw] = await Promise.all([
         fetchUsers(),
         fetchRoles().catch(() => [] as RoleItem[]),
+        fetchDefaultPassword().catch(() => ""),
       ]);
+      setDefaultPassword(defaultPw);
       setUsers(usersData);
       setRoles(rolesData.filter(r => r.is_active)); // Only active roles for assignment
     } catch (err: any) {
@@ -124,7 +129,7 @@ export default function UserManagementPage() {
       } else {
         const created = await createUser(payload);
         setUsers((prev) => [created, ...prev]);
-        showSuccess(`"${created.employee_name || created.employee_id}" added with default password Admin@123#`);
+        showSuccess(`"${created.employee_name || created.employee_id}" added with the default password${defaultPassword ? ` ${defaultPassword}` : ""}`);
       }
       setIsModalOpen(false);
     } catch (err) {
@@ -419,7 +424,7 @@ export default function UserManagementPage() {
                     </span>
                     <span>
                       New users will have the default password:{" "}
-                      <b className="font-mono font-bold text-sky-700 dark:text-sky-300 bg-sky-500/10 px-1.5 py-0.5 rounded-md">Admin@123#</b>
+                      <b className="font-mono font-bold text-sky-700 dark:text-sky-300 bg-sky-500/10 px-1.5 py-0.5 rounded-md">{defaultPassword || "…"}</b>
                     </span>
                   </div>
                 )}
@@ -543,7 +548,7 @@ export default function UserManagementPage() {
                       <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />
                       <span>
                         Every imported user gets the default password{" "}
-                        <b className="font-mono font-bold text-amber-700 dark:text-amber-300">Admin@123#</b>. Rows
+                        <b className="font-mono font-bold text-amber-700 dark:text-amber-300">{defaultPassword || "…"}</b>. Rows
                         with a duplicate or invalid Employee ID, or a Role name that doesn't match an existing role,
                         will fail individually without affecting the rest.
                       </span>

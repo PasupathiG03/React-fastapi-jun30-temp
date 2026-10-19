@@ -56,7 +56,10 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
     };
     source.addEventListener("session-ended", () => {
       source.close();
-      checkSession();
+      // Not throttled: the server says this session is over (e.g. signed in elsewhere), so check now. The
+      // 401 it answers signs the user out with the right message (see lib/api.ts).
+      lastCheck = Date.now();
+      fetch(`${API_BASE_URL}/api/auth/me`).catch(() => {});
     });
     source.onerror = () => {
       hadError = true; // the browser reconnects by itself

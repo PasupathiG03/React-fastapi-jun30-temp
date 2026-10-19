@@ -47,6 +47,12 @@ def _protect_superusers(db: Session, actor: User, target: User | None, data: dic
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only a Developer can give the Developer role")
 
 
+@router.get("/default-password")
+def get_default_password(_=Depends(require_screen(USER_SCREEN))):
+    """The initial password new users get, for the people who create users (it lives only in the server's .env)."""
+    return {"default_password": DEFAULT_PASSWORD}
+
+
 @router.get("/", response_model=List[UserOut])
 def list_users(
     db: Session = Depends(get_db),

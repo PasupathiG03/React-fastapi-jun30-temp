@@ -30,6 +30,7 @@ import {
   type WorkflowDetail,
   type WorkflowItem,
 } from "@/services/workflow";
+import { isDeveloperRoleName } from "@/lib/access";
 
 
 const STAGE_TYPE_OPTIONS: { value: StageType; label: string }[] = [
@@ -49,7 +50,7 @@ function useAssignableRoles() {
     let cancelled = false;
     fetchRoles()
       .then((data) => {
-        if (!cancelled) setRoles(data.filter((r) => r.name.trim().toLowerCase() !== "developer"));
+        if (!cancelled) setRoles(data.filter((r) => !isDeveloperRoleName(r.name)));
       })
       .catch(() => {
         // The picker shows "No roles available"; access can still be set in Menu Access.

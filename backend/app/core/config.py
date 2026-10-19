@@ -1,4 +1,10 @@
+import re
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
+
+# Default passwords that were committed to the repository at some point: treated as public, never accepted.
+LEAKED_DEFAULT_PASSWORDS = frozenset({"Admin@123#", "Admin@123"})
 
 
 class Settings(BaseSettings):
@@ -8,7 +14,8 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
-    DEFAULT_PASSWORD: str = "Admin@123#"
+    # Initial password for new users. Required, no default: a default in code is a password everyone can read.
+    DEFAULT_PASSWORD: str
 
     # Browser origins allowed to call the API (comma separated). Never "*": requests carry the session cookie.
     CORS_ORIGINS: str = "http://localhost:8106"
@@ -28,6 +35,15 @@ class Settings(BaseSettings):
     LOGIN_ATTEMPTS_PER_IP: int = 20      # login requests allowed per IP ...
     LOGIN_WINDOW_SECONDS: int = 300      # ... in this many seconds (per server process)
     MAX_LIVE_CONNECTIONS_PER_USER: int = 5
+
+    @field_validator("DEFAULT_PASSWORD")
+    @classmethod
+    def _strong_default_password(cls, v: str) -> str:
+        if v in LEAKED_DEFAULT_PASSWORDS:
+            raise ValueError("DEFAULT_PASSWORD is a value that was published in the repository; set a new one in .env")
+        if len(v) < 10 or not all(re.search(p, v) for p in (r"[a-z]", r"[A-Z]", r"\d", r"[^A-Za-z0-9]")):
+            raise ValueError("DEFAULT_PASSWORD must be 10+ characters with upper and lower case letters, a digit and a symbol")
+        return v
 
     class Config:
         env_file = ".env"

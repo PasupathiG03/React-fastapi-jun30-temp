@@ -8,6 +8,7 @@ import PageContainer from "@/components/PageContainer";
 import DashboardSkeleton from "@/components/DashboardSkeleton";
 
 import { Dashboard, preloadRoute } from "@/lib/lazyPages";
+import { hasFullAccess } from "@/lib/access";
 
 type Decision =
   | { kind: "loading" }
@@ -35,7 +36,7 @@ export default function DashboardGate() {
       if (cancelled) return;
 
       const me = meRes.status === "fulfilled" ? meRes.value : null;
-      if (me && (me.is_superuser && me.role?.name?.trim().toLowerCase() === "developer")) {
+      if (hasFullAccess(me)) {
         setDecision({ kind: "dashboard" });
         return;
       }
