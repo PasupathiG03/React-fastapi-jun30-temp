@@ -19,6 +19,7 @@ import { API_BASE_URL } from "@/lib/constants";
 import { isAuthenticated, logout } from "@/lib/auth";
 import { changePasswordApi } from "@/services/auth";
 import { useTheme } from "@/context/ThemeContext";
+import { useMyStages } from "@/hooks/useMyStages";
 import { usePending } from "@/context/PendingContext";
 import { usePageLoading } from "@/context/PageLoadingContext";
 
@@ -59,7 +60,8 @@ export default function TopBar({ onToggle, loading = false }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
   const bellRef = useRef<HTMLDivElement>(null);
   const [bellOpen, setBellOpen] = useState(false);
-  const { stages: pendingStages, total: pendingTotal, pathFor, resolve } = usePending();
+  const { stages: pendingStages, total: pendingTotal, pathFor } = usePending();
+  const { resolve: resolveStage } = useMyStages();
   const waiting = pendingStages.filter((s) => s.count > 0);
   const navigate = useNavigate();
   const { pageLoading } = usePageLoading();
@@ -166,13 +168,12 @@ export default function TopBar({ onToggle, loading = false }: Props) {
     // /workflows/<workflow>/<stage>: show the real names instead of the address segments
     const stageRoute = pathname.match(/^\/workflows\/([^/]+)\/([^/]+)\/?$/);
     if (stageRoute) {
-      const route = resolve(stageRoute[1], stageRoute[2]);
-      const stage = route && pendingStages.find((s) => s.stage_id === route.stageId);
-      return stage
+      const found = resolveStage(stageRoute[1], stageRoute[2]);
+      return found
         ? [
           { label: "Workflows", isLast: false },
-          { label: stage.workflow_name, isLast: false },
-          { label: stage.stage_name, isLast: true },
+          { label: found.workflow.name, isLast: false },
+          { label: found.stage.name, isLast: true },
         ]
         : [{ label: "Workflows", isLast: true }];
     }

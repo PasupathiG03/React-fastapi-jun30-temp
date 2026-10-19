@@ -50,7 +50,6 @@ export default function App() {
             <Route path="/developer-management/process" element={<Navigate to="/developer-management/router-setup" replace />} />
             <Route path="/developer-management/screen" element={<Navigate to="/developer-management/router-setup" replace />} />
 
-            <Route path="/workflows/:workflowSlug/:stageSlug" element={<Navigate to="/access-control/workflow-management" replace />} />
             <Route path="/workflows/:workflowId/stages/:stageId" element={<Navigate to="/access-control/workflow-management" replace />} />
           </Route>
 

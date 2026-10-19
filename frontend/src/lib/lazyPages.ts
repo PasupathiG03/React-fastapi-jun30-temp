@@ -41,6 +41,9 @@ export const PAGE_ROUTES: PageRoute[] = [
 
   // Project Config
   { path: "/project-config", page: lazyPage(() => import("@/pages/ProjectConfig")) },
+
+  // Workflow stages opened from the sidebar (empty page for now: work items were removed)
+  { path: "/workflows/:workflowSlug/:stageSlug", page: lazyPage(() => import("@/pages/StageWorkspace")) },
 ];
 
 const normalize = (pathname: string) => (pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname);

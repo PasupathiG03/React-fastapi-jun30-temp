@@ -121,10 +121,9 @@ function FlyoutGroup({
   const show = () => {
     const r = btnRef.current?.getBoundingClientRect();
     if (r) {
-      // The panel starts at the button and its transparent left padding spans the rest of the
-      // sidebar plus a visible gap, so there is no dead zone that would close it mid-move.
-      const edge = btnRef.current?.closest("aside")?.getBoundingClientRect().right ?? r.right;
-      setPos({ top: r.top, left: r.right, gap: edge - r.right + 16 });
+      // The panel opens just beside the icon (a small 20px gap). That gap is the panel's transparent left
+      // padding, so there is no dead zone that would close it while the pointer moves across.
+      setPos({ top: r.top, left: r.right, gap: 20 });
     }
   };
   const hide = () => setPos(null);
