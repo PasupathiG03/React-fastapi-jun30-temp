@@ -1,0 +1,59 @@
+name: Security Scan
+
+# Runs on every push and pull request, plus weekly so a newly published vulnerability in a package we
+# already use is caught even when nobody pushes. Read-only: it needs no secrets and sends nothing anywhere.
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      # Fails on high/critical advisories in packages shipped to the browser.
+      - name: Dependency audit
+        run: npm run audit
+      # oxlint with the security rules in .oxlintrc.json (no eval, no dangerouslySetInnerHTML, no
+      # javascript: URLs, rel=noopener on target=_blank, sandboxed iframes).
+      - name: Security lint
+        run: npm run lint
+      - name: Type-check and build
+        run: npm run build
+      # The CSP must survive into the built page, or production loses it silently.
+      - name: CSP present in build
+        run: grep -q 'http-equiv="Content-Security-Policy"' dist/index.html
+
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      # Checks backend/requirements.txt against the Python advisory database (PyPA / OSV).
+      # Two known advisories have no fixed release yet and are reviewed as not exploitable here; remove
+      # these ignores once python-jose is replaced (e.g. by PyJWT), so any NEW advisory still fails the job:
+      #  - PYSEC-2026-4298 (python-jose): HS256 forgery only when decode() doesn't restrict algorithms;
+      #    app/core/security.py always passes algorithms=[settings.ALGORITHM].
+      #  - PYSEC-2026-1325 (ecdsa, pulled in by python-jose): timing leak when SIGNING with ECDSA keys;
+      #    the app signs with an HMAC secret, never an ECDSA key.
+      - name: Dependency audit
+        run: |
+          pip install pip-audit
+          pip-audit -r backend/requirements.txt --ignore-vuln PYSEC-2026-4298 --ignore-vuln PYSEC-2026-1325

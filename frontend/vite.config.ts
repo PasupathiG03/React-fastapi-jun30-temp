@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
@@ -27,8 +27,29 @@ const contentSecurityPolicy = [
   "form-action 'self'",
 ].join('; ')
 
+// The built index.html carries the policy itself as a <meta> tag, so the CSP is enforced on whatever server
+// hosts dist/ (nginx, IIS, a CDN...), even one that sends no headers. Build only: the dev server needs
+// inline scripts for hot reload. frame-ancestors is ignored inside <meta>, so it stays a header (preview /
+// your host) -- X-Frame-Options: DENY covers clickjacking either way.
+function cspMetaTag(): Plugin {
+  const metaPolicy = contentSecurityPolicy
+    .split('; ')
+    .filter((d) => !d.startsWith('frame-ancestors'))
+    .join('; ')
+  return {
+    name: 'csp-meta-tag',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler: () => [
+        { tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: metaPolicy }, injectTo: 'head-prepend' },
+      ],
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), cspMetaTag()],
   define: {
     __API_URL__: JSON.stringify(API_URL),
   },

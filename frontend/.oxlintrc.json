@@ -27,7 +27,15 @@
           }
         ]
       }
-    ]
+    ],
+    "no-eval": "error",
+    "no-new-func": "error",
+    "no-script-url": "error",
+    "react/no-danger": "error",
+    "react/jsx-no-target-blank": "error",
+    "react/jsx-no-script-url": "error",
+    "react/iframe-missing-sandbox": "error",
+    "react/no-danger-with-children": "error"
   },
   "overrides": [
     {
