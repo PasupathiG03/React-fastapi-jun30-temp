@@ -3,6 +3,7 @@ import { Toaster } from "react-hot-toast";
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import DashboardLayout from "./components/DashboardLayout";
 import RouteLoader from "./components/RouteLoader";
+import TopProgressBar from "./components/TopProgressBar";
 import { ThemeProvider } from "./context/ThemeContext";
 
 // Every page is loaded on demand, so its code is only downloaded when the route is opened.
@@ -36,6 +37,7 @@ export default function App() {
     <ThemeProvider>
       <Toaster position="top-right" />
       <BrowserRouter>
+        <TopProgressBar />
         <Suspense fallback={<RouteLoader />}>
         <Routes>
           <Route path="/login" element={<Login />} />

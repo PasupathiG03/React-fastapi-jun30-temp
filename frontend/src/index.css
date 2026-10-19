@@ -222,16 +222,46 @@ input:-webkit-autofill:focus {
   .sidebar-flyout-in { animation: none; }
 }
 
-/* Page content on route change: a quick fade instead of the previous page cutting straight to the next */
+/* Page content on route change: the page fades and slides up out of a soft blur, then its top-level
+   sections (header, filters, table/cards...) follow one after another instead of all popping in at once. */
 .route-fade-in {
-  animation: route-fade-in 0.18s ease-out;
+  animation: route-fade-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+.route-fade-in > * > * {
+  animation: route-section-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.route-fade-in > * > *:nth-child(1) { animation-delay: 0.04s; }
+.route-fade-in > * > *:nth-child(2) { animation-delay: 0.1s; }
+.route-fade-in > * > *:nth-child(3) { animation-delay: 0.16s; }
+.route-fade-in > * > *:nth-child(4) { animation-delay: 0.22s; }
+.route-fade-in > * > *:nth-child(n + 5) { animation-delay: 0.28s; }
 @keyframes route-fade-in {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(14px) scale(0.99); filter: blur(4px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+@keyframes route-section-in {
+  from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .route-fade-in { animation: none; }
+  .route-fade-in,
+  .route-fade-in > * > * { animation: none; }
+}
+
+/* Top-of-window page loading bar (TopProgressBar.tsx): soft glow on the leading edge, like YouTube */
+.top-progress-bar {
+  position: relative;
+  box-shadow: 0 0 8px rgba(14, 165, 233, 0.6);
+}
+.top-progress-bar::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  width: 80px;
+  box-shadow: 0 0 10px rgba(14, 165, 233, 0.9), 0 0 4px rgba(99, 102, 241, 0.8);
+  transform: rotate(2deg) translateY(-2px);
 }
 
 /* Gradient (primary) buttons get a small lift and press */

@@ -1,5 +1,6 @@
 import { API_BASE_URL } from "@/lib/constants";
 import { clearSession, setLogoutReason } from "@/lib/auth";
+import { trackRequest } from "@/lib/topProgress";
 
 let installed = false;
 
@@ -18,7 +19,7 @@ export function installApiFetch(): void {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     if (!url.startsWith(API_BASE_URL)) return nativeFetch(input, init);
 
-    const response = await nativeFetch(input, { ...init, credentials: "include" });
+    const response = await trackRequest(nativeFetch(input, { ...init, credentials: "include" }));
     const isAuthCall = url.includes("/api/auth/login") || url.includes("/api/auth/logout");
     if (response.status === 401 && !isAuthCall && window.location.pathname !== "/login") {
       setLogoutReason("expired");
