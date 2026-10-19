@@ -18,6 +18,7 @@ import { Cog } from "flowbite-react-icons/outline";
 import { logout } from "@/lib/auth";
 import { ICON_MAP } from "@/lib/icons";
 import { fetchMenus, type MenuItem } from "@/services/menu";
+import { hasPageRoute } from "@/lib/lazyPages";
 import { fetchMyStages, type MyWorkflow } from "@/services/workflow";
 import PulseLogo from "@/components/PulseLogo";
 import { useLive } from "@/context/LiveContext";
@@ -321,7 +322,16 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
       .catch(() => { });
 
     fetchMenus()
-      .then(setDynamicMenus)
+      .then((menus) => {
+        // A menu created in Router Setup only opens once its page is registered in PAGE_ROUTES
+        // (src/lib/lazyPages.ts); until then the URL falls through to the "*" redirect.
+        if (import.meta.env.DEV) {
+          menus
+            .filter((m) => m.url && !hasPageRoute(m.url))
+            .forEach((m) => console.warn(`[routes] Menu "${m.name}" (${m.url}) has no page in PAGE_ROUTES (src/lib/lazyPages.ts).`));
+        }
+        setDynamicMenus(menus);
+      })
       .catch(() => { })
       .finally(() => setFetching(false));
   }, [accessVersion]);

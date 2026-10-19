@@ -33,8 +33,6 @@ import { TablePagination, TableSearchInput, TableExportButton } from "@/componen
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { CustomSelect } from "@/components/CustomSelect";
 import { useTableData } from "@/hooks/useTableData";
-import { exportToCsv } from "@/lib/exportData";
-import { parseCsv, mapCsvColumns } from "@/lib/importCsv";
 
 const BULK_IMPORT_COLUMNS: Record<string, string[]> = {
   employee_id: ["employee_id", "employee id", "id", "emp id", "empid"],
@@ -168,14 +166,14 @@ export default function UserManagementPage() {
   );
 
   function handleExport() {
-    exportToCsv("users", [
+    void import("@/lib/exportData").then(({ exportToCsv }) => exportToCsv("users", [
       { header: "Employee ID", value: (u) => u.employee_id },
       { header: "Name", value: (u) => u.employee_name },
       { header: "Location", value: (u) => u.location },
       { header: "Role", value: (u) => u.role?.name },
       { header: "Status", value: (u) => (u.is_active ? "Active" : "Inactive") },
       { header: "Created At", value: (u) => u.created_at },
-    ], table.filtered);
+    ], table.filtered));
   }
 
   function handleOpenBulk() {
@@ -187,7 +185,7 @@ export default function UserManagementPage() {
   }
 
   function handleDownloadTemplate() {
-    exportToCsv(
+    void import("@/lib/exportData").then(({ exportToCsv }) => exportToCsv(
       "user_import_template",
       [
         { header: "Employee ID", value: (r: Record<string, string>) => r.employee_id },
@@ -196,7 +194,7 @@ export default function UserManagementPage() {
         { header: "Role", value: (r: Record<string, string>) => r.role },
       ],
       [{ employee_id: "MAH1234", employee_name: "Jane Doe", location: "New York Office", role: "Admin" }]
-    );
+    ));
   }
 
   async function processBulkFile(file: File) {
@@ -210,7 +208,7 @@ export default function UserManagementPage() {
       return;
     }
     try {
-      const text = await file.text();
+      const [text, { parseCsv, mapCsvColumns }] = await Promise.all([file.text(), import("@/lib/importCsv")]);
       const rows = parseCsv(text);
       if (rows.length < 2) {
         setBulkRows([]);

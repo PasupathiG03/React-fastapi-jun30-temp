@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { Lock } from "lucide-react";
 import { API_BASE_URL } from "@/lib/constants";
@@ -7,7 +7,7 @@ import { useLive } from "@/context/LiveContext";
 import PageContainer from "@/components/PageContainer";
 import DashboardSkeleton from "@/components/DashboardSkeleton";
 
-const Dashboard = lazy(() => import("./Dashboard"));
+import { Dashboard, preloadRoute } from "@/lib/lazyPages";
 
 type Decision =
   | { kind: "loading" }
@@ -45,6 +45,7 @@ export default function DashboardGate() {
         (a, b) => (a.process?.order ?? 0) - (b.process?.order ?? 0) || a.order - b.order || a.id - b.id
       )[0];
       if (firstScreen) {
+        preloadRoute(firstScreen.url);
         setDecision({ kind: "redirect", to: firstScreen.url });
         return;
       }

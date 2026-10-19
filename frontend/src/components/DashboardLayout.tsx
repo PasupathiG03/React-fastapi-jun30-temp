@@ -10,6 +10,7 @@ import { LiveProvider } from "@/context/LiveContext";
 import { PageLoadingProvider, usePageLoading } from "@/context/PageLoadingContext";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import Copyright from "@/components/Copyright";
+import { preloadAllRoutesWhenIdle } from "@/lib/lazyPages";
 
 function LayoutFooter({ loading }: { loading: boolean }) {
   const { pageLoading } = usePageLoading();
@@ -37,6 +38,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       return;
     }
     setLoading(false);
+    // Signed in: pull the other screens' code down in the background so every menu opens instantly.
+    preloadAllRoutesWhenIdle();
   }, [navigate]);
 
   // Close the drawer whenever the route changes, so it never lingers over the new page. Also reset

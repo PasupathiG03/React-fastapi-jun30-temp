@@ -1,20 +1,11 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
 import { Toaster } from "react-hot-toast";
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
-import DashboardLayout from "./components/DashboardLayout";
 import RouteLoader from "./components/RouteLoader";
 import TopProgressBar from "./components/TopProgressBar";
 import { ThemeProvider } from "./context/ThemeContext";
 
-// Every page is loaded on demand, so its code is only downloaded when the route is opened.
-const Login = lazy(() => import("./pages/Login"));
-const DashboardGate = lazy(() => import("./pages/DashboardGate"));
-const UserManagement = lazy(() => import("./pages/UserManagement"));
-const RoleManagement = lazy(() => import("./pages/RoleManagement"));
-const MenuAccess = lazy(() => import("./pages/MenuAccess"));
-const MenuManagement = lazy(() => import("./pages/MenuManagement"));
-const WorkflowManagement = lazy(() => import("./pages/WorkflowManagement"));
-const ProjectConfig = lazy(() => import("./pages/ProjectConfig"));
+import { DashboardLayout, Login, PAGE_ROUTES } from "./lib/lazyPages";
 
 // The layout is a parent route, so the sidebar, top bar and live connection stay mounted while the
 // user moves between pages (only the page content changes) instead of loading again every time.
@@ -43,24 +34,18 @@ export default function App() {
           <Route path="/login" element={<Login />} />
 
           <Route element={<AppLayout />}>
-            <Route path="/" element={<DashboardGate />} />
-            <Route path="/dashboard" element={<DashboardGate />} />
+            {/* Every screen comes from PAGE_ROUTES (src/lib/lazyPages.ts), so each one is lazy-loaded.
+                Add new menus there, not here. Only redirects live below. */}
+            {PAGE_ROUTES.map(({ path, page: Page }) => (
+              <Route key={path} path={path} element={<Page />} />
+            ))}
 
-            {/* Access Control */}
+            {/* Redirects */}
             <Route path="/access-control" element={<Navigate to="/access-control/user-management" replace />} />
-            <Route path="/access-control/user-management" element={<UserManagement />} />
-            <Route path="/access-control/role-management" element={<RoleManagement />} />
-            <Route path="/access-control/menu-access" element={<MenuAccess />} />
-            <Route path="/access-control/workflow-management" element={<WorkflowManagement />} />
-
-            {/* Developer Management */}
             <Route path="/developer-management" element={<Navigate to="/developer-management/router-setup" replace />} />
             <Route path="/developer-management/process" element={<Navigate to="/developer-management/router-setup" replace />} />
             <Route path="/developer-management/screen" element={<Navigate to="/developer-management/router-setup" replace />} />
-            <Route path="/developer-management/router-setup" element={<MenuManagement />} />
 
-            {/* Project Config */}
-            <Route path="/project-config" element={<ProjectConfig />} />
             <Route path="/workflows/:workflowSlug/:stageSlug" element={<Navigate to="/access-control/workflow-management" replace />} />
             <Route path="/workflows/:workflowId/stages/:stageId" element={<Navigate to="/access-control/workflow-management" replace />} />
           </Route>

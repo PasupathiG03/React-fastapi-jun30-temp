@@ -7,7 +7,6 @@ import { TablePagination, TableToolbar } from "@/components/DataTableControls";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { getProcessIcon, getScreenIcon } from "@/components/Sidebar";
 import { useTableData } from "@/hooks/useTableData";
-import { exportToCsv } from "@/lib/exportData";
 import { useLive } from "@/context/LiveContext";
 import {
   createProcess,
@@ -465,12 +464,12 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
   );
 
   function handleExport() {
-    exportToCsv(`screens-${(selectedProcess?.name ?? "all").toLowerCase().replace(/\s+/g, "-")}`, [
+    void import("@/lib/exportData").then(({ exportToCsv }) => exportToCsv(`screens-${(selectedProcess?.name ?? "all").toLowerCase().replace(/\s+/g, "-")}`, [
       { header: "Screen", value: (s) => s.name },
       { header: "Route", value: (s) => s.url },
       { header: "Order", value: (s) => s.order },
       { header: "Status", value: (s) => (s.is_active ? "Active" : "Inactive") },
-    ], table.filtered);
+    ], table.filtered));
   }
 
   const selectedProcess = processes.find((p) => p.id === selectedProcessId) ?? null;

@@ -18,6 +18,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { loginApi } from "@/services/auth";
+import { preloadRoute } from "@/lib/lazyPages";
 import { markSignedIn, takeLogoutReason } from "@/lib/auth";
 import { useTheme } from "@/context/ThemeContext";
 import { getAppBackground } from "@/lib/appBackground";
@@ -44,6 +45,8 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    // Fetch the dashboard's code while the sign-in request is in flight, not after it.
+    preloadRoute("/dashboard");
     try {
       const session = await loginApi({ employee_id: email, password }); // the server sets the HttpOnly session cookie
       markSignedIn(session.idle_minutes, session.expires_in_minutes);

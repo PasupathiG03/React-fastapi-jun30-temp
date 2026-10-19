@@ -6,7 +6,6 @@ import { createPortal } from "react-dom";
 import { TablePagination, TableSearchInput, TableExportButton } from "@/components/DataTableControls";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { useTableData } from "@/hooks/useTableData";
-import { exportToCsv } from "@/lib/exportData";
 
 export default function RoleManagementPage() {
   const [roles, setRoles] = useState<RoleItem[]>([]);
@@ -109,12 +108,12 @@ export default function RoleManagementPage() {
   );
 
   function handleExport() {
-    exportToCsv("roles", [
+    void import("@/lib/exportData").then(({ exportToCsv }) => exportToCsv("roles", [
       { header: "Role", value: (r) => r.name },
       { header: "Description", value: (r) => r.description },
       { header: "Status", value: (r) => (r.is_active ? "Active" : "Inactive") },
       { header: "Created At", value: (r) => r.created_at },
-    ], table.filtered);
+    ], table.filtered));
   }
 
   return (
