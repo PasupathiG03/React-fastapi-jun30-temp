@@ -13,6 +13,7 @@ import {
   Users,
   Network,
   Sparkles,
+  LifeBuoy,
 } from "lucide-react";
 import { Cog } from "flowbite-react-icons/outline";
 import { logout } from "@/lib/auth";
@@ -48,13 +49,14 @@ const ADMIN_SCREEN_URLS = new Set([
 const DEV_DASHBOARD = { href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard };
 const DEV_ROUTER_SETUP = { href: "/developer-management/router-setup", label: "Router Setup", Icon: Layers };
 const DEV_PROJECT_CONFIG = { href: "/project-config", label: "Project Config", Icon: Cog };
+const DEV_SUPPORT = { href: "/support", label: "Support", Icon: LifeBuoy };
 const DEV_ACCESS_CONTROL: FlyoutItem[] = [
   { href: "/access-control/role-management", label: "Role Management", Icon: Shield },
   { href: "/access-control/user-management", label: "User Management", Icon: Users },
   { href: "/access-control/menu-access", label: "Menu Access", Icon: ShieldCheck },
   { href: "/access-control/workflow-management", label: "Workflow Management", Icon: Network },
 ];
-const BUILT_IN_URLS = new Set([DEV_DASHBOARD.href, DEV_ROUTER_SETUP.href, DEV_PROJECT_CONFIG.href, ...DEV_ACCESS_CONTROL.map((i) => i.href)]);
+const BUILT_IN_URLS = new Set([DEV_DASHBOARD.href, DEV_ROUTER_SETUP.href, DEV_PROJECT_CONFIG.href, DEV_SUPPORT.href, ...DEV_ACCESS_CONTROL.map((i) => i.href)]);
 
 export function getProcessIcon(name: string): React.ElementType {
   const n = name.trim().toLowerCase();
@@ -670,7 +672,6 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
                 {renderItem(DEV_PROJECT_CONFIG.href, DEV_PROJECT_CONFIG.label, DEV_PROJECT_CONFIG.Icon)}
               </>
             )}
-
             {/* Workflow stages the user's role may open */}
             {myWorkflows.length > 0 && (
               <>
@@ -704,6 +705,18 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
                       `wf-${w.id}`
                     )
                   )}
+              </>
+            )}
+
+            {/* Support: the last section, hard-coded and Developer-only like Project Config above. */}
+            {isDeveloper && (
+              <>
+                {!collapsed && (
+                  <p className="px-3 pt-3 pb-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                    Support
+                  </p>
+                )}
+                {renderItem(DEV_SUPPORT.href, DEV_SUPPORT.label, DEV_SUPPORT.Icon)}
               </>
             )}
           </>

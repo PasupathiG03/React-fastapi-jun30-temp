@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api import access, auth, events, menu, processes, roles, users, workflows
+from app.api import access, auth, events, menu, processes, roles, tickets, users, workflows
 
 # Every API route in one place. main.py includes this single router.
 api_router = APIRouter()
@@ -13,3 +13,4 @@ api_router.include_router(processes.router, prefix="/api/processes", tags=["Proc
 api_router.include_router(events.router, prefix="/api/events", tags=["Live updates"])
 api_router.include_router(access.router, prefix="/api/access", tags=["Access"])
 api_router.include_router(workflows.router, prefix="/api/workflows", tags=["Workflows"])
+api_router.include_router(tickets.router, prefix="/api/tickets", tags=["Support tickets"])

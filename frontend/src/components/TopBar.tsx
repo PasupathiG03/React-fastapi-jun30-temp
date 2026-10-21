@@ -8,7 +8,7 @@ import {
   LogOut,
   Key,
   X,
-  Menu,
+  PanelLeft,
   Moon,
   Sun,
   Bell,
@@ -198,7 +198,7 @@ export default function TopBar({ onToggle, loading = false }: Props) {
             title="Toggle Sidebar"
             className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-white/10 shrink-0"
           >
-            <Menu className="w-4 h-4" />
+            <PanelLeft className="w-4 h-4" />
           </button>
         )}
 
