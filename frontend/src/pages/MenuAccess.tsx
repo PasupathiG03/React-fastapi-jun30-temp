@@ -6,7 +6,9 @@ import {
   fetchAccessMatrix,
   fetchStageAccessMatrix,
   setAccess,
+  setAccessBulk,
   setStageAccess,
+  setStageAccessBulk,
   type AccessMatrix,
 } from "@/services/access";
 import { fetchWorkflows, type WorkflowDetail } from "@/services/workflow";
@@ -100,6 +102,37 @@ export default function MenuAccessPage() {
     }
   }
 
+  // Bulk assign: grant or revoke many (role, screen) pairs in one atomic request. Only pairs whose state
+  // actually changes are sent. The matrix updates immediately; if the request fails nothing was saved, so
+  // the previous state is restored.
+  async function bulkSet(pairs: { roleId: number; menuId: number }[], allowed: boolean) {
+    if (!matrix || targetId == null) return;
+    const changes = pairs.filter((p) => granted.has(key(p.roleId, p.menuId)) !== allowed);
+    if (changes.length === 0) return;
+    const changed = new Set(changes.map((p) => key(p.roleId, p.menuId)));
+    const before = matrix;
+    setMatrix({
+      ...matrix,
+      grants: [
+        ...matrix.grants.filter((g) => !changed.has(key(g.role_id, g.menu_id))),
+        ...(allowed ? changes.map((p) => ({ role_id: p.roleId, menu_id: p.menuId })) : []),
+      ],
+    });
+    const payload = changes.map((p) => ({ ...p, allowed }));
+    try {
+      // One atomic request: the server saves every change or none of them.
+      await (isWorkflow ? setStageAccessBulk(payload) : setAccessBulk(payload));
+    } catch (e) {
+      setMatrix(before);
+      showError(e instanceof Error ? e.message : "Failed to update access");
+    }
+  }
+
+  const screens = matrix?.screens ?? [];
+  const roleAllGranted = (roleId: number) => screens.length > 0 && screens.every((s) => granted.has(key(roleId, s.id)));
+  const screenAllGranted = (menuId: number) =>
+    orderedRoles.length > 0 && orderedRoles.every((r) => granted.has(key(r.id, menuId)));
+
   return (
     <PageContainer>
       <PageHeader
@@ -163,7 +196,16 @@ export default function MenuAccessPage() {
                       className={`px-6 py-3.5 text-center font-semibold whitespace-nowrap border-r border-slate-200/90 dark:border-white/[0.08] ${idx === orderedRoles.length - 1 ? "border-r-0" : ""
                         }`}
                     >
-                      {r.name}
+                      <div className="flex items-center justify-center gap-2">
+                        <CustomCheckbox
+                          checked={roleAllGranted(r.id)}
+                          onChange={(v) => bulkSet(screens.map((s) => ({ roleId: r.id, menuId: s.id })), v)}
+                          title={`Select all for ${r.name}`}
+                          size="sm"
+                          disabled={loading || screens.length === 0}
+                        />
+                        {r.name}
+                      </div>
                     </th>
                   ))
                   : [1, 2, 3, 4].map((i, idx) => (
@@ -175,6 +217,11 @@ export default function MenuAccessPage() {
                       <div className="h-3.5 w-16 mx-auto bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
                     </th>
                   ))}
+                {orderedRoles.length > 0 && (
+                  <th className="px-6 py-3.5 text-center font-semibold whitespace-nowrap border-l border-slate-200/90 dark:border-white/[0.08]">
+                    All roles
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200/90 dark:divide-white/[0.06]">
@@ -233,22 +280,21 @@ export default function MenuAccessPage() {
                         </div>
                       </td>
                     ))}
+                    <td className="px-6 py-4 text-center border-l border-slate-200/90 dark:border-white/[0.08]">
+                      <div className="flex items-center justify-center">
+                        <CustomCheckbox
+                          checked={screenAllGranted(s.id)}
+                          onChange={(v) => bulkSet(orderedRoles.map((r) => ({ roleId: r.id, menuId: s.id })), v)}
+                          title={`Select all roles for ${s.name}`}
+                          size="md"
+                        />
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
-        </div>
-
-        {/* Footer Note */}
-        <div className="px-6 py-3.5 border-t border-slate-100 dark:border-white/[0.06] bg-white/25 dark:bg-white/[0.01]">
-          {loading ? (
-            <div className="h-3.5 w-2/3 max-w-xl bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
-          ) : (
-            <p className="text-xs text-slate-400 dark:text-slate-500">
-              Note: The <span className="font-semibold text-slate-700 dark:text-slate-300">Developer</span> role has full access to all screens and stages by default and is not shown in this matrix.
-            </p>
-          )}
         </div>
       </div>
     </PageContainer>

@@ -47,5 +47,5 @@ export function useMyStages() {
     return workflow && stage ? { workflow, stage } : null;
   }
 
-  return { loading: workflows === null, resolve };
+  return { loading: workflows === null, resolve, workflows: workflows ?? [], routes };
 }

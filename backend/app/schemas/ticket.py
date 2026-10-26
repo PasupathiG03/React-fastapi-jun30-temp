@@ -7,7 +7,7 @@ from app.schemas.base import CreatorOut
 
 TicketType = Literal["bug", "requirement"]
 TicketPriority = Literal["low", "medium", "high"]
-TicketStatus = Literal["open", "in_progress", "resolved"]
+TicketStatus = Literal["new", "open", "in_progress", "resolved"]
 
 
 class TicketCreate(BaseModel):
@@ -17,9 +17,13 @@ class TicketCreate(BaseModel):
     priority: TicketPriority = "medium"
 
 
+class TicketEdit(TicketCreate):
+    """The owner changing their own ticket's content (same fields as raising it)."""
+
+
 class TicketUpdate(BaseModel):
+    # Only the status can be changed after a ticket is raised; the priority is set by whoever raised it.
     status: TicketStatus | None = None
-    priority: TicketPriority | None = None
 
 
 class TicketReplyCreate(BaseModel):
@@ -43,6 +47,8 @@ class TicketOut(BaseModel):
     priority: TicketPriority
     status: TicketStatus
     reply_count: int = 0
+    # True for the person who raised it while a Developer hasn't started on it (set per request, not stored).
+    can_edit: bool = False
     created_at: datetime
     updated_at: datetime
     creator: CreatorOut | None = None

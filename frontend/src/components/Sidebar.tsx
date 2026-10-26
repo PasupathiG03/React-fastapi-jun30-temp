@@ -13,7 +13,7 @@ import {
   Users,
   Network,
   Sparkles,
-  LifeBuoy,
+  PanelLeft,
 } from "lucide-react";
 import { Cog } from "flowbite-react-icons/outline";
 import { logout } from "@/lib/auth";
@@ -49,7 +49,8 @@ const ADMIN_SCREEN_URLS = new Set([
 const DEV_DASHBOARD = { href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard };
 const DEV_ROUTER_SETUP = { href: "/developer-management/router-setup", label: "Router Setup", Icon: Layers };
 const DEV_PROJECT_CONFIG = { href: "/project-config", label: "Project Config", Icon: Cog };
-const DEV_SUPPORT = { href: "/support", label: "Support", Icon: LifeBuoy };
+// Same icon as the database's Support screen (builtin_screens.py), so Developers and other roles see the same one.
+const DEV_SUPPORT = { href: "/support", label: "Support", Icon: ICON_MAP.Ticket };
 const DEV_ACCESS_CONTROL: FlyoutItem[] = [
   { href: "/access-control/role-management", label: "Role Management", Icon: Shield },
   { href: "/access-control/user-management", label: "User Management", Icon: Users },
@@ -77,6 +78,7 @@ export function getScreenIcon(name: string, url: string, iconKey?: string | null
   const lowerName = name.trim().toLowerCase();
   const lowerUrl = url.trim().toLowerCase();
 
+  if (lowerUrl === DEV_SUPPORT.href) return DEV_SUPPORT.Icon; // Support, even if its row has no icon saved
   if (lowerUrl.includes("user-management") || lowerName.includes("user")) return Users;
   if (lowerUrl.includes("role-management") || lowerName.includes("role")) return Shield;
   if (lowerUrl.includes("menu-access") || lowerName.includes("access") || lowerName.includes("permission")) return ShieldCheck;
@@ -94,6 +96,8 @@ interface Props {
   // rail; these two control that drawer, and `collapsed` (the desktop behavior) is ignored while it's used.
   mobileOpen?: boolean;
   onCloseMobile?: () => void;
+  // Desktop collapse/expand toggle, shown on the sidebar's right edge (below `lg` the TopBar button opens the drawer).
+  onToggle?: () => void;
 }
 
 interface FlyoutItem {
@@ -194,7 +198,7 @@ function FlyoutGroup({
   );
 }
 
-export default function Sidebar({ collapsed: collapsedProp, loading = false, mobileOpen = false, onCloseMobile }: Props) {
+export default function Sidebar({ collapsed: collapsedProp, loading = false, mobileOpen = false, onCloseMobile, onToggle }: Props) {
   const location = useLocation();
   const pathname = location.pathname;
   const navigate = useNavigate();
@@ -221,6 +225,16 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
   // mirrors has_full_access in the backend). Only they get the fully hardcoded nav below.
   const [isDeveloper, setIsDeveloper] = useState(false);
   const [roleReady, setRoleReady] = useState(false);
+  const [profile, setProfile] = useState<{ name: string | null; employeeId: string; role: string | null } | null>(null);
+  const displayName = profile?.name || profile?.employeeId || "";
+  const initials = profile?.name
+    ? profile.name
+      .split(" ")
+      .map((w) => w[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase()
+    : profile?.employeeId.slice(0, 2).toUpperCase() ?? "";
   // The top bar's chrome (breadcrumb, hamburger, theme toggle, bell) waits on this too, so it never
   // looks "ready" while the sidebar underneath is still showing its own loading skeleton.
   useReportPageLoading("sidebar", loading || fetching || !roleReady);
@@ -268,9 +282,12 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
     // screens still gets the section).
     const isAccessControl = (e: MenuEntry) =>
       e.kind === "group" && e.group.items.length > 0 && e.group.items.every((i) => ADMIN_SCREEN_URLS.has(i.url));
+    // Support gets its own last section too (like the Developer's hard-coded one), not "Main menu".
+    const isSupport = (e: MenuEntry) => e.kind === "item" && e.item.url === DEV_SUPPORT.href;
     return {
-      entries: entries.filter((e) => !isAccessControl(e)),
+      entries: entries.filter((e) => !isAccessControl(e) && !isSupport(e)),
       administration: entries.filter(isAccessControl),
+      support: entries.filter(isSupport),
     };
   })();
 
@@ -315,7 +332,10 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/auth/me`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => setIsDeveloper(hasFullAccess(data)))
+      .then((data) => {
+        setIsDeveloper(hasFullAccess(data));
+        if (data) setProfile({ name: data.employee_name ?? null, employeeId: data.employee_id, role: data.role?.name ?? null });
+      })
       .catch(() => { })
       .finally(() => setRoleReady(true));
 
@@ -437,26 +457,33 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
       )}
       <aside
         className={`shrink-0 flex flex-col justify-between rounded-[24px] transition-all duration-300 glass-panel p-3 select-none ${isDesktop
-          ? "static h-full"
+          ? "relative h-full"
           : `fixed z-40 top-2 left-2 bottom-2 sm:top-3.5 sm:left-3.5 sm:bottom-3.5 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`
           }`}
         style={{
           width: collapsed ? 76 : 260,
         }}
       >
-      {/* ── Top Logo ── */}
-      <div className="w-full px-2 py-2 flex items-center justify-center">
-        {loading || fetching || !roleReady ? (
-          <div
-            className={`rounded-lg bg-slate-200 dark:bg-white/10 animate-pulse ${collapsed ? "h-[30px] w-12" : "h-11 w-[118px]"}`}
-            aria-hidden="true"
-          />
-        ) : (
-          <PulseLogo collapsed={collapsed} />
-        )}
+      {/* Collapse toggle: straddles the sidebar's right edge, level with the logo underline */}
+      {isDesktop && onToggle && !loading && (
+        // Invisible hover zone around the button's spot: the icon fades in only when the pointer is near it.
+        <div className="group absolute top-2 -right-5 z-20 w-10 h-14 flex items-center justify-center">
+          <button
+            type="button"
+            onClick={onToggle}
+            title={collapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+            aria-label="Toggle Sidebar"
+            className="w-7 h-7 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white bg-white dark:bg-[#0e172e] border border-slate-200 dark:border-white/15 shadow-md hover:bg-slate-50 dark:hover:bg-white/10 transition-all duration-200 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+          >
+            <PanelLeft className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+      {/* Logo now lives in the full-width TopBar; below `lg` the drawer keeps its own copy. */}
+      <div className="lg:hidden w-full px-2 py-2 flex items-center justify-center">
+        <PulseLogo />
       </div>
-      {/* Underline: fades out at both ends in the template colours */}
-      <div className="mx-3 mt-1 mb-3 h-px bg-gradient-to-r from-transparent via-[#0084ff]/40 to-transparent" />
+      <div className="lg:hidden mx-3 mt-1 mb-3 h-px bg-gradient-to-r from-transparent via-[#0084ff]/40 to-transparent" />
 
       {/* ── Nav Items Scroll Area ── */}
       <nav className="flex-1 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden space-y-1">
@@ -708,6 +735,19 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
               </>
             )}
 
+            {/* Support for other roles: the screen comes from the database (granted in Menu Access) but is shown in
+                the same last "Support" section, with the same label and icon, as the Developer's below. */}
+            {!isDeveloper && menuGroups.support.length > 0 && (
+              <>
+                {!collapsed && (
+                  <p className="px-3 pt-3 pb-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                    Support
+                  </p>
+                )}
+                {renderItem(DEV_SUPPORT.href, DEV_SUPPORT.label, DEV_SUPPORT.Icon)}
+              </>
+            )}
+
             {/* Support: the last section, hard-coded and Developer-only like Project Config above. */}
             {isDeveloper && (
               <>
@@ -723,32 +763,57 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
         )}
       </nav>
 
-      {/* ── Logout Button at Bottom ── */}
-      <div className="pt-2 border-t border-slate-200/80 dark:border-white/[0.08]">
+      {/* ── Account card at Bottom: who is signed in + logout ── */}
+      <div className="pt-3 border-t border-slate-200/80 dark:border-white/[0.08]">
         {loading || fetching || !roleReady ? (
           <div
-            className={`flex items-center px-3 py-2.5 rounded-xl w-full border border-slate-200/60 dark:border-white/5 bg-white/20 dark:bg-white/[0.02] animate-pulse ${collapsed ? "justify-center gap-0" : "gap-3"
-              }`}
+            className={`rounded-2xl border border-slate-200/60 dark:border-white/5 bg-white/30 dark:bg-white/[0.02] animate-pulse p-2.5 flex items-center ${collapsed ? "flex-col gap-2.5" : "gap-3"}`}
           >
-            <div className="w-4 h-4 rounded bg-slate-200/80 dark:bg-white/10 shrink-0" />
-            {!collapsed && <div className="h-3.5 w-16 bg-slate-200/80 dark:bg-white/10 rounded" />}
+            <div className="w-9 h-9 rounded-full bg-slate-200/80 dark:bg-white/10 shrink-0" />
+            {!collapsed && (
+              <div className="space-y-1.5 flex-1">
+                <div className="h-3 w-24 bg-slate-200/80 dark:bg-white/10 rounded" />
+                <div className="h-2.5 w-14 bg-slate-100 dark:bg-white/5 rounded" />
+              </div>
+            )}
+            <div className="w-8 h-8 rounded-lg bg-slate-200/80 dark:bg-white/10 shrink-0" />
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={handleLogout}
-            title={collapsed ? "Logout" : undefined}
-            className={`group flex items-center px-3 py-2.5 rounded-xl w-full text-[13.5px] font-medium transition-all duration-200 border border-slate-200/90 dark:border-slate-800 bg-white/30 dark:bg-[#0e172e]/60 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-200 dark:hover:border-rose-900/50 hover:bg-rose-50/50 dark:hover:bg-rose-500/10 ${collapsed ? "justify-center gap-0" : "gap-3"
-              }`}
+          <div
+            className={`rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white/50 dark:bg-white/[0.04] shadow-[0_1px_3px_rgba(15,23,42,0.05)] p-2.5 flex items-center ${collapsed ? "flex-col gap-2.5" : "gap-3"}`}
           >
-            <LogOut className="shrink-0 w-4 h-4 transition-transform duration-200 group-hover:-translate-x-0.5" />
-            <span
-              className={`overflow-hidden whitespace-nowrap transition-[opacity,max-width] duration-200 ease-out ${collapsed ? "opacity-0 max-w-0" : "opacity-100 max-w-[120px]"
-                }`}
+            {profile && (
+              <div
+                title={collapsed ? `${displayName}${profile.role ? ` · ${profile.role}` : ""}` : undefined}
+                className="flex items-center gap-3 min-w-0 flex-1"
+              >
+                <div className="relative shrink-0">
+                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#00d2ff] to-[#0072ff] text-white text-xs font-bold flex items-center justify-center shadow-sm ring-2 ring-white dark:ring-[#0c1427]">
+                    {initials}
+                  </div>
+                  {/* signed-in indicator */}
+                  <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-[#0c1427]" />
+                </div>
+                {!collapsed && (
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold leading-tight text-slate-800 dark:text-slate-100 truncate">{displayName}</p>
+                    <span className="mt-1 inline-block max-w-full truncate text-[10px] font-semibold px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-500/20 text-sky-700 dark:text-sky-300 align-top">
+                      {profile.role ?? profile.employeeId}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={handleLogout}
+              title="Logout"
+              aria-label="Logout"
+              className="group shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
             >
-              Logout
-            </span>
-          </button>
+              <LogOut className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+            </button>
+          </div>
         )}
       </div>
       </aside>

@@ -19,6 +19,7 @@ USER_SCREEN = "/access-control/user-management"
 ROLE_SCREEN = "/access-control/role-management"
 MENU_ACCESS_SCREEN = "/access-control/menu-access"
 WORKFLOW_SCREEN = "/access-control/workflow-management"
+SUPPORT_SCREEN = "/support"
 
 # Their APIs are superuser/Developer only, so they are never offered in Menu Access or shown to other roles.
 DEVELOPER_ONLY_SCREENS = frozenset({ROUTER_SETUP_SCREEN})
@@ -26,6 +27,8 @@ DEVELOPER_ONLY_SCREENS = frozenset({ROUTER_SETUP_SCREEN})
 DASHBOARD_PROCESS = {"name": "Dashboard"}
 DEVELOPER_PROCESS = {"name": "Developer Management"}
 ACCESS_PROCESS = {"name": "Access Control"}
+# Last in the sidebar (high order). Developers always see it; other roles only once it is granted in Menu Access.
+SUPPORT_PROCESS = {"name": "Support", "order": 99}
 
 # (process, screen).
 DEFAULT_MENUS = [
@@ -35,6 +38,7 @@ DEFAULT_MENUS = [
     (ACCESS_PROCESS, {"name": "User Management", "icon": "Users", "url": USER_SCREEN, "order": 2}),
     (ACCESS_PROCESS, {"name": "Menu Access", "icon": "ShieldCheck", "url": MENU_ACCESS_SCREEN, "order": 3}),
     (ACCESS_PROCESS, {"name": "Workflow Management", "icon": "Workflow", "url": WORKFLOW_SCREEN, "order": 4}),
+    (SUPPORT_PROCESS, {"name": "Support", "icon": "Ticket", "url": SUPPORT_SCREEN, "order": 1}),
 ]
 
 BUILT_IN_SCREENS = frozenset(item["url"] for _, item in DEFAULT_MENUS)
@@ -68,6 +72,9 @@ def ensure_default_menus():
                 if item["url"] == ROUTER_SETUP_SCREEN and (existing.is_deleted or not existing.is_active):
                     existing.is_deleted = False
                     existing.is_active = True
+                    added += 1
+                if not existing.icon:  # e.g. a hand-made copy of a built-in screen created without an icon
+                    existing.icon = item["icon"]
                     added += 1
                 if existing.process_id != process_id:
                     existing.process_id = process_id

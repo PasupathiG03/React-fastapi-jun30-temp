@@ -43,6 +43,30 @@ export async function setAccess(roleId: number, menuId: number, allowed: boolean
   if (!res.ok) throw new Error("Failed to update access");
 }
 
+export interface AccessChange {
+  roleId: number;
+  menuId: number;
+  allowed: boolean;
+}
+
+async function putBulk(path: string, changes: AccessChange[]): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method: "PUT",
+    headers: authHeaders(),
+    body: JSON.stringify({
+      updates: changes.map((c) => ({ role_id: c.roleId, menu_id: c.menuId, allowed: c.allowed })),
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(typeof err?.detail === "string" ? err.detail : "Failed to update access");
+  }
+}
+
+/** All-or-nothing: the server validates every change and saves them in one transaction. */
+export const setAccessBulk = (changes: AccessChange[]) => putBulk("/api/access/bulk", changes);
+export const setStageAccessBulk = (changes: AccessChange[]) => putBulk("/api/access/workflow-stages/bulk", changes);
+
 // Workflow stages use the same matrix: `screens` are the stages, `menu_id` in a grant is the stage id.
 export async function fetchStageAccessMatrix(workflowId: number): Promise<AccessMatrix> {
   const res = await fetch(`${API_BASE_URL}/api/access/workflow-stages?workflow_id=${workflowId}`, {

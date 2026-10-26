@@ -6,7 +6,8 @@ from app.models.user import AuditMixin
 
 TICKET_TYPES = ("bug", "requirement")
 TICKET_PRIORITIES = ("low", "medium", "high")
-TICKET_STATUSES = ("open", "in_progress", "resolved")
+# "new" = raised, no Developer has opened it yet; it becomes "open" the first time one does.
+TICKET_STATUSES = ("new", "open", "in_progress", "resolved")
 
 
 class Ticket(AuditMixin, Base):
@@ -19,7 +20,7 @@ class Ticket(AuditMixin, Base):
     subject = Column(String(200), nullable=False)
     description = Column(Text, nullable=False)
     priority = Column(String(20), nullable=False, default="medium", server_default="medium")
-    status = Column(String(20), nullable=False, default="open", server_default="open", index=True)
+    status = Column(String(20), nullable=False, default="new", server_default="new", index=True)
 
     replies = relationship(
         "TicketReply",

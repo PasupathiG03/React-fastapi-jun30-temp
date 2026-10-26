@@ -2,6 +2,8 @@ interface PulseLogoProps {
   collapsed?: boolean;
   className?: string;
   size?: "sm" | "md" | "lg";
+  // Overrides the preset wordmark height (px) for in-between sizes.
+  height?: number;
 }
 
 // The logo image is used as a mask, so it is painted in the template's cyan → blue gradient.
@@ -11,8 +13,8 @@ const LOGO_ASPECT = 575 / 214;
 const ICON_URL = "url(/assets/m-favicon-white.png)";
 const ICON_ASPECT = 340 / 214;
 
-export default function PulseLogo({ collapsed = false, className = "", size = "md" }: PulseLogoProps) {
-  const height = size === "lg" ? 48 : size === "sm" ? 32 : 44;
+export default function PulseLogo({ collapsed = false, className = "", size = "md", height: heightProp }: PulseLogoProps) {
+  const height = heightProp ?? (size === "lg" ? 48 : size === "sm" ? 32 : 44);
   const iconHeight = size === "lg" ? 34 : size === "sm" ? 24 : 30;
   const maskUrl = collapsed ? ICON_URL : LOGO_URL;
 

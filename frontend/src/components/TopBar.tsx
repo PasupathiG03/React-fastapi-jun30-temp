@@ -15,6 +15,8 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
+import PulseLogo from "@/components/PulseLogo";
+import SearchBar from "@/components/SearchBar";
 import { API_BASE_URL } from "@/lib/constants";
 import { isAuthenticated, logout } from "@/lib/auth";
 import { changePasswordApi } from "@/services/auth";
@@ -34,6 +36,7 @@ interface UserInfo {
   employee_id: string;
   role: { id: number; name: string } | null;
   must_change_password?: boolean;
+  is_superuser?: boolean;
 }
 
 export default function TopBar({ onToggle, loading = false }: Props) {
@@ -136,6 +139,9 @@ export default function TopBar({ onToggle, loading = false }: Props) {
     }
   }
 
+  // Same rule as DashboardGate / Sidebar: full access = superuser flag AND a "developer" role.
+  const isDeveloper = !!user?.is_superuser && user?.role?.name.trim().toLowerCase() === "developer";
+
   const initials = user?.employee_name
     ? user.employee_name
       .split(" ")
@@ -186,17 +192,30 @@ export default function TopBar({ onToggle, loading = false }: Props) {
   })();
 
   return (
-    <header className="relative z-40 h-14 w-full shrink-0 flex items-center justify-between gap-2 px-3 sm:px-4 rounded-2xl glass-panel transition-colors duration-200">
-      {/* Left: Hamburger menu + Breadcrumbs */}
-      <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+    <header className="relative z-40 h-14 w-full shrink-0 flex items-stretch gap-2 sm:gap-3.5">
+      {/* Logo panel: its own card, as wide as the expanded sidebar below it (fixed, so the top bar looks the
+          same whether the sidebar is collapsed or not). Desktop only; the mobile drawer carries its own logo. */}
+      <div
+        className="hidden lg:flex items-center justify-center shrink-0 rounded-2xl glass-panel transition-colors duration-200"
+        style={{ width: 260 }}
+      >
         {loading || pageLoading ? (
-          <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-white/10 animate-pulse shrink-0" aria-hidden="true" />
+          <div className="h-9 w-[97px] rounded-lg bg-slate-200 dark:bg-white/10 animate-pulse" aria-hidden="true" />
+        ) : (
+          <PulseLogo height={36} />
+        )}
+      </div>
+
+      {/* Breadcrumb panel: Hamburger menu + Breadcrumbs + Search */}
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 px-3 sm:px-4 rounded-2xl glass-panel transition-colors duration-200">
+        {loading || pageLoading ? (
+          <div className="lg:hidden w-8 h-8 rounded-lg bg-slate-200 dark:bg-white/10 animate-pulse shrink-0" aria-hidden="true" />
         ) : (
           <button
             type="button"
             onClick={onToggle}
             title="Toggle Sidebar"
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-white/10 shrink-0"
+            className="lg:hidden w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-white/10 shrink-0"
           >
             <PanelLeft className="w-4 h-4" />
           </button>
@@ -237,10 +256,12 @@ export default function TopBar({ onToggle, loading = false }: Props) {
             ))
           )}
         </nav>
+
+        {!loading && !pageLoading && <SearchBar isDeveloper={isDeveloper} />}
       </div>
 
-      {/* Right: Theme Toggle, Notifications, User Profile */}
-      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+      {/* Right panel (separate from the left one): Theme Toggle, Notifications, User Profile */}
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 px-3 sm:px-4 rounded-2xl glass-panel transition-colors duration-200">
         {/* Theme Toggle Button */}
         {loading || pageLoading ? (
           <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-white/10 animate-pulse shrink-0" aria-hidden="true" />

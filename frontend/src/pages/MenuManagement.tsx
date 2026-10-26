@@ -7,7 +7,6 @@ import { TablePagination, TableToolbar } from "@/components/DataTableControls";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { getProcessIcon, getScreenIcon } from "@/components/Sidebar";
 import { useTableData } from "@/hooks/useTableData";
-import { useLive } from "@/context/LiveContext";
 import {
   createProcess,
   deleteProcess,
@@ -372,15 +371,15 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
     });
   }
 
-  const { accessVersion } = useLive();
-
+  // Deliberately not tied to the live-update stream (useLive): this page loads when it opens and when you pick
+  // a process or save something here, and never reloads by itself while you are working on it.
   useEffect(() => {
     loadProcesses();
-  }, [accessVersion]);
+  }, []);
 
   useEffect(() => {
     if (selectedProcessId != null) loadScreens(selectedProcessId);
-  }, [selectedProcessId, accessVersion]);
+  }, [selectedProcessId]);
 
   async function loadProcesses() {
     try {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Bug, ChevronRight, LifeBuoy, Lightbulb, MessageSquare, Plus, Send, X } from "lucide-react";
+import { Bug, ChevronRight, LifeBuoy, Lightbulb, MessageSquare, Pencil, Plus, Send, Trash2, X } from "lucide-react";
 import { showError, showSuccess, showUpdate } from "../lib/toast";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { CustomSelect } from "@/components/CustomSelect";
@@ -9,7 +9,10 @@ import { useTableData } from "@/hooks/useTableData";
 import {
   addTicketReply,
   createTicket,
+  deleteTicket,
+  editTicket,
   fetchTicket,
+  fetchTicketPermissions,
   fetchTickets,
   updateTicket,
   type TicketDetail,
@@ -31,6 +34,7 @@ const TYPE_META: Record<TicketType, { label: string; Icon: React.ElementType; cl
 };
 
 const STATUS_META: Record<TicketStatus, { label: string; className: string }> = {
+  new: { label: "New", className: "bg-violet-100 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300" },
   open: { label: "Open", className: "bg-sky-100 dark:bg-sky-500/15 text-sky-700 dark:text-sky-300" },
   in_progress: { label: "In progress", className: "bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300" },
   resolved: { label: "Resolved", className: "bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" },
@@ -38,7 +42,10 @@ const STATUS_META: Record<TicketStatus, { label: string; className: string }> = 
 
 const PRIORITY_LABEL: Record<TicketPriority, string> = { low: "Low", medium: "Medium", high: "High" };
 
-const STATUS_OPTIONS = (Object.keys(STATUS_META) as TicketStatus[]).map((s) => ({ value: s, label: STATUS_META[s].label }));
+// A Developer picks from these; "New" is only ever the automatic starting state.
+const STATUS_OPTIONS = (Object.keys(STATUS_META) as TicketStatus[])
+  .filter((s) => s !== "new")
+  .map((s) => ({ value: s, label: STATUS_META[s].label }));
 const PRIORITY_OPTIONS = (Object.keys(PRIORITY_LABEL) as TicketPriority[]).map((p) => ({ value: p, label: PRIORITY_LABEL[p] }));
 
 const isOpen = (t: TicketItem) => t.status !== "resolved";
@@ -88,12 +95,39 @@ export default function Support() {
   const [tab, setTab] = useState<Tab>("all");
   const [newOpen, setNewOpen] = useState(false);
   const [openTicketId, setOpenTicketId] = useState<number | null>(null);
+  // Owner actions (until a Developer starts on the ticket): edit opens the form pre-filled, delete asks first.
+  const [editingTicket, setEditingTicket] = useState<TicketItem | null>(null);
+  const [ticketToDelete, setTicketToDelete] = useState<TicketItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function confirmDelete() {
+    if (!ticketToDelete) return;
+    setDeleting(true);
+    try {
+      await deleteTicket(ticketToDelete.id);
+      setTickets((prev) => prev.filter((t) => t.id !== ticketToDelete.id));
+      if (openTicketId === ticketToDelete.id) setOpenTicketId(null);
+      showSuccess(`Request #${ticketToDelete.id} deleted`);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Failed to delete request");
+    } finally {
+      setDeleting(false);
+      setTicketToDelete(null);
+    }
+  }
   // Stable, so the detail panel's load effect doesn't re-fetch every time the list re-renders.
   const closeTicket = useCallback(() => setOpenTicketId(null), []);
 
+  // Only full access (superuser + Developer role) resolves tickets: sees everyone's, changes status, replies.
+  // Everyone else raises tickets and follows their own. The server decides -- this only shapes the page.
+  const [canManage, setCanManage] = useState(false);
+
   useEffect(() => {
-    fetchTickets()
-      .then(setTickets)
+    Promise.all([fetchTickets(), fetchTicketPermissions()])
+      .then(([list, perms]) => {
+        setTickets(list);
+        setCanManage(perms.can_manage);
+      })
       .catch((err) => showError(err instanceof Error ? err.message : "Failed to load tickets"))
       .finally(() => setLoading(false));
   }, []);
@@ -117,7 +151,7 @@ export default function Support() {
     <PageContainer>
       <PageHeader
         icon={LifeBuoy}
-        title="Your requests"
+        title={canManage ? "All requests" : "Your requests"}
         subtitle={`${openCount} open · ${tickets.length - openCount} resolved`}
         loading={loading}
         actions={
@@ -171,24 +205,39 @@ export default function Support() {
         )}
 
         {/* Column headings (hidden on phones, where each row stacks) */}
-        <div className="hidden sm:grid grid-cols-[80px_1fr_120px_100px_20px] gap-4 px-6 py-3 border-b border-slate-100 dark:border-white/[0.06] text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-          <span>Ticket</span>
-          <span>Subject</span>
-          <span>Status</span>
-          <span className="text-right">Updated</span>
-          <span />
+        <div className="hidden sm:grid grid-cols-[80px_1fr_120px_100px_56px] gap-4 px-6 py-3 border-b border-slate-100 dark:border-white/[0.06] text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+          {loading ? (
+            <>
+              <span className="h-2.5 w-10 bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
+              <span className="h-2.5 w-14 bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
+              <span className="h-2.5 w-12 bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
+              <span className="h-2.5 w-14 bg-slate-200 dark:bg-white/10 rounded animate-pulse justify-self-end" />
+              <span />
+            </>
+          ) : (
+            <>
+              <span>Ticket</span>
+              <span>Subject</span>
+              <span>Status</span>
+              <span className="text-right">Updated</span>
+              <span />
+            </>
+          )}
         </div>
 
         {loading ? (
+          // Same grid as the real rows, so nothing shifts when the data arrives.
           <div className="divide-y divide-slate-100 dark:divide-white/[0.04] animate-pulse">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="flex items-center gap-4 px-6 py-4">
-                <div className="h-3 w-12 bg-slate-200 dark:bg-white/10 rounded" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-3.5 w-56 bg-slate-200 dark:bg-white/10 rounded" />
-                  <div className="h-3 w-40 bg-slate-100 dark:bg-white/5 rounded" />
+              <div key={i} className="grid grid-cols-[1fr_auto] sm:grid-cols-[80px_1fr_120px_100px_20px] gap-x-4 gap-y-1.5 items-center px-6 py-3.5">
+                <div className="hidden sm:block h-3 w-10 bg-slate-200 dark:bg-white/10 rounded" />
+                <div className="space-y-2">
+                  <div className="h-3.5 bg-slate-200 dark:bg-white/10 rounded" style={{ width: `${45 + ((i * 17) % 35)}%`, maxWidth: 320 }} />
+                  <div className="h-4 w-40 max-w-full bg-slate-100 dark:bg-white/5 rounded-full" />
                 </div>
-                <div className="h-5 w-16 bg-slate-100 dark:bg-white/5 rounded-full" />
+                <div className="h-5 w-16 bg-slate-100 dark:bg-white/5 rounded-full justify-self-end sm:justify-self-start" />
+                <div className="hidden sm:block h-3 w-14 bg-slate-100 dark:bg-white/5 rounded justify-self-end" />
+                <div className="hidden sm:block h-3 w-3 bg-slate-100 dark:bg-white/5 rounded" />
               </div>
             ))}
           </div>
@@ -203,11 +252,11 @@ export default function Support() {
             )}
             <ul className="divide-y divide-slate-100 dark:divide-white/[0.04] m-0 p-0">
               {table.paged.map((t) => (
-                <li key={t.id}>
+                <li key={t.id} className="relative">
                   <button
                     type="button"
                     onClick={() => setOpenTicketId(t.id)}
-                    className="group w-full text-left grid grid-cols-[1fr_auto] sm:grid-cols-[80px_1fr_120px_100px_20px] gap-x-4 gap-y-1.5 items-center px-6 py-3.5 hover:bg-white/35 dark:hover:bg-white/[0.03] transition-colors"
+                    className="group w-full text-left grid grid-cols-[1fr_auto] sm:grid-cols-[80px_1fr_120px_100px_56px] gap-x-4 gap-y-1.5 items-center px-6 py-3.5 hover:bg-white/35 dark:hover:bg-white/[0.03] transition-colors"
                   >
                     <span className="hidden sm:block font-mono text-xs text-slate-500 dark:text-slate-400">#{t.id}</span>
                     <span className="min-w-0">
@@ -228,8 +277,31 @@ export default function Support() {
                       <Badge className={STATUS_META[t.status].className}>{STATUS_META[t.status].label}</Badge>
                     </span>
                     <span className="hidden sm:block text-right text-xs text-slate-500 dark:text-slate-400">{relativeTime(t.updated_at)}</span>
-                    <ChevronRight className="hidden sm:block w-4 h-4 text-slate-400 transition-transform group-hover:translate-x-0.5" />
+                    <ChevronRight className={`hidden sm:block w-4 h-4 text-slate-400 transition-transform group-hover:translate-x-0.5 ${t.can_edit ? "opacity-0" : ""}`} />
                   </button>
+                  {/* Edit / delete for the person who raised it, only until a Developer starts working on it. */}
+                  {t.can_edit && (
+                    <div className="hidden sm:flex absolute right-4 top-1/2 -translate-y-1/2 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setEditingTicket(t)}
+                        title="Edit request"
+                        aria-label={`Edit request #${t.id}`}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-sky-600 dark:text-sky-400 border border-slate-200 dark:border-white/10 hover:bg-white/60 dark:hover:bg-white/5 transition-colors"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTicketToDelete(t)}
+                        title="Delete request"
+                        aria-label={`Delete request #${t.id}`}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-rose-500 border border-slate-200 dark:border-white/10 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -248,18 +320,63 @@ export default function Support() {
         )}
       </div>
 
-      {newOpen && (
+      {(newOpen || editingTicket) && (
         <NewTicketModal
-          onClose={() => setNewOpen(false)}
-          onCreated={(t) => {
-            setTickets((prev) => [t, ...prev]);
+          editing={editingTicket}
+          onClose={() => {
             setNewOpen(false);
-            setTab("all");
+            setEditingTicket(null);
+          }}
+          onCreated={(t) => {
+            if (editingTicket) syncTicket(t);
+            else {
+              setTickets((prev) => [t, ...prev]);
+              setTab("all");
+            }
+            setNewOpen(false);
+            setEditingTicket(null);
           }}
         />
       )}
+      {ticketToDelete &&
+        createPortal(
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setTicketToDelete(null)} />
+            <div className="relative glass-modal rounded-2xl p-6 max-w-sm w-full z-10 text-center">
+              <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto mb-4">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">Delete request?</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
+                Are you sure you want to permanently delete{" "}
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  #{ticketToDelete.id} · {ticketToDelete.subject}
+                </span>
+                ? This action cannot be undone.
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setTicketToDelete(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDelete}
+                  disabled={deleting}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-rose-500 hover:bg-rose-600 transition-colors shadow-sm disabled:opacity-60"
+                >
+                  {deleting ? "Deleting..." : "Delete"}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
       {openTicketId !== null && (
-        <TicketDetailModal ticketId={openTicketId} onClose={closeTicket} onChanged={syncTicket} />
+        <TicketDetailModal ticketId={openTicketId} canManage={canManage} onClose={closeTicket} onChanged={syncTicket} />
       )}
     </PageContainer>
   );
@@ -291,11 +408,20 @@ function ModalShell({ title, icon, onClose, children }: { title: React.ReactNode
   );
 }
 
-function NewTicketModal({ onClose, onCreated }: { onClose: () => void; onCreated: (t: TicketItem) => void }) {
-  const [type, setType] = useState<TicketType>("bug");
-  const [subject, setSubject] = useState("");
-  const [description, setDescription] = useState("");
-  const [priority, setPriority] = useState<TicketPriority>("medium");
+// Raises a new request, or (with `editing`) changes one you raised.
+function NewTicketModal({
+  editing = null,
+  onClose,
+  onCreated,
+}: {
+  editing?: TicketItem | null;
+  onClose: () => void;
+  onCreated: (t: TicketItem) => void;
+}) {
+  const [type, setType] = useState<TicketType>(editing?.type ?? "bug");
+  const [subject, setSubject] = useState(editing?.subject ?? "");
+  const [description, setDescription] = useState(editing?.description ?? "");
+  const [priority, setPriority] = useState<TicketPriority>(editing?.priority ?? "medium");
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -304,18 +430,29 @@ function NewTicketModal({ onClose, onCreated }: { onClose: () => void; onCreated
     if (!description.trim()) return showError("Description is required");
     setSubmitting(true);
     try {
-      const created = await createTicket({ type, subject: subject.trim(), description: description.trim(), priority });
-      showSuccess(`Request #${created.id} raised`);
-      onCreated(created);
+      const payload = { type, subject: subject.trim(), description: description.trim(), priority };
+      if (editing) {
+        const updated = await editTicket(editing.id, payload);
+        showUpdate(`Request #${updated.id} updated`);
+        onCreated(updated);
+      } else {
+        const created = await createTicket(payload);
+        showSuccess(`Request #${created.id} raised`);
+        onCreated(created);
+      }
     } catch (err) {
-      showError(err instanceof Error ? err.message : "Failed to raise request");
+      showError(err instanceof Error ? err.message : editing ? "Failed to update request" : "Failed to raise request");
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <ModalShell title="New request" icon={<Plus className="w-4 h-4 text-sky-500" />} onClose={onClose}>
+    <ModalShell
+      title={editing ? `Edit request #${editing.id}` : "New request"}
+      icon={editing ? <Pencil className="w-4 h-4 text-sky-500" /> : <Plus className="w-4 h-4 text-sky-500" />}
+      onClose={onClose}
+    >
       <form onSubmit={handleSubmit} className="flex flex-col min-h-0">
         <div className="p-6 space-y-5 overflow-y-auto">
           <div className="space-y-1.5">
@@ -391,7 +528,7 @@ function NewTicketModal({ onClose, onCreated }: { onClose: () => void; onCreated
         <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end shrink-0 rounded-b-2xl">
           <button type="submit" disabled={submitting} className={primaryButtonClass}>
             <Send className="w-4 h-4" />
-            {submitting ? "Submitting..." : "Submit request"}
+            {submitting ? (editing ? "Saving..." : "Submitting...") : editing ? "Save changes" : "Submit request"}
           </button>
         </div>
       </form>
@@ -401,10 +538,12 @@ function NewTicketModal({ onClose, onCreated }: { onClose: () => void; onCreated
 
 function TicketDetailModal({
   ticketId,
+  canManage,
   onClose,
   onChanged,
 }: {
   ticketId: number;
+  canManage: boolean;
   onClose: () => void;
   onChanged: (t: TicketItem) => void;
 }) {
@@ -414,19 +553,23 @@ function TicketDetailModal({
 
   useEffect(() => {
     fetchTicket(ticketId)
-      .then(setTicket)
+      .then((t) => {
+        setTicket(t);
+        // Opening a "new" ticket as a Developer flips it to "open" on the server; keep the list row in step.
+        onChanged(t);
+      })
       .catch((err) => {
         showError(err instanceof Error ? err.message : "Failed to load ticket");
         onClose();
       });
   }, [ticketId, onClose]);
 
-  async function handleUpdate(payload: { status?: TicketStatus; priority?: TicketPriority }) {
+  async function handleUpdate(payload: { status: TicketStatus }) {
     try {
       const updated = await updateTicket(ticketId, payload);
       setTicket(updated);
       onChanged(updated);
-      showUpdate(payload.status ? `Marked as ${STATUS_META[payload.status].label.toLowerCase()}` : "Priority updated");
+      showUpdate(`Marked as ${STATUS_META[payload.status].label.toLowerCase()}`);
     } catch (err) {
       showError(err instanceof Error ? err.message : "Failed to update ticket");
     }
@@ -470,25 +613,32 @@ function TicketDetailModal({
                   <TypeBadge type={ticket.type} />
                 </div>
               </div>
-              <div className="space-y-1.5 w-40">
-                <span className={labelClass}>Status</span>
-                <CustomSelect
-                  value={ticket.status}
-                  onChange={(s) => s !== ticket.status && handleUpdate({ status: s })}
-                  options={STATUS_OPTIONS}
-                  size="sm"
-                  ariaLabel="Status"
-                />
-              </div>
-              <div className="space-y-1.5 w-32">
+              {canManage ? (
+                <>
+                  <div className="space-y-1.5 w-40">
+                    <span className={labelClass}>Status</span>
+                    <CustomSelect
+                      value={ticket.status}
+                      onChange={(s) => s !== ticket.status && handleUpdate({ status: s })}
+                      options={STATUS_OPTIONS}
+                      size="sm"
+                      ariaLabel="Status"
+                    />
+                  </div>
+                </>
+              ) : (
+                // Read-only for the person who raised it: they follow the status, only a Developer changes it.
+                <div className="space-y-1.5">
+                  <span className={labelClass}>Status</span>
+                  <div>
+                    <Badge className={STATUS_META[ticket.status].className}>{STATUS_META[ticket.status].label}</Badge>
+                  </div>
+                </div>
+              )}
+              {/* Priority is chosen when the ticket is raised and is never editable afterwards. */}
+              <div className="space-y-1.5">
                 <span className={labelClass}>Priority</span>
-                <CustomSelect
-                  value={ticket.priority}
-                  onChange={(p) => p !== ticket.priority && handleUpdate({ priority: p })}
-                  options={PRIORITY_OPTIONS}
-                  size="sm"
-                  ariaLabel="Priority"
-                />
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{PRIORITY_LABEL[ticket.priority]}</p>
               </div>
             </div>
 
@@ -519,6 +669,12 @@ function TicketDetailModal({
             </div>
           </div>
 
+          {canManage && ticket.status === "resolved" && (
+            <p className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] text-xs text-slate-500 dark:text-slate-400 shrink-0 rounded-b-2xl">
+              This request is resolved. Change the status back to Open or In progress to reply again.
+            </p>
+          )}
+          {canManage && ticket.status !== "resolved" && (
           <form
             onSubmit={handleReply}
             className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-end gap-3 shrink-0 rounded-b-2xl"
@@ -536,6 +692,7 @@ function TicketDetailModal({
               {sending ? "Sending..." : "Reply"}
             </button>
           </form>
+          )}
         </>
       )}
     </ModalShell>

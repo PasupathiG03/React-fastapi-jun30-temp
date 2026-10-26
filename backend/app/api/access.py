@@ -42,6 +42,15 @@ class AccessUpdate(BaseModel):
     allowed: bool
 
 
+class BulkAccessUpdate(BaseModel):
+    updates: List[AccessUpdate]
+
+
+def _dedupe(updates: List[AccessUpdate]) -> List[AccessUpdate]:
+    """If the same (role, target) appears twice, the last one wins."""
+    return list({(u.role_id, u.menu_id): u for u in updates}.values())
+
+
 @router.get("/", response_model=AccessMatrix)
 def get_access_matrix(
     process_id: Optional[int] = None,
@@ -103,6 +112,49 @@ def set_access(
     db.commit()
 
 
+@router.put("/bulk", status_code=status.HTTP_204_NO_CONTENT)
+def set_access_bulk(
+    payload: BulkAccessUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(require_screen(MENU_ACCESS_SCREEN)),
+):
+    """Apply many role x screen changes atomically: every change is validated first, then all are saved in one
+    transaction. If anything is invalid or fails, nothing is changed."""
+    updates = _dedupe(payload.updates)
+    if not updates:
+        return
+
+    role_ids = {u.role_id for u in updates}
+    menu_ids = {u.menu_id for u in updates}
+    found_roles = {r_id for (r_id,) in db.query(Role.id).filter(Role.id.in_(role_ids)).all()}
+    menus = {m.id: m for m in db.query(Menu).filter(Menu.id.in_(menu_ids)).all()}
+
+    if role_ids - found_roles:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
+    if menu_ids - menus.keys():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Screen not found")
+    if any(u.allowed and menus[u.menu_id].url in DEVELOPER_ONLY_SCREENS for u in updates):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This screen is only available to Developers")
+
+    try:
+        existing = {
+            (g.role_id, g.menu_id): g
+            for g in db.query(RoleMenuAccess)
+            .filter(RoleMenuAccess.role_id.in_(role_ids), RoleMenuAccess.menu_id.in_(menu_ids))
+            .all()
+        }
+        for u in updates:
+            row = existing.get((u.role_id, u.menu_id))
+            if u.allowed and not row:
+                db.add(RoleMenuAccess(role_id=u.role_id, menu_id=u.menu_id))
+            elif not u.allowed and row:
+                db.delete(row)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+
 # ── Workflow stages: same roles x rows matrix, rows are the stages of one workflow ──
 
 @router.get("/workflow-stages", response_model=AccessMatrix)
@@ -149,3 +201,41 @@ def set_stage_access(
     elif not payload.allowed and has:
         stage.role_ids = [rid for rid in stage.role_ids if rid != role.id]
     db.commit()
+
+
+@router.put("/workflow-stages/bulk", status_code=status.HTTP_204_NO_CONTENT)
+def set_stage_access_bulk(
+    payload: BulkAccessUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(require_screen(MENU_ACCESS_SCREEN)),
+):
+    """Apply many role x stage changes atomically (`menu_id` is the stage id): validate everything first, then
+    save all in one transaction, or change nothing."""
+    updates = _dedupe(payload.updates)
+    if not updates:
+        return
+
+    role_ids = {u.role_id for u in updates}
+    stage_ids = {u.menu_id for u in updates}
+    found_roles = {r_id for (r_id,) in db.query(Role.id).filter(Role.id.in_(role_ids)).all()}
+    stages = {s.id: s for s in db.query(WorkflowStage).filter(WorkflowStage.id.in_(stage_ids)).all()}
+
+    if role_ids - found_roles:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
+    if stage_ids - stages.keys():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stage not found")
+
+    try:
+        for stage_id, stage in stages.items():
+            current = list(stage.role_ids or [])
+            for u in (x for x in updates if x.menu_id == stage_id):
+                if u.allowed and u.role_id not in current:
+                    current.append(u.role_id)
+                elif not u.allowed and u.role_id in current:
+                    current.remove(u.role_id)
+            if current != list(stage.role_ids or []):
+                stage.role_ids = current
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise

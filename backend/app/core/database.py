@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.core.config import settings
@@ -57,12 +57,37 @@ _LIVE_TABLES = {
 }
 
 
+# Columns of `users` that every sign-in / sign-out / failed attempt rewrites. A change to only these says
+# nothing about menus or permissions, so it must not make every open browser reload (Router Setup, Menu
+# Access, ... would flash their loading skeleton each time anyone logs in or out). Sessions ending elsewhere
+# are announced separately (publish({"session"}) in app/api/auth.py).
+_USER_BOOKKEEPING_COLUMNS = {
+    "failed_attempts",
+    "locked_until",
+    "token_version",
+    "last_login_at",
+    "hashed_password",
+    "updated_at",
+    "updated_by_id",
+}
+
+
+def _edit_changes_access(obj) -> bool:
+    """True if an edit to this existing object can change what someone sees. An edited user only counts if
+    something other than login bookkeeping changed."""
+    if getattr(obj, "__tablename__", None) == "users":
+        changed = {a.key for a in inspect(obj).attrs if a.history.has_changes()}
+        return bool(changed - _USER_BOOKKEEPING_COLUMNS)
+    return True
+
+
 @event.listens_for(SessionLocal, "before_flush")
 def _remember_live_changes(session, flush_context, instances):
     kinds = session.info.setdefault("live_kinds", set())
-    for obj in list(session.new) + list(session.dirty) + list(session.deleted):
+    # New and deleted rows always count; edited rows are checked for what actually changed.
+    for obj, is_edit in [(o, False) for o in list(session.new) + list(session.deleted)] + [(o, True) for o in session.dirty]:
         kind = _LIVE_TABLES.get(getattr(obj, "__tablename__", None))
-        if kind:
+        if kind and (not is_edit or _edit_changes_access(obj)):
             kinds.add(kind)
 
 

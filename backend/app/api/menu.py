@@ -138,5 +138,8 @@ def delete_menu(
     if menu.url == ROUTER_SETUP_SCREEN:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Router Setup cannot be deleted")
 
-    menu.is_deleted = True
+    # Removed for good: the screen row and every role grant for it. (A built-in screen is simply re-created
+    # on the next start by ensure_default_menus, so deleting one never leaves the system without it.)
+    db.query(RoleMenuAccess).filter(RoleMenuAccess.menu_id == menu.id).delete(synchronize_session=False)
+    db.delete(menu)
     db.commit()

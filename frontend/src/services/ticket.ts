@@ -2,7 +2,8 @@ import { API_BASE_URL } from "@/lib/constants";
 
 export type TicketType = "bug" | "requirement";
 export type TicketPriority = "low" | "medium" | "high";
-export type TicketStatus = "open" | "in_progress" | "resolved";
+// "new": raised, no Developer has opened it yet. It becomes "open" when a Developer first opens it.
+export type TicketStatus = "new" | "open" | "in_progress" | "resolved";
 
 interface Creator {
   employee_id: string;
@@ -17,6 +18,8 @@ export interface TicketItem {
   priority: TicketPriority;
   status: TicketStatus;
   reply_count: number;
+  // The person who raised it can edit/delete it until a Developer starts working on it.
+  can_edit?: boolean;
   created_at: string;
   updated_at: string;
   creator?: Creator | null;
@@ -67,6 +70,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
+/** can_manage: only full access (superuser + Developer role) resolves tickets (see all, change status, reply). */
+export const fetchTicketPermissions = () => request<{ can_manage: boolean }>("/permissions");
+
 export const fetchTickets = () => request<TicketItem[]>("/");
 
 export const fetchTicket = (id: number) => request<TicketDetail>(`/${id}`);
@@ -74,7 +80,18 @@ export const fetchTicket = (id: number) => request<TicketDetail>(`/${id}`);
 export const createTicket = (payload: TicketCreatePayload) =>
   request<TicketDetail>("/", { method: "POST", body: JSON.stringify(payload) });
 
-export const updateTicket = (id: number, payload: { status?: TicketStatus; priority?: TicketPriority }) =>
+export const editTicket = (id: number, payload: TicketCreatePayload) =>
+  request<TicketDetail>(`/${id}/edit`, { method: "PUT", body: JSON.stringify(payload) });
+
+export async function deleteTicket(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/api/tickets/${id}`, { method: "DELETE", headers: authHeaders() });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(extractDetail(err));
+  }
+}
+
+export const updateTicket =(id: number, payload: { status: TicketStatus }) =>
   request<TicketDetail>(`/${id}`, { method: "PUT", body: JSON.stringify(payload) });
 
 export const addTicketReply = (id: number, message: string) =>

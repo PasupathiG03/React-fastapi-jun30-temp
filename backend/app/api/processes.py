@@ -5,7 +5,9 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db, get_superuser, get_current_user, require_screen
-from app.core.builtin_screens import DEVELOPER_PROCESS, MENU_ACCESS_SCREEN, PROTECTED_PROCESS_NAMES
+from app.core.builtin_screens import DEVELOPER_ONLY_SCREENS, DEVELOPER_PROCESS, MENU_ACCESS_SCREEN, PROTECTED_PROCESS_NAMES
+from app.models.access import RoleMenuAccess
+from app.models.menu import Menu
 from app.models.process import Process
 from app.schemas.process import ProcessCreate, ProcessOut, ProcessReorderItem, ProcessUpdate
 
@@ -50,7 +52,7 @@ def create_process(
 ):
     """Create a new process."""
     existing = db.query(Process).filter(Process.name == payload.name).first()
-    if existing:
+    if existing and existing.is_active:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="A process with this name already exists",
@@ -59,6 +61,15 @@ def create_process(
     data = payload.model_dump()
     if data.get("order") is None:
         data["order"] = (db.query(func.max(Process.order)).scalar() or 0) + 1
+    if existing:
+        # Deleting a process only deactivates it (the name stays reserved, and its screens stay attached).
+        # Adding the same name again brings that process back instead of failing.
+        for key, value in data.items():
+            setattr(existing, key, value)
+        existing.is_active = True
+        db.commit()
+        db.refresh(existing)
+        return existing
     process = Process(**data)
     db.add(process)
     db.commit()
@@ -126,13 +137,22 @@ def delete_process(
     db: Session = Depends(get_db),
     _=Depends(get_superuser),
 ):
-    """Soft delete a process by setting is_active to False."""
+    """Delete a process for good, together with its screens and every role grant for those screens, all in one
+    transaction. (Deactivating a process without deleting it is the "Active" switch on the process form.)"""
     process = db.query(Process).filter(Process.id == process_id).first()
     if not process:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Process not found")
     if process.name in PROTECTED_PROCESS_NAMES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This process cannot be deleted")
 
-    process.is_active = False
+    screens = db.query(Menu).filter(Menu.process_id == process.id).all()
+    screen_ids = [m.id for m in screens]
+    if any(m.url in DEVELOPER_ONLY_SCREENS for m in screens):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This process holds a screen that cannot be deleted")
+    if screen_ids:
+        db.query(RoleMenuAccess).filter(RoleMenuAccess.menu_id.in_(screen_ids)).delete(synchronize_session=False)
+    for m in screens:
+        db.delete(m)
+    db.delete(process)
     _renumber_active_processes(db)
     db.commit()

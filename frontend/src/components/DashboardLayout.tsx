@@ -60,7 +60,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <PendingProvider>
         <SessionWatcher />
         <div
-          className="app-ambient flex h-screen w-screen overflow-hidden p-2 sm:p-3.5 gap-2 sm:gap-3.5 font-sans transition-colors duration-200"
+          className="app-ambient flex flex-col h-screen w-screen overflow-hidden p-2 sm:p-3.5 gap-2 sm:gap-3.5 font-sans transition-colors duration-200"
           style={{
             background:
               theme === "dark"
@@ -71,21 +71,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {/* Both the sidebar and the top bar read/report into PageLoadingContext (the sidebar reports
               its own load; TopBar's chrome waits on every reporter), so both must be inside it. */}
           <PageLoadingProvider>
-            {/* Floating Left Sidebar */}
-            <Sidebar
-              collapsed={collapsed}
-              loading={loading}
-              mobileOpen={mobileNavOpen}
-              onCloseMobile={() => setMobileNavOpen(false)}
-            />
+            {/* Full-width top bar */}
+            <TopBar collapsed={collapsed} onToggle={handleToggleNav} loading={loading} />
 
-            {/* Right Column: TopBar + Page Content */}
-            <div className="flex flex-col flex-1 h-full min-w-0 overflow-hidden gap-3.5">
-              <TopBar collapsed={collapsed} onToggle={handleToggleNav} loading={loading} />
-              <main ref={mainRef} className="flex-1 overflow-y-auto pr-1 pb-6 min-w-0 [scrollbar-width:thin]">
-                {children}
-              </main>
-              <LayoutFooter loading={loading} />
+            {/* Below it: Sidebar + Page Content */}
+            <div className="flex flex-1 min-h-0 gap-2 sm:gap-3.5">
+              <Sidebar
+                collapsed={collapsed}
+                loading={loading}
+                mobileOpen={mobileNavOpen}
+                onCloseMobile={() => setMobileNavOpen(false)}
+                onToggle={handleToggleNav}
+              />
+              <div className="flex flex-col flex-1 h-full min-w-0 overflow-hidden gap-3.5">
+                <main ref={mainRef} className="flex-1 overflow-y-auto pr-1 pb-6 min-w-0 [scrollbar-width:thin]">
+                  {children}
+                </main>
+                <LayoutFooter loading={loading} />
+              </div>
             </div>
           </PageLoadingProvider>
         </div>
