@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
-import { Bug, ChevronRight, LifeBuoy, Lightbulb, MessageSquare, Pencil, Plus, Send, Trash2, X } from "lucide-react";
+import { Bug, ChevronRight, LifeBuoy, Lightbulb, MessageSquare, Pencil, Plus, Search, Send, Trash2 } from "lucide-react";
 import { showError, showSuccess, showUpdate } from "../lib/toast";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { CustomSelect } from "@/components/CustomSelect";
 import { TablePagination, TableSearchInput } from "@/components/DataTableControls";
 import { useTableData } from "@/hooks/useTableData";
+import Modal, { ConfirmDialog, ModalCancelButton, ModalFooter } from "@/components/Modal";
+import EmptyState from "@/components/EmptyState";
 import {
   addTicketReply,
   createTicket,
@@ -85,7 +86,7 @@ function TypeBadge({ type }: { type: TicketType }) {
 
 const fieldClass =
   "w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 text-xs text-slate-800 dark:text-slate-200 glass-field placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/30 transition-colors";
-const labelClass = "text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide";
+const labelClass = "block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide";
 const primaryButtonClass =
   "flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 transition-all disabled:opacity-60 shadow-sm";
 
@@ -98,11 +99,9 @@ export default function Support() {
   // Owner actions (until a Developer starts on the ticket): edit opens the form pre-filled, delete asks first.
   const [editingTicket, setEditingTicket] = useState<TicketItem | null>(null);
   const [ticketToDelete, setTicketToDelete] = useState<TicketItem | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
   async function confirmDelete() {
     if (!ticketToDelete) return;
-    setDeleting(true);
     try {
       await deleteTicket(ticketToDelete.id);
       setTickets((prev) => prev.filter((t) => t.id !== ticketToDelete.id));
@@ -111,7 +110,6 @@ export default function Support() {
     } catch (err) {
       showError(err instanceof Error ? err.message : "Failed to delete request");
     } finally {
-      setDeleting(false);
       setTicketToDelete(null);
     }
   }
@@ -244,11 +242,23 @@ export default function Support() {
         ) : (
           <>
             {visible.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-14 text-slate-400 dark:text-slate-500">
-                <LifeBuoy className="w-8 h-8 mb-2 opacity-30" />
-                <p className="text-sm">{tickets.length === 0 ? "No requests yet" : `No ${tab} requests`}</p>
-                {tickets.length === 0 && <p className="text-xs mt-0.5">Report a bug or ask for a new requirement with "New request"</p>}
-              </div>
+              <EmptyState
+                icon={LifeBuoy}
+                title={tickets.length === 0 ? "No requests yet" : `No ${tab} requests`}
+                description={
+                  tickets.length === 0
+                    ? "Found a bug or need something new? Raise a request and track it here."
+                    : "Switch tabs to see the rest."
+                }
+                action={
+                  tickets.length === 0 && (
+                    <button type="button" onClick={() => setNewOpen(true)} className={primaryButtonClass}>
+                      <Plus className="w-4 h-4" />
+                      New request
+                    </button>
+                  )
+                }
+              />
             )}
             <ul className="divide-y divide-slate-100 dark:divide-white/[0.04] m-0 p-0">
               {table.paged.map((t) => (
@@ -306,7 +316,7 @@ export default function Support() {
               ))}
             </ul>
             {visible.length > 0 && table.filtered.length === 0 && (
-              <div className="py-10 text-center text-xs text-slate-400">No results match your search</div>
+              <EmptyState compact icon={Search} title="No matching requests" description="Try a subject, number, type or name." />
             )}
             <TablePagination
               page={table.page}
@@ -338,73 +348,25 @@ export default function Support() {
           }}
         />
       )}
-      {ticketToDelete &&
-        createPortal(
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setTicketToDelete(null)} />
-            <div className="relative glass-modal rounded-2xl p-6 max-w-sm w-full z-10 text-center">
-              <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto mb-4">
-                <Trash2 className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">Delete request?</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
-                Are you sure you want to permanently delete{" "}
-                <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  #{ticketToDelete.id} · {ticketToDelete.subject}
-                </span>
-                ? This action cannot be undone.
-              </p>
-              <div className="flex items-center justify-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setTicketToDelete(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmDelete}
-                  disabled={deleting}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-rose-500 hover:bg-rose-600 transition-colors shadow-sm disabled:opacity-60"
-                >
-                  {deleting ? "Deleting..." : "Delete"}
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
+      {ticketToDelete && (
+        <ConfirmDialog
+          title="Delete request?"
+          message={
+            <>
+              <span className="font-semibold text-slate-800 dark:text-slate-200">
+                #{ticketToDelete.id} · {ticketToDelete.subject}
+              </span>{" "}
+              will be deleted permanently. This can't be undone.
+            </>
+          }
+          onConfirm={confirmDelete}
+          onCancel={() => setTicketToDelete(null)}
+        />
+      )}
       {openTicketId !== null && (
         <TicketDetailModal ticketId={openTicketId} canManage={canManage} onClose={closeTicket} onChanged={syncTicket} />
       )}
     </PageContainer>
-  );
-}
-
-function ModalShell({ title, icon, onClose, children }: { title: React.ReactNode; icon: React.ReactNode; onClose: () => void; children: React.ReactNode }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
-      <div className="glass-modal rounded-2xl w-full max-w-2xl max-h-[calc(100vh-2rem)] flex flex-col">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between gap-3 rounded-t-2xl bg-white/30 dark:bg-white/[0.02] shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            {icon}
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white truncate">{title}</h2>
-          </div>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>,
-    document.body
   );
 }
 
@@ -448,13 +410,15 @@ function NewTicketModal({
   }
 
   return (
-    <ModalShell
+    <Modal
       title={editing ? `Edit request #${editing.id}` : "New request"}
-      icon={editing ? <Pencil className="w-4 h-4 text-sky-500" /> : <Plus className="w-4 h-4 text-sky-500" />}
+      subtitle={editing ? editing.subject : "Report a bug or ask for something new"}
+      icon={editing ? Pencil : Plus}
+      size="2xl"
       onClose={onClose}
     >
-      <form onSubmit={handleSubmit} className="flex flex-col min-h-0">
-        <div className="p-6 space-y-5 overflow-y-auto">
+      <form onSubmit={handleSubmit} className="flex flex-col">
+        <div className="p-5 sm:p-6 space-y-5">
           <div className="space-y-1.5">
             <span className={labelClass}>
               What is it? <span className="text-rose-500">*</span>
@@ -525,14 +489,15 @@ function NewTicketModal({
           </div>
         </div>
 
-        <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end shrink-0 rounded-b-2xl">
+        <ModalFooter>
+          <ModalCancelButton onClick={onClose} />
           <button type="submit" disabled={submitting} className={primaryButtonClass}>
             <Send className="w-4 h-4" />
             {submitting ? (editing ? "Saving..." : "Submitting...") : editing ? "Save changes" : "Submit request"}
           </button>
-        </div>
+        </ModalFooter>
       </form>
-    </ModalShell>
+    </Modal>
   );
 }
 
@@ -593,9 +558,11 @@ function TicketDetailModal({
   }
 
   return (
-    <ModalShell
-      title={ticket ? `#${ticket.id} · ${ticket.subject}` : "Loading..."}
-      icon={<LifeBuoy className="w-4 h-4 text-sky-500 shrink-0" />}
+    <Modal
+      title={ticket ? `#${ticket.id} · ${ticket.subject}` : "Loading request..."}
+      subtitle={ticket ? `Raised by ${creatorName(ticket.creator)}` : undefined}
+      icon={LifeBuoy}
+      size="2xl"
       onClose={onClose}
     >
       {!ticket ? (
@@ -605,7 +572,7 @@ function TicketDetailModal({
         </div>
       ) : (
         <>
-          <div className="p-6 space-y-5 overflow-y-auto">
+          <div className="p-5 sm:p-6 space-y-5">
             <div className="flex flex-wrap items-end gap-4">
               <div className="space-y-1.5">
                 <span className={labelClass}>Type</span>
@@ -655,7 +622,9 @@ function TicketDetailModal({
                 Replies <span className="text-slate-400 normal-case font-normal">({ticket.replies.length})</span>
               </p>
               {ticket.replies.length === 0 ? (
-                <p className="text-xs text-slate-400">No replies yet.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-white/10 px-4 py-3">
+                  No replies yet. {canManage ? "Write one below." : "You'll see the team's replies here."}
+                </p>
               ) : (
                 ticket.replies.map((r) => (
                   <div key={r.id} className="rounded-xl p-3 bg-slate-50 dark:bg-white/[0.04]">
@@ -695,6 +664,6 @@ function TicketDetailModal({
           )}
         </>
       )}
-    </ModalShell>
+    </Modal>
   );
 }

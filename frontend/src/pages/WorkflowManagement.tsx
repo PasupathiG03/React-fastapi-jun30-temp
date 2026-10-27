@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { showError, showSuccess, showDelete, showUpdate } from "../lib/toast";
 import {
   Copy,
@@ -8,9 +7,11 @@ import {
   Plus,
   Trash2,
   Workflow as WorkflowIcon,
-  X,
 } from "lucide-react";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
+import Modal, { ConfirmDialog, ModalCancelButton, ModalFooter } from "@/components/Modal";
+import EmptyState from "@/components/EmptyState";
+import { PRIMARY_BUTTON } from "@/components/ui";
 import { CustomSelect } from "@/components/CustomSelect";
 import RoleMultiSelect from "@/components/RoleMultiSelect";
 import { getStageIcon } from "@/lib/stageIcons";
@@ -108,53 +109,6 @@ function RoleBadges({ roleIds, roles }: { roleIds: number[]; roles: RoleItem[] }
 
 // ── Confirm Dialog Modal ─────────────────────────────────────────────────
 
-function ConfirmDialog({
-  title,
-  message,
-  onConfirm,
-  onCancel,
-  confirmText = "Delete",
-  danger = true,
-}: {
-  title: string;
-  message: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-  confirmText?: string;
-  danger?: boolean;
-}) {
-  return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="glass-modal rounded-2xl w-full max-w-md overflow-hidden">
-        <div className="p-6 space-y-3">
-          <h3 className="text-base font-bold text-slate-900 dark:text-white">{title}</h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{message}</p>
-        </div>
-        <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className={`px-4 py-2 text-xs font-semibold rounded-xl text-white transition-all shadow-sm cursor-pointer ${danger
-                ? "bg-rose-600 hover:bg-rose-500 shadow-rose-600/30"
-                : "bg-sky-500 hover:bg-sky-400 shadow-sky-500/30"
-              }`}
-          >
-            {confirmText}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-}
-
 // ── Add/Edit Workflow Modal ──────────────────────────────────────────────
 
 function WorkflowFormModal({
@@ -190,22 +144,14 @@ function WorkflowFormModal({
     }
   }
 
-  return createPortal(
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="glass-modal rounded-2xl w-full max-w-md overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between bg-white/30 dark:bg-white/[0.02]">
-          <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-            {editing ? "Rename Workflow" : "New Workflow"}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
+  return (
+    <Modal
+      title={editing ? "Rename Workflow" : "New Workflow"}
+      subtitle={editing ? editing.name : "Name it now, add stages next"}
+      icon={editing ? Edit2 : WorkflowIcon}
+      size="md"
+      onClose={onClose}
+    >
         <form onSubmit={handleSubmit}>
           <div className="p-6 space-y-4">
             <div className="space-y-1.5">
@@ -217,33 +163,24 @@ function WorkflowFormModal({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Standard Review Workflow"
-                autoFocus
                 className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 glass-field text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-colors"
               />
             </div>
 
           </div>
 
-          <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 rounded-b-2xl">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
+          <ModalFooter>
+            <ModalCancelButton onClick={onClose} />
             <button
               type="submit"
               disabled={submitting}
-              className="px-6 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-sm transition-all disabled:opacity-60 cursor-pointer"
+              className={PRIMARY_BUTTON}
             >
               {submitting ? "Saving..." : editing ? "Save Changes" : "Create Workflow"}
             </button>
-          </div>
+          </ModalFooter>
         </form>
-      </div>
-    </div>,
-    document.body
+    </Modal>
   );
 }
 
@@ -299,27 +236,17 @@ function StageFormModal({
     }
   }
 
-  return createPortal(
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="glass-modal rounded-2xl w-full max-w-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between bg-white/30 dark:bg-white/[0.02]">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-              {editing ? `Edit Stage: ${editing.name}` : "Add New Stage"}
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Workflow: <span className="font-semibold text-slate-700 dark:text-slate-200">{workflowName}</span>
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
+  return (
+    <Modal
+      title={editing ? `Edit Stage: ${editing.name}` : "Add New Stage"}
+      subtitle={
+        <>
+          Workflow: <span className="font-semibold text-slate-700 dark:text-slate-200">{workflowName}</span>
+        </>
+      }
+      icon={editing ? Edit2 : Plus}
+      onClose={onClose}
+    >
         <form onSubmit={handleSubmit}>
           <div className="p-6 space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -332,7 +259,6 @@ function StageFormModal({
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Client Review"
-                  autoFocus
                   className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 glass-field text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-colors"
                 />
               </div>
@@ -384,27 +310,19 @@ function StageFormModal({
             </div>
           </div>
 
-          <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 rounded-b-2xl">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-5 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 glass-btn border border-slate-200 dark:border-white/10 transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
+          <ModalFooter>
+            <ModalCancelButton onClick={onClose} />
             <button
               type="submit"
               disabled={submitting}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-sm transition-all disabled:opacity-60 cursor-pointer"
+              className={PRIMARY_BUTTON}
             >
               {editing ? <Edit2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
               {submitting ? "Saving..." : editing ? "Save Changes" : "Add Stage"}
             </button>
-          </div>
+          </ModalFooter>
         </form>
-      </div>
-    </div>,
-    document.body
+    </Modal>
   );
 }
 
@@ -436,20 +354,14 @@ function CopyAccessModal({
     }
   }
 
-  return createPortal(
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="glass-modal rounded-2xl w-full max-w-md overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between bg-white/30 dark:bg-white/[0.02]">
-          <h2 className="text-sm font-bold text-slate-900 dark:text-white">Copy Access: {target.name}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
+  return (
+    <Modal
+      title={`Copy Access: ${target.name}`}
+      subtitle="Reuse the stage roles of another workflow"
+      icon={Copy}
+      size="md"
+      onClose={onClose}
+    >
         <form onSubmit={handleSubmit}>
           <div className="p-6 space-y-4">
             <div className="space-y-1.5">
@@ -473,26 +385,18 @@ function CopyAccessModal({
             </div>
           </div>
 
-          <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 rounded-b-2xl">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
+          <ModalFooter>
+            <ModalCancelButton onClick={onClose} />
             <button
               type="submit"
               disabled={submitting}
-              className="px-6 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-sm transition-all disabled:opacity-60 cursor-pointer"
+              className={PRIMARY_BUTTON}
             >
               {submitting ? "Copying..." : "Copy Access"}
             </button>
-          </div>
+          </ModalFooter>
         </form>
-      </div>
-    </div>,
-    document.body
+    </Modal>
   );
 }
 
@@ -596,40 +500,32 @@ function CreateWorkflowWizardModal({
     }
   }
 
-  return createPortal(
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="glass-modal rounded-2xl w-full max-w-xl overflow-hidden">
-        {/* Wizard Header with Steps */}
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between bg-white/30 dark:bg-white/[0.02]">
-          <div className="flex items-center gap-3">
-            <span
-              className={`w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center transition-colors ${step === 1
-                  ? "bg-sky-500 text-white shadow-sm"
-                  : "bg-emerald-500 text-white"
-                }`}
-            >
-              {step === 1 ? "1" : "✓"}
-            </span>
-            <div>
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                {step === 1 ? "Step 1: Workflow Details" : "Step 2: Add Workflow Stages"}
-              </h2>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                {step === 1
-                  ? "Give your workflow a name to start"
-                  : `Add initial stages to "${workflow?.name}"`}
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={closeAndSync}
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors cursor-pointer"
+  return (
+    <Modal
+      title={step === 1 ? "New workflow: details" : "New workflow: stages"}
+      size="xl"
+      onClose={closeAndSync}
+      header={
+        <div className="flex items-center gap-3 min-w-0">
+          <span
+            className={`w-9 h-9 rounded-xl text-xs font-bold flex items-center justify-center shrink-0 text-white transition-colors ${step === 1
+              ? "bg-gradient-to-br from-[#00c6ff] to-[#0072ff] shadow-[0_2px_10px_rgba(0,132,255,0.35)]"
+              : "bg-emerald-500 shadow-[0_2px_10px_rgba(16,185,129,0.35)]"
+              }`}
           >
-            <X className="w-5 h-5" />
-          </button>
+            {step === 1 ? "1" : "2"}
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+              {step === 1 ? "Step 1 of 2 · Workflow details" : "Step 2 of 2 · Add stages"}
+            </h2>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+              {step === 1 ? "Give your workflow a name to start" : `Add initial stages to "${workflow?.name}"`}
+            </p>
+          </div>
         </div>
-
+      }
+    >
         {/* Wizard Step 1: Workflow Name */}
         {step === 1 && (
           <form onSubmit={handleNext}>
@@ -643,28 +539,21 @@ function CreateWorkflowWizardModal({
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Standard Review Workflow"
-                  autoFocus
                   className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 glass-field text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-colors"
                 />
               </div>
             </div>
 
-            <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 rounded-b-2xl">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
+            <ModalFooter>
+              <ModalCancelButton onClick={onClose} />
               <button
                 type="submit"
                 disabled={submitting}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-sm transition-all disabled:opacity-60 cursor-pointer"
+                className={PRIMARY_BUTTON}
               >
                 {submitting ? "Creating..." : "Next: Add Stages →"}
               </button>
-            </div>
+            </ModalFooter>
           </form>
         )}
 
@@ -718,8 +607,7 @@ function CreateWorkflowWizardModal({
                       value={stageName}
                       onChange={(e) => setStageName(e.target.value)}
                       placeholder="e.g. Client Review"
-                      autoFocus
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 glass-field text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-colors"
+                          className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 glass-field text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-colors"
                     />
                   </div>
 
@@ -794,7 +682,7 @@ function CreateWorkflowWizardModal({
               </div>
             )}
 
-            <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2 rounded-b-2xl">
+            <div className="px-5 sm:px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2 rounded-b-2xl">
               <span className="text-xs text-slate-400 dark:text-slate-500">
                 {addedStages.length} {addedStages.length === 1 ? "stage" : "stages"} created
               </span>
@@ -802,16 +690,14 @@ function CreateWorkflowWizardModal({
                 type="button"
                 onClick={closeAndSync}
                 disabled={finishing}
-                className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-sm transition-all disabled:opacity-60 cursor-pointer"
+                className={PRIMARY_BUTTON}
               >
                 {finishing ? "Finishing..." : "Finish & View Workflow"}
               </button>
             </div>
           </div>
         )}
-      </div>
-    </div>,
-    document.body
+    </Modal>
   );
 }
 
@@ -1018,10 +904,17 @@ export default function WorkflowManagementPage() {
           ))}
         </div>
       ) : workflows.length === 0 ? (
-        <div className="glass-card rounded-[22px] p-12 flex flex-col items-center justify-center text-center gap-2">
-          <WorkflowIcon className="w-10 h-10 text-slate-300 dark:text-slate-600" />
-          <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">No workflows yet</p>
-          <p className="text-xs text-slate-400 dark:text-slate-500">Create one to start defining stages.</p>
+        <div className="glass-card rounded-[22px]">
+          <EmptyState
+            icon={WorkflowIcon}
+            title="No workflows yet"
+            description="A workflow is a series of stages (Production, QC, QA), each open to the roles you choose."
+            action={
+              <button onClick={() => setCreateModalOpen(true)} className={PRIMARY_BUTTON}>
+                <Plus className="w-4 h-4" /> Create Workflow
+              </button>
+            }
+          />
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -1132,14 +1025,16 @@ export default function WorkflowManagementPage() {
                         <button
                           onClick={() => setStageModal({ workflow: w, editing: stage })}
                           title="Edit stage"
-                          className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-500/10 shrink-0 cursor-pointer"
+                          aria-label={`Edit stage ${stage.name}`}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-500/10 shrink-0 cursor-pointer"
                         >
                           <Edit2 className="w-3 h-3" />
                         </button>
                         <button
                           onClick={() => setStageToDelete({ workflow: w, stage })}
                           title="Delete stage"
-                          className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 shrink-0 cursor-pointer"
+                          aria-label={`Delete stage ${stage.name}`}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 shrink-0 cursor-pointer"
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
@@ -1201,16 +1096,26 @@ export default function WorkflowManagementPage() {
 
       {workflowToDelete && (
         <ConfirmDialog
-          title="Delete Workflow?"
-          message={`Are you sure you want to delete "${workflowToDelete.name}"? This will remove all its stages.`}
+          title="Delete workflow?"
+          message={
+            <>
+              <span className="font-semibold text-slate-800 dark:text-slate-200">{workflowToDelete.name}</span> and all
+              its stages will be removed. This can't be undone.
+            </>
+          }
           onCancel={() => setWorkflowToDelete(null)}
           onConfirm={handleDeleteWorkflowConfirm}
         />
       )}
       {stageToDelete && (
         <ConfirmDialog
-          title="Delete Stage?"
-          message={`Are you sure you want to delete "${stageToDelete.stage.name}"?`}
+          title="Delete stage?"
+          message={
+            <>
+              <span className="font-semibold text-slate-800 dark:text-slate-200">{stageToDelete.stage.name}</span> will be
+              removed from {stageToDelete.workflow.name}.
+            </>
+          }
           onCancel={() => setStageToDelete(null)}
           onConfirm={handleDeleteStageConfirm}
         />

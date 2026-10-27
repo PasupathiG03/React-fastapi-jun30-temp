@@ -1,12 +1,14 @@
 
 import { useEffect, useState } from "react";
 import { showError, showSuccess, showDelete } from "../lib/toast";
-import { Plus, Trash2, X, Edit2, Cog, GripVertical, Layers } from "lucide-react";
-import { createPortal } from "react-dom";
+import { Plus, Trash2, Edit2, Cog, GripVertical, Layers, Search } from "lucide-react";
 import { TablePagination, TableToolbar } from "@/components/DataTableControls";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { getProcessIcon, getScreenIcon } from "@/components/Sidebar";
 import { useTableData } from "@/hooks/useTableData";
+import Modal, { ConfirmDialog, ModalCancelButton, ModalFooter } from "@/components/Modal";
+import EmptyState from "@/components/EmptyState";
+import { PRIMARY_BUTTON } from "@/components/ui";
 import {
   createProcess,
   deleteProcess,
@@ -60,10 +62,13 @@ function toSlug(name: string): string {
 
 // ── Toggle switch ────────────────────────────────────────────────────────
 
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <button
       type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
       onClick={() => onChange(!checked)}
       className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-sky-500/30 ${checked
         ? "bg-gradient-to-r from-sky-500 to-blue-600 shadow-[0_0_8px_rgba(14,165,233,0.35)]"
@@ -113,18 +118,14 @@ function ProcessModal({ nextOrder, editing, onClose, onSaved }: ProcessModalProp
     }
   }
 
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
-      <div className="glass-modal rounded-2xl w-full max-w-lg overflow-visible">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between rounded-t-2xl bg-white/30 dark:bg-white/[0.02]">
-          <div className="flex items-center gap-2">
-            {editing ? <Edit2 className="w-4 h-4 text-sky-500" /> : <Plus className="w-4 h-4 text-sky-500" />}
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white">{editing ? "Edit Process" : "Add Process"}</h2>
-          </div>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+  return (
+    <Modal
+      title={editing ? "Edit Process" : "Add Process"}
+      subtitle={"A group of screens in the sidebar"}
+      icon={editing ? Edit2 : Plus}
+      size="lg"
+      onClose={onClose}
+    >
 
         <form onSubmit={handleSubmit} className="flex flex-col">
           <div className="p-6 space-y-4">
@@ -158,32 +159,20 @@ function ProcessModal({ nextOrder, editing, onClose, onSaved }: ProcessModalProp
             </div>
 
             <div className="flex items-center gap-2">
-              <Toggle checked={isActive} onChange={setIsActive} />
+              <Toggle checked={isActive} onChange={setIsActive} label="Active" />
               <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Active</span>
             </div>
           </div>
 
-          <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 rounded-b-2xl">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 transition-all disabled:opacity-60 shadow-sm"
-            >
+          <ModalFooter>
+            <ModalCancelButton onClick={onClose} />
+            <button type="submit" disabled={submitting} className={PRIMARY_BUTTON}>
               {editing ? <Edit2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
               {submitting ? "Saving..." : editing ? "Save Changes" : "Create"}
             </button>
-          </div>
+          </ModalFooter>
         </form>
-      </div>
-    </div>,
-    document.body
+    </Modal>
   );
 }
 
@@ -233,18 +222,14 @@ function ScreenModal({ processId, nextOrder, editing, onClose, onSaved }: Screen
     }
   }
 
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
-      <div className="glass-modal rounded-2xl w-full max-w-xl overflow-visible">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between rounded-t-2xl bg-white/30 dark:bg-white/[0.02]">
-          <div className="flex items-center gap-2">
-            {editing ? <Edit2 className="w-4 h-4 text-sky-500" /> : <Plus className="w-4 h-4 text-sky-500" />}
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white">{editing ? "Edit Screen" : "Add Screen"}</h2>
-          </div>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+  return (
+    <Modal
+      title={editing ? "Edit Screen" : "Add Screen"}
+      subtitle={"A page users can be granted in Menu Access"}
+      icon={editing ? Edit2 : Plus}
+      size="xl"
+      onClose={onClose}
+    >
 
         <form onSubmit={handleSubmit} className="flex flex-col">
           <div className="p-6 space-y-4">
@@ -289,32 +274,20 @@ function ScreenModal({ processId, nextOrder, editing, onClose, onSaved }: Screen
             </div>
 
             <div className="flex items-center gap-2">
-              <Toggle checked={isActive} onChange={setIsActive} />
+              <Toggle checked={isActive} onChange={setIsActive} label="Active" />
               <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Active</span>
             </div>
           </div>
 
-          <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 rounded-b-2xl">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 transition-all disabled:opacity-60 shadow-sm"
-            >
+          <ModalFooter>
+            <ModalCancelButton onClick={onClose} />
+            <button type="submit" disabled={submitting} className={PRIMARY_BUTTON}>
               {editing ? <Edit2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
               {submitting ? "Saving..." : editing ? "Save Changes" : "Create"}
             </button>
-          </div>
+          </ModalFooter>
         </form>
-      </div>
-    </div>,
-    document.body
+    </Modal>
   );
 }
 
@@ -428,7 +401,7 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
         setScreens([]);
       }
       setProcessToDelete(null);
-      showDelete("Process deleted successfully");
+      showDelete(`Process "${processToDelete.name}" deleted`);
     } catch {
       showError("Failed to delete process");
     }
@@ -451,7 +424,7 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
       await deleteMenu(screenToDelete.id);
       setScreens((prev) => prev.filter((m) => m.id !== screenToDelete.id));
       setScreenToDelete(null);
-      showDelete("Screen deleted successfully");
+      showDelete(`Screen "${screenToDelete.name}" deleted`);
     } catch (err) {
       setScreenToDelete(null);
       showError(err instanceof Error ? err.message : "Failed to delete screen");
@@ -550,10 +523,7 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
                 ))}
               </div>
             ) : processes.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-10 text-slate-400 dark:text-slate-500 px-4">
-                <Layers className="w-8 h-8 mb-2 opacity-30" />
-                <p className="text-xs text-center">No processes yet</p>
-              </div>
+              <EmptyState compact icon={Layers} title="No processes yet" description="Add one with the + button above." />
             ) : (
               processes.map((process) => {
                 const active = !isProcessMode && process.id === selectedProcessId;
@@ -619,6 +589,7 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
                           }}
                           className="flex items-center justify-center w-7 h-7 text-sky-600 dark:text-sky-400 border border-slate-200 dark:border-white/10 rounded-lg hover:bg-white/40 dark:hover:bg-white/5 transition-colors cursor-pointer"
                           title="Edit process"
+                          aria-label={`Edit ${process.name}`}
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
@@ -626,6 +597,7 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
                           onClick={() => setProcessToDelete(process)}
                           className="flex items-center justify-center w-7 h-7 text-rose-500 border border-slate-200 dark:border-white/10 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors cursor-pointer"
                           title="Delete process"
+                          aria-label={`Delete ${process.name}`}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -677,6 +649,7 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
                         onClick={() => setProcessToDelete(selectedProcess)}
                         className="flex items-center justify-center w-8 h-8 text-rose-500 border border-slate-200 dark:border-white/10 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
                         title="Delete process"
+                        aria-label={`Delete ${selectedProcess.name}`}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -770,10 +743,12 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
                         ))
                       ) : table.filtered.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="px-6 py-12 text-center text-slate-400 dark:text-slate-500">
-                            <Cog className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                            <p className="text-sm">{screens.length === 0 ? "No screens yet" : "No results match your search"}</p>
-                            {screens.length === 0 && <p className="text-xs mt-0.5">Add your first screen above</p>}
+                          <td colSpan={5}>
+                            {screens.length === 0 ? (
+                              <EmptyState icon={Cog} title="No screens yet" description="Add the first screen in this process with Add Screen." />
+                            ) : (
+                              <EmptyState compact icon={Search} title="No matching screens" description="Try a different name or route." />
+                            )}
                           </td>
                         </tr>
                       ) : (
@@ -835,6 +810,7 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
                                   }}
                                   className="flex items-center justify-center w-7 h-7 text-sky-600 dark:text-sky-400 border border-slate-200 dark:border-white/10 rounded-lg hover:bg-white/40 dark:hover:bg-white/5 transition-colors"
                                   title="Edit screen"
+                                  aria-label={`Edit ${screen.name}`}
                                 >
                                   <Edit2 className="w-3.5 h-3.5" />
                                 </button>
@@ -842,6 +818,7 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
                                   onClick={() => setScreenToDelete(screen)}
                                   className="flex items-center justify-center w-7 h-7 text-rose-500 border border-slate-200 dark:border-white/10 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
                                   title="Delete screen"
+                                  aria-label={`Delete ${screen.name}`}
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -895,67 +872,32 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
         />
       )}
 
-      {/* Delete process confirmation */}
-      {processToDelete && typeof document !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setProcessToDelete(null)} />
-          <div className="relative glass-modal rounded-2xl w-full max-w-sm overflow-hidden flex flex-col p-6 text-center">
-            <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto mb-4">
-              <Trash2 className="w-6 h-6" />
-            </div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">Delete Process?</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
-              Are you sure you want to delete <span className="font-semibold text-slate-800 dark:text-slate-200">{processToDelete.name}</span>?
-              Its screens won't be shown until reassigned to another process.
-            </p>
-            <div className="flex gap-3 justify-center">
-              <button
-                onClick={() => setProcessToDelete(null)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteProcessConfirm}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-rose-500 hover:bg-rose-600 transition-colors shadow-sm"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
+      {processToDelete && (
+        <ConfirmDialog
+          title="Delete process?"
+          message={
+            <>
+              <span className="font-semibold text-slate-800 dark:text-slate-200">{processToDelete.name}</span> will be removed.
+              Its screens won't show in the sidebar until they're moved to another process.
+            </>
+          }
+          onConfirm={handleDeleteProcessConfirm}
+          onCancel={() => setProcessToDelete(null)}
+        />
       )}
 
-      {/* Delete screen confirmation */}
-      {screenToDelete && typeof document !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setScreenToDelete(null)} />
-          <div className="relative glass-modal rounded-2xl w-full max-w-sm overflow-hidden flex flex-col p-6 text-center">
-            <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto mb-4">
-              <Trash2 className="w-6 h-6" />
-            </div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">Delete Screen?</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
-              Are you sure you want to permanently delete <span className="font-semibold text-slate-800 dark:text-slate-200">{screenToDelete.name}</span>? This action cannot be undone.
-            </p>
-            <div className="flex gap-3 justify-center">
-              <button
-                onClick={() => setScreenToDelete(null)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteScreenConfirm}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-rose-500 hover:bg-rose-600 transition-colors shadow-sm"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
+      {screenToDelete && (
+        <ConfirmDialog
+          title="Delete screen?"
+          message={
+            <>
+              <span className="font-semibold text-slate-800 dark:text-slate-200">{screenToDelete.name}</span>{" "}
+              <span className="font-mono">({screenToDelete.url})</span> will be removed from every role. This can't be undone.
+            </>
+          }
+          onConfirm={handleDeleteScreenConfirm}
+          onCancel={() => setScreenToDelete(null)}
+        />
       )}
     </PageContainer>
   );

@@ -6,6 +6,7 @@ import { fetchMenus, type MenuItem } from "@/services/menu";
 import { useLive } from "@/context/LiveContext";
 import PageContainer from "@/components/PageContainer";
 import DashboardSkeleton from "@/components/DashboardSkeleton";
+import EmptyState from "@/components/EmptyState";
 
 import { Dashboard, preloadRoute } from "@/lib/lazyPages";
 import { hasFullAccess } from "@/lib/access";
@@ -68,12 +69,12 @@ export default function DashboardGate() {
 
   return (
     <PageContainer>
-      <div className="glass-card rounded-[22px] p-12 flex flex-col items-center text-center gap-2">
-        <Lock className="w-10 h-10 text-slate-300 dark:text-slate-600" />
-        <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">No screens are assigned to your role yet</p>
-        <p className="text-xs text-slate-400 dark:text-slate-500 max-w-sm">
-          Ask an administrator to give your role access. This page updates by itself once access is granted.
-        </p>
+      <div className="glass-card rounded-[22px] py-6">
+        <EmptyState
+          icon={Lock}
+          title="No screens are assigned to your role yet"
+          description="Ask an administrator to give your role access. This page updates by itself once access is granted."
+        />
       </div>
     </PageContainer>
   );

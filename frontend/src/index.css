@@ -204,6 +204,14 @@ input:-webkit-autofill:focus {
   from { opacity: 0; transform: translateY(8px) scale(0.97); }
   to { opacity: 1; transform: none; }
 }
+/* Dimmed page behind a dialog (Modal.tsx) fades in rather than snapping dark */
+.modal-backdrop-in {
+  animation: modal-backdrop-in 0.2s ease-out;
+}
+@keyframes modal-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 @keyframes glass-pop-in {
   from { opacity: 0; transform: translateY(-4px) scale(0.98); }
   to { opacity: 1; transform: none; }
@@ -276,7 +284,8 @@ button:where([class*="bg-gradient-to-r"]):not(:disabled):active {
 }
 
 /* Clear keyboard focus everywhere, in the brand blue */
-:where(a, button, [role="button"], [tabindex]):focus-visible {
+/* (tabindex="-1" = a container focused by script, like an open dialog's panel: no ring around the whole box) */
+:where(a, button, [role="button"], [tabindex]:not([tabindex="-1"])):focus-visible {
   outline: 2px solid rgba(0, 132, 255, 0.75);
   outline-offset: 2px;
 }
@@ -352,7 +361,7 @@ button:where([class*="bg-gradient-to-r"]):not(:disabled):active {
 
 /* Respect the "reduce motion" setting */
 @media (prefers-reduced-motion: reduce) {
-  .glass-modal, .glass-menu { animation: none; }
+  .glass-modal, .glass-menu, .modal-backdrop-in { animation: none; }
   .glass-lift:hover, button:where([class*="bg-gradient-to-r"]):not(:disabled):hover { transform: none; }
   * { scroll-behavior: auto !important; }
 }

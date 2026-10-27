@@ -100,6 +100,8 @@ export function CustomSelect<T extends string | number = string | number>({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        // Handled: an open list closes first, the dialog around it (Modal.tsx) stays open.
+        event.preventDefault();
         setIsOpen(false);
       }
     };

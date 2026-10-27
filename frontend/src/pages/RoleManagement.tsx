@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { showError, showSuccess, showDelete, showUpdate } from "../lib/toast";
-import { Shield, Plus, Trash2, ToggleLeft, ToggleRight, X, Edit2 } from "lucide-react";
+import { Shield, Plus, Trash2, ToggleLeft, ToggleRight, Edit2, Search } from "lucide-react";
 import { RoleItem, fetchRoles, createRole, updateRole, deleteRole, RoleCreatePayload } from "@/services/role";
-import { createPortal } from "react-dom";
 import { TablePagination, TableSearchInput, TableExportButton } from "@/components/DataTableControls";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { useTableData } from "@/hooks/useTableData";
+import Modal, { ConfirmDialog, ModalBody, ModalCancelButton, ModalFooter } from "@/components/Modal";
+import EmptyState from "@/components/EmptyState";
+import { PRIMARY_BUTTON, RowActionButton } from "@/components/ui";
 
 export default function RoleManagementPage() {
   const [roles, setRoles] = useState<RoleItem[]>([]);
@@ -96,7 +98,7 @@ export default function RoleManagementPage() {
     try {
       await deleteRole(itemToDelete.id);
       setRoles((prev) => prev.filter((r) => r.id !== itemToDelete.id));
-      showDelete("Role deleted successfully");
+      showDelete(`Role "${itemToDelete.name}" deleted`);
       setItemToDelete(null);
     } catch {
       showError("Failed to delete role");
@@ -118,88 +120,51 @@ export default function RoleManagementPage() {
 
   return (
     <PageContainer>
-      {/* Header */}
-      {loadingRoles ? (
-        <div className="flex items-center justify-between animate-pulse">
-          <div className="flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-slate-200 dark:bg-white/10 shrink-0" />
-            <div className="space-y-2">
-              <div className="h-5 w-48 bg-slate-200 dark:bg-white/10 rounded" />
-              <div className="h-3.5 w-64 bg-slate-100 dark:bg-white/5 rounded" />
-            </div>
-          </div>
-          <div className="w-32 h-10 bg-slate-200 dark:bg-white/10 rounded-xl shrink-0" />
-        </div>
-      ) : (
-        <PageHeader
-          icon={Shield}
-          title="Role Management"
-          subtitle="Create and configure system roles"
-          actions={
-            <button
-              onClick={() => handleOpenModal()}
-              className="group relative flex items-center gap-2 px-4 py-2.5 text-white rounded-xl text-xs font-semibold bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-[0_0_15px_rgba(14,165,233,0.3)] transition-all"
-            >
-              <Plus className="w-4 h-4" />
-              Add Role
-            </button>
-          }
-        />
-      )}
+      <PageHeader
+        icon={Shield}
+        title="Role Management"
+        subtitle="Create and configure system roles"
+        loading={loadingRoles}
+        actions={
+          <button onClick={() => handleOpenModal()} className={PRIMARY_BUTTON}>
+            <Plus className="w-4 h-4" />
+            Add Role
+          </button>
+        }
+      />
 
-      {/* Create/Edit Form Modal */}
-      {isModalOpen && typeof document !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
-          <div className="glass-modal rounded-2xl w-full max-w-lg overflow-visible">
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between rounded-t-2xl bg-white/30 dark:bg-white/[0.02]">
-              <div className="flex items-center gap-2">
-                {editId ? <Edit2 className="w-4 h-4 text-sky-500" /> : <Plus className="w-4 h-4 text-sky-500" />}
-                <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                  {editId ? "Edit Role" : "Add New Role"}
-                </h2>
+      {isModalOpen && (
+        <Modal
+          title={editId ? "Edit Role" : "Add New Role"}
+          subtitle={editId ? "Rename this role" : "Roles decide which screens a user can open"}
+          icon={editId ? Edit2 : Plus}
+          onClose={() => setIsModalOpen(false)}
+        >
+          <form onSubmit={handleSubmit}>
+            <ModalBody>
+              <div className="space-y-1.5">
+                <label htmlFor="role-name" className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
+                  Role Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  id="role-name"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Content Editor"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 text-sm text-slate-800 dark:text-slate-200 glass-field placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/30 transition-colors"
+                />
               </div>
-              <button
-                type="button"
-                onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
-              >
-                <X className="w-5 h-5" />
+            </ModalBody>
+            <ModalFooter>
+              <ModalCancelButton onClick={() => setIsModalOpen(false)} />
+              <button type="submit" disabled={submitting} className={PRIMARY_BUTTON}>
+                {editId ? <Edit2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                {submitting ? "Saving..." : editId ? "Save Changes" : "Add Role"}
               </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="flex flex-col">
-              <div className="p-6 space-y-5 overflow-visible">
-                {/* Role Name */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
-                    Role Name <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. Content Editor"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 text-xs text-slate-800 dark:text-slate-200 glass-field placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/30 transition-colors"
-                  />
-                </div>
-
-              </div>
-
-              {/* Action buttons */}
-              <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end shrink-0 rounded-b-2xl">
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 transition-all disabled:opacity-60 shadow-sm"
-                >
-                  {editId ? <Edit2 className="w-4 h-4" /> : <Plus className="w-5 h-5" />}
-                  {submitting ? "Saving..." : editId ? "Save Changes" : "Add Role"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>,
-        document.body
+            </ModalFooter>
+          </form>
+        </Modal>
       )}
 
       {/* Roles List */}
@@ -248,16 +213,22 @@ export default function RoleManagementPage() {
             ))}
           </div>
         ) : roles.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-slate-400 dark:text-slate-500">
-            <Shield className="w-8 h-8 mb-2 opacity-30" />
-            <p className="text-sm">No roles found</p>
-            <p className="text-xs mt-0.5">Add your first role above</p>
-          </div>
+          <EmptyState
+            icon={Shield}
+            title="No roles yet"
+            description="Create a role, then grant it screens in Menu Access."
+            action={
+              <button onClick={() => handleOpenModal()} className={PRIMARY_BUTTON}>
+                <Plus className="w-4 h-4" />
+                Add Role
+              </button>
+            }
+          />
         ) : (
           <div className="flex flex-col">
             <ul className="divide-y divide-slate-100 dark:divide-white/[0.04] m-0 p-0">
               {table.paged.map((role, index) => (
-                <li key={role.id} className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-4 px-6 py-3.5 hover:bg-white/35 dark:hover:bg-white/[0.02] transition-colors bg-white dark:bg-transparent">
+                <li key={role.id} className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-4 px-6 py-3.5 hover:bg-white/35 dark:hover:bg-white/[0.03] transition-colors">
 
                   <div className="flex items-center gap-4 flex-1 min-w-0">
                     {/* S.No */}
@@ -301,41 +272,26 @@ export default function RoleManagementPage() {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center shrink-0 self-end sm:self-auto pl-11 sm:pl-0">
-                    <button
-                      onClick={() => handleOpenModal(role)}
-                      className="text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 transition-colors shrink-0 mx-1.5"
-                      title="Edit role"
-                    >
+                  <div className="flex items-center gap-1 shrink-0 self-end sm:self-auto pl-11 sm:pl-0">
+                    <RowActionButton label={`Edit ${role.name}`} onClick={() => handleOpenModal(role)}>
                       <Edit2 className="w-4 h-4" />
-                    </button>
-
-                    <button
+                    </RowActionButton>
+                    <RowActionButton
+                      label={`${role.is_active ? "Deactivate" : "Activate"} ${role.name}`}
                       onClick={() => handleToggleStatus(role)}
-                      className="text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 transition-colors shrink-0"
-                      title={role.is_active ? "Deactivate" : "Activate"}
                     >
-                      {role.is_active ? (
-                        <ToggleRight className="w-5 h-5 text-sky-500" />
-                      ) : (
-                        <ToggleLeft className="w-5 h-5" />
-                      )}
-                    </button>
-
-                    <button
-                      onClick={() => handleDelete(role)}
-                      className="text-slate-300 dark:text-slate-600 hover:text-rose-500 transition-colors shrink-0 ml-1.5"
-                      title="Delete role"
-                    >
+                      {role.is_active ? <ToggleRight className="w-5 h-5 text-sky-500" /> : <ToggleLeft className="w-5 h-5" />}
+                    </RowActionButton>
+                    <RowActionButton label={`Delete ${role.name}`} tone="danger" onClick={() => handleDelete(role)}>
                       <Trash2 className="w-4 h-4" />
-                    </button>
+                    </RowActionButton>
                   </div>
                 </li>
               ))}
             </ul>
 
             {table.filtered.length === 0 && (
-              <div className="py-10 text-center text-xs text-slate-400">No results match your search</div>
+              <EmptyState compact icon={Search} title="No matching roles" description="Try a different name or clear the search." />
             )}
             <TablePagination
               page={table.page}
@@ -349,40 +305,18 @@ export default function RoleManagementPage() {
         )}
       </div>
 
-      {/* Delete Confirmation Modal */}
-      {itemToDelete && typeof document !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-            onClick={() => setItemToDelete(null)}
-          />
-          <div className="relative glass-modal rounded-2xl p-6 max-w-sm w-full z-10 text-center">
-            <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto mb-4">
-              <Trash2 className="w-6 h-6" />
-            </div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">Delete Role?</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
-              Are you sure you want to permanently delete <span className="font-semibold text-slate-800 dark:text-slate-200">{itemToDelete.name}</span>? This action cannot be undone.
-            </p>
-            <div className="flex items-center justify-center gap-3">
-              <button
-                type="button"
-                onClick={() => setItemToDelete(null)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteConfirm}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-rose-500 hover:bg-rose-600 transition-colors shadow-sm"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
+      {itemToDelete && (
+        <ConfirmDialog
+          title="Delete role?"
+          message={
+            <>
+              <span className="font-semibold text-slate-800 dark:text-slate-200">{itemToDelete.name}</span> will be removed
+              permanently. Users with this role lose its screens. This can't be undone.
+            </>
+          }
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setItemToDelete(null)}
+        />
       )}
     </PageContainer>
   );

@@ -7,8 +7,8 @@ import {
   Trash2,
   ToggleLeft,
   ToggleRight,
-  X,
   Edit2,
+  Search,
   ShieldAlert,
   Upload,
   Download,
@@ -29,11 +29,20 @@ import {
   BulkImportResult,
 } from "@/services/user";
 import { RoleItem, fetchRoles } from "@/services/role";
-import { createPortal } from "react-dom";
 import { TablePagination, TableSearchInput, TableExportButton } from "@/components/DataTableControls";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { CustomSelect } from "@/components/CustomSelect";
 import { useTableData } from "@/hooks/useTableData";
+import Modal, { ConfirmDialog, ModalBody, ModalCancelButton, ModalFooter } from "@/components/Modal";
+import EmptyState from "@/components/EmptyState";
+import { PRIMARY_BUTTON, RowActionButton, SECONDARY_BUTTON } from "@/components/ui";
+
+/** "Ravi Kumar" -> "RK", "MAH001" -> "MA" for the row avatar. */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return name.trim().slice(0, 2).toUpperCase();
+}
 
 const BULK_IMPORT_COLUMNS: Record<string, string[]> = {
   employee_id: ["employee_id", "employee id", "id", "emp id", "empid"],
@@ -162,7 +171,7 @@ export default function UserManagementPage() {
       showDelete("User deactivated");
       setItemToDelete(null);
     } catch {
-      showError("Failed to delete user");
+      showError("Failed to deactivate user");
     }
   }
 
@@ -295,66 +304,37 @@ export default function UserManagementPage() {
 
   return (
     <PageContainer>
-      {/* Header */}
-      {loadingUsers ? (
-        <div className="flex items-center justify-between animate-pulse">
-          <div className="flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-slate-200 dark:bg-white/10 shrink-0" />
-            <div className="space-y-2">
-              <div className="h-5 w-48 bg-slate-200 dark:bg-white/10 rounded" />
-              <div className="h-3.5 w-64 bg-slate-100 dark:bg-white/5 rounded" />
-            </div>
+      <PageHeader
+        icon={Users}
+        title="User Management"
+        subtitle="Manage employee access and roles"
+        loading={loadingUsers}
+        actions={
+          <div className="flex items-center gap-2.5">
+            <button onClick={handleOpenBulk} className={SECONDARY_BUTTON}>
+              <Upload className="w-4 h-4" />
+              <span className="hidden sm:inline">Bulk Import</span>
+              <span className="sm:hidden">Import</span>
+            </button>
+            <button onClick={() => handleOpenModal()} className={PRIMARY_BUTTON}>
+              <Plus className="w-4 h-4" />
+              Add User
+            </button>
           </div>
-          <div className="w-32 h-10 bg-slate-200 dark:bg-white/10 rounded-xl shrink-0" />
-        </div>
-      ) : (
-        <PageHeader
-          icon={Users}
-          title="User Management"
-          subtitle="Manage employee access and roles"
-          actions={
-            <div className="flex items-center gap-2.5">
-              <button
-                onClick={handleOpenBulk}
-                className="flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300 glass-btn border border-slate-200 dark:border-white/10 rounded-xl hover:text-sky-600 dark:hover:text-sky-400 transition-colors shadow-sm"
-              >
-                <Upload className="w-4 h-4" />
-                Bulk Import
-              </button>
-              <button
-                onClick={() => handleOpenModal()}
-                className="group relative flex items-center gap-2 px-4 py-2.5 text-white rounded-xl text-xs font-semibold bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-[0_0_15px_rgba(14,165,233,0.3)] transition-all"
-              >
-                <Plus className="w-4 h-4" />
-                Add User
-              </button>
-            </div>
-          }
-        />
-      )}
+        }
+      />
 
       {/* Create/Edit Form Modal */}
-      {isModalOpen && typeof document !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
-          <div className="glass-modal rounded-2xl w-full max-w-2xl overflow-visible">
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between rounded-t-2xl bg-white/30 dark:bg-white/[0.02]">
-              <div className="flex items-center gap-2">
-                {editId ? <Edit2 className="w-4 h-4 text-sky-500" /> : <Plus className="w-4 h-4 text-sky-500" />}
-                <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                  {editId ? "Edit User" : "Add New User"}
-                </h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
+      {isModalOpen && (
+        <Modal
+          title={editId ? "Edit User" : "Add New User"}
+          subtitle={editId ? employeeId : "They sign in with their Employee ID"}
+          icon={editId ? Edit2 : Plus}
+          size="2xl"
+          onClose={() => setIsModalOpen(false)}
+        >
             <form onSubmit={handleSubmit} className="flex flex-col">
-              <div className="p-6 space-y-5 overflow-visible">
+              <ModalBody>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   {/* Employee ID */}
                   <div className="space-y-1.5">
@@ -428,44 +408,29 @@ export default function UserManagementPage() {
                     </span>
                   </div>
                 )}
-              </div>
+              </ModalBody>
 
-              {/* Action buttons */}
-              <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.03] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end shrink-0 rounded-b-2xl">
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 transition-all disabled:opacity-60 shadow-sm"
-                >
+              <ModalFooter>
+                <ModalCancelButton onClick={() => setIsModalOpen(false)} />
+                <button type="submit" disabled={submitting} className={PRIMARY_BUTTON}>
                   {editId ? <Edit2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                   {submitting ? "Saving..." : editId ? "Save Changes" : "Add User"}
                 </button>
-              </div>
+              </ModalFooter>
             </form>
-          </div>
-        </div>,
-        document.body
+        </Modal>
       )}
 
       {/* Bulk Import Modal */}
-      {isBulkOpen && typeof document !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
-          <div className="glass-modal rounded-2xl w-full max-w-2xl overflow-visible">
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between rounded-t-2xl bg-white/30 dark:bg-white/[0.02]">
-              <div className="flex items-center gap-2">
-                <Upload className="w-4 h-4 text-sky-500" />
-                <h2 className="text-sm font-bold text-slate-900 dark:text-white">Bulk Import Users</h2>
-              </div>
-              <button
-                type="button"
-                onClick={handleCloseBulk}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-5">
+      {isBulkOpen && (
+        <Modal
+          title="Bulk Import Users"
+          subtitle="Add many users at once from a CSV file"
+          icon={Upload}
+          size="2xl"
+          onClose={handleCloseBulk}
+        >
+            <ModalBody>
               {!bulkResult ? (
                 <>
                   <div className="flex items-center justify-end">
@@ -484,6 +449,15 @@ export default function UserManagementPage() {
                     onDragLeave={() => setBulkDragOver(false)}
                     onDrop={handleBulkDrop}
                     onClick={() => bulkFileInputRef.current?.click()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        bulkFileInputRef.current?.click();
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Choose a CSV file to import"
                     className={`flex flex-col items-center justify-center gap-2 px-6 py-8 rounded-xl border-2 border-dashed text-center cursor-pointer transition-colors ${bulkDragOver
                       ? "border-sky-500 bg-sky-500/10"
                       : "border-slate-200 dark:border-white/10 hover:border-sky-400 dark:hover:border-sky-500/50 bg-white/30 dark:bg-white/[0.02]"
@@ -602,31 +576,23 @@ export default function UserManagementPage() {
                   )}
                 </div>
               )}
-            </div>
+            </ModalBody>
 
-            <div className="px-6 py-4 bg-white/30 dark:bg-white/[0.03] border-t border-slate-100 dark:border-white/[0.08] flex items-center justify-end gap-3 shrink-0 rounded-b-2xl">
-              <button
-                type="button"
-                onClick={handleCloseBulk}
-                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
-              >
-                {bulkResult ? "Done" : "Cancel"}
-              </button>
+            <ModalFooter>
+              <ModalCancelButton onClick={handleCloseBulk}>{bulkResult ? "Done" : "Cancel"}</ModalCancelButton>
               {!bulkResult && (
                 <button
                   type="button"
                   onClick={handleBulkSubmit}
                   disabled={bulkSubmitting || bulkRows.length === 0 || !!bulkParseError}
-                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 transition-all disabled:opacity-60 shadow-sm"
+                  className={PRIMARY_BUTTON}
                 >
                   <Upload className="w-4 h-4" />
                   {bulkSubmitting ? "Importing..." : `Import ${bulkRows.length || ""} User${bulkRows.length !== 1 ? "s" : ""}`}
                 </button>
               )}
-            </div>
-          </div>
-        </div>,
-        document.body
+            </ModalFooter>
+        </Modal>
       )}
 
       {/* Users List */}
@@ -674,16 +640,22 @@ export default function UserManagementPage() {
             ))}
           </div>
         ) : users.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-gray-400">
-            <Users className="w-8 h-8 mb-2 opacity-30" />
-            <p className="text-sm">No users found</p>
-            <p className="text-xs mt-0.5">Add your first user above</p>
-          </div>
+          <EmptyState
+            icon={Users}
+            title="No users yet"
+            description="Add people one at a time, or import a CSV with Bulk Import."
+            action={
+              <button onClick={() => handleOpenModal()} className={PRIMARY_BUTTON}>
+                <Plus className="w-4 h-4" />
+                Add User
+              </button>
+            }
+          />
         ) : (
           <div className="flex flex-col">
             <ul className="divide-y divide-slate-100 dark:divide-white/[0.04] m-0 p-0">
               {table.paged.map((user, index) => (
-                <li key={user.id} className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-4 px-6 py-3.5 hover:bg-white/35 dark:hover:bg-white/[0.02] transition-colors bg-white dark:bg-transparent">
+                <li key={user.id} className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-4 px-6 py-3.5 hover:bg-white/35 dark:hover:bg-white/[0.03] transition-colors">
 
                   <div className="flex items-center gap-4 flex-1 min-w-0">
                     {/* S.No */}
@@ -691,16 +663,15 @@ export default function UserManagementPage() {
                       {(table.page - 1) * table.pageSize + index + 1}
                     </div>
 
-                    {/* Icon */}
+                    {/* Avatar */}
                     <div
-                      className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-                      style={{
-                        background: user.is_active
-                          ? "rgba(14, 165, 233, 0.15)"
-                          : "rgba(148, 163, 184, 0.1)",
-                      }}
+                      aria-hidden="true"
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-[11px] font-bold tracking-wide ${user.is_active
+                        ? "text-white bg-gradient-to-br from-[#00c6ff] to-[#0072ff] shadow-[0_2px_8px_rgba(0,132,255,0.3)]"
+                        : "text-slate-500 dark:text-slate-400 bg-slate-200/70 dark:bg-white/10"
+                        }`}
                     >
-                      <Users className={`w-4 h-4 ${user.is_active ? "text-sky-500" : "text-slate-400"}`} />
+                      {initials(user.employee_name || user.employee_id)}
                     </div>
 
                     {/* Info */}
@@ -727,41 +698,26 @@ export default function UserManagementPage() {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center shrink-0 self-end sm:self-auto pl-11 sm:pl-0">
-                    <button
-                      onClick={() => handleOpenModal(user)}
-                      className="text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 transition-colors shrink-0 mx-1.5"
-                      title="Edit user"
-                    >
+                  <div className="flex items-center gap-1 shrink-0 self-end sm:self-auto pl-11 sm:pl-0">
+                    <RowActionButton label={`Edit ${user.employee_name || user.employee_id}`} onClick={() => handleOpenModal(user)}>
                       <Edit2 className="w-4 h-4" />
-                    </button>
-
-                    <button
+                    </RowActionButton>
+                    <RowActionButton
+                      label={`${user.is_active ? "Deactivate" : "Activate"} ${user.employee_name || user.employee_id}`}
                       onClick={() => handleToggleStatus(user)}
-                      className="text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 transition-colors shrink-0"
-                      title={user.is_active ? "Deactivate" : "Activate"}
                     >
-                      {user.is_active ? (
-                        <ToggleRight className="w-5 h-5 text-sky-500" />
-                      ) : (
-                        <ToggleLeft className="w-5 h-5" />
-                      )}
-                    </button>
-
-                    <button
-                      onClick={() => handleDelete(user)}
-                      className="text-slate-300 dark:text-slate-600 hover:text-rose-500 transition-colors shrink-0 ml-1.5"
-                      title="Deactivate user"
-                    >
+                      {user.is_active ? <ToggleRight className="w-5 h-5 text-sky-500" /> : <ToggleLeft className="w-5 h-5" />}
+                    </RowActionButton>
+                    <RowActionButton label={`Remove ${user.employee_name || user.employee_id}`} tone="danger" onClick={() => handleDelete(user)}>
                       <Trash2 className="w-4 h-4" />
-                    </button>
+                    </RowActionButton>
                   </div>
                 </li>
               ))}
             </ul>
 
             {table.filtered.length === 0 && (
-              <div className="py-10 text-center text-sm text-gray-400">No results match your search</div>
+              <EmptyState compact icon={Search} title="No matching users" description="Try a name, Employee ID, location or role." />
             )}
             <TablePagination
               page={table.page}
@@ -775,40 +731,22 @@ export default function UserManagementPage() {
         )}
       </div>
 
-      {/* Delete Confirmation Modal */}
-      {itemToDelete && typeof document !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-            onClick={() => setItemToDelete(null)}
-          />
-          <div className="relative glass-modal rounded-2xl p-6 max-w-sm w-full z-10 text-center">
-            <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto mb-4">
-              <Trash2 className="w-6 h-6" />
-            </div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">Deactivate User?</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
-              Are you sure you want to deactivate <span className="font-semibold text-slate-800 dark:text-slate-200">{itemToDelete.employee_name || itemToDelete.employee_id}</span>? They'll lose access immediately, but stay listed as Inactive and can be re-enabled later.
-            </p>
-            <div className="flex items-center justify-center gap-3">
-              <button
-                type="button"
-                onClick={() => setItemToDelete(null)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteConfirm}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-rose-500 hover:bg-rose-600 transition-colors shadow-sm"
-              >
-                Deactivate
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
+      {itemToDelete && (
+        <ConfirmDialog
+          title="Deactivate user?"
+          message={
+            <>
+              <span className="font-semibold text-slate-800 dark:text-slate-200">
+                {itemToDelete.employee_name || itemToDelete.employee_id}
+              </span>{" "}
+              loses access immediately, but stays listed as Inactive and can be re-enabled later.
+            </>
+          }
+          confirmLabel="Deactivate"
+          busyLabel="Deactivating..."
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setItemToDelete(null)}
+        />
       )}
     </PageContainer>
   );

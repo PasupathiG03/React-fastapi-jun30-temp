@@ -16,6 +16,7 @@ import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { CustomSelect } from "@/components/CustomSelect";
 import { CustomCheckbox } from "@/components/CustomCheckbox";
 import { isDeveloperRoleName } from "@/lib/access";
+import EmptyState from "@/components/EmptyState";
 
 const key = (roleId: number, menuId: number) => `${roleId}:${menuId}`;
 
@@ -247,12 +248,17 @@ export default function MenuAccessPage() {
                 ))
               ) : !matrix || matrix.screens.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={orderedRoles.length + 1}
-                    className="px-6 py-12 text-center text-slate-400 dark:text-slate-500"
-                  >
-                    <ShieldCheck className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">{isWorkflow ? "No stages in this workflow yet" : "No screens in this process yet"}</p>
+                  {/* Role columns plus the screen-name and "all roles" columns */}
+                  <td colSpan={orderedRoles.length + 2}>
+                    <EmptyState
+                      icon={ShieldCheck}
+                      title={isWorkflow ? "No stages in this workflow yet" : "No screens in this process yet"}
+                      description={
+                        isWorkflow
+                          ? "Add stages in Workflow Management, then grant them here."
+                          : "Add screens in Router Setup, then grant them here."
+                      }
+                    />
                   </td>
                 </tr>
               ) : (

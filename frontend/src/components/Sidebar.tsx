@@ -458,7 +458,7 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
       <aside
         className={`shrink-0 flex flex-col justify-between rounded-[24px] transition-all duration-300 glass-panel p-3 select-none ${isDesktop
           ? "relative h-full"
-          : `fixed z-40 top-2 left-2 bottom-2 sm:top-3.5 sm:left-3.5 sm:bottom-3.5 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`
+          : `fixed z-40 top-2 left-2 bottom-2 sm:top-3.5 sm:left-3.5 sm:bottom-3.5 ${mobileOpen ? "translate-x-0" : "-translate-x-[calc(100%+1.5rem)] invisible"}`
           }`}
         style={{
           width: collapsed ? 76 : 260,

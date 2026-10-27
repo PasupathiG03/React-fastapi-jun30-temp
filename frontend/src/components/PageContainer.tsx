@@ -12,8 +12,9 @@ interface PageHeaderProps {
 
 export function PageHeader({ icon: Icon, title, subtitle, actions, loading = false }: PageHeaderProps) {
   return (
-    <div className="flex items-center justify-between gap-4">
-      <div className="flex items-center gap-3.5 min-w-0">
+    // On a phone the actions wrap under the title instead of squeezing it down to "Us...".
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+      <div className="flex items-center gap-3.5 min-w-0 flex-1 basis-60">
         <div
           className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 text-white ${loading
             ? "bg-slate-200 dark:bg-white/10 animate-pulse"
