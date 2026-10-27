@@ -48,6 +48,8 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+.claude/settings.local.json
+CLAUDE.local.md
 
 # ── Uploads / Generated files ──────────────────────────────────────────────
 uploads/
