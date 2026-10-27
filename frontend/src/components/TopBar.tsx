@@ -19,6 +19,7 @@ import PulseLogo from "@/components/PulseLogo";
 import SearchBar from "@/components/SearchBar";
 import { API_BASE_URL } from "@/lib/constants";
 import { isAuthenticated, logout } from "@/lib/auth";
+import { DASHBOARD_PATHS } from "@/lib/lazyPages";
 import { changePasswordApi } from "@/services/auth";
 import { useTheme } from "@/context/ThemeContext";
 import { useMyStages } from "@/hooks/useMyStages";
@@ -153,7 +154,7 @@ export default function TopBar({ onToggle, loading = false }: Props) {
 
   // Build breadcrumbs dynamically from pathname
   const breadcrumbs = (() => {
-    if (pathname === "/" || pathname === "/dashboard") {
+    if (DASHBOARD_PATHS.includes(pathname)) {
       return [{ label: "Dashboard", isLast: true }];
     }
     if (pathname.startsWith("/access-control")) {

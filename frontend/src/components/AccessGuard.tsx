@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { API_BASE_URL } from "@/lib/constants";
 import { hasFullAccess } from "@/lib/access";
+import { DASHBOARD_PATHS } from "@/lib/lazyPages";
 import { clearSession, logout, setLogoutReason, type LogoutReason } from "@/lib/auth";
 import { showError } from "@/lib/toast";
 import { useLive } from "@/context/LiveContext";
@@ -22,7 +23,7 @@ type Decision = { kind: "loading" } | { kind: "full" } | { kind: "limited"; allo
 
 // Always reachable: the dashboard gate sends a limited user on to their first granted screen, and
 // workflow stage addresses are opened from the user's own sidebar list (the stage API checks the role).
-const ALWAYS_ALLOWED = ["/", "/dashboard"];
+const ALWAYS_ALLOWED = DASHBOARD_PATHS;
 const ALWAYS_ALLOWED_PREFIXES = ["/workflows/"];
 
 function isAllowed(pathname: string, allowed: string[]): boolean {

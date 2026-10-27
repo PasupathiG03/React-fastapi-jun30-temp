@@ -25,10 +25,12 @@ export interface PageRoute {
   alsoPreload?: Page[];
 }
 
+/** Both addresses that open the dashboard gate. Use this instead of repeating the two paths. */
+export const DASHBOARD_PATHS = ["/", "/dashboard"];
+
 /** Every screen inside the app shell (sidebar + top bar). One entry per menu URL. */
 export const PAGE_ROUTES: PageRoute[] = [
-  { path: "/", page: DashboardGate, alsoPreload: [Dashboard] },
-  { path: "/dashboard", page: DashboardGate, alsoPreload: [Dashboard] },
+  ...DASHBOARD_PATHS.map((path) => ({ path, page: DashboardGate, alsoPreload: [Dashboard] })),
 
   // Access Control
   { path: "/access-control/user-management", page: lazyPage(() => import("@/pages/UserManagement")) },

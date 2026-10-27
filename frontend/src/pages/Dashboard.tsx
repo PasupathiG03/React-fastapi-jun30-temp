@@ -24,6 +24,7 @@ import EmptyState from "@/components/EmptyState";
 import { getScreenIcon } from "@/components/Sidebar";
 import { useLive } from "@/context/LiveContext";
 import { hasFullAccess } from "@/lib/access";
+import { DASHBOARD_PATHS } from "@/lib/lazyPages";
 
 interface Me {
   employee_name: string | null;
@@ -182,7 +183,7 @@ export default function DashboardPage() {
     ...(isAdmin ? ADMIN_ACTIONS : []),
     ...menus
       // Not this page itself, and nothing already listed above.
-      .filter((m) => m.url !== "/dashboard" && m.url !== "/" && !ADMIN_ACTIONS.some((a) => a.href === m.url))
+      .filter((m) => !DASHBOARD_PATHS.includes(m.url) && !ADMIN_ACTIONS.some((a) => a.href === m.url))
       .map((m) => ({
         label: m.name,
         href: m.url,
