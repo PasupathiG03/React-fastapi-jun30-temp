@@ -23,7 +23,6 @@ const DEV_SCREENS: SearchEntry[] = [
   { path: "/access-control/user-management", label: "User Management", group: "Access Control" },
   { path: "/access-control/menu-access", label: "Menu Access", group: "Access Control" },
   { path: "/access-control/workflow-management", label: "Workflow Management", group: "Access Control" },
-  { path: "/project-config", label: "Project Config", group: "Project Config" },
   { path: "/support", label: "Support", group: "Support" },
 ];
 

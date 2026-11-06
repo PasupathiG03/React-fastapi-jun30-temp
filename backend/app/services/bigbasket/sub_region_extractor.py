@@ -1,0 +1,345 @@
+import io
+import re
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+import cv2
+import numpy as np
+from PIL import Image
+
+from app.core.logger import logger
+from app.services.bigbasket.storage import BigBasketStorage
+
+# Global singleton OCR reader loaded once into memory
+_OCR_READER = None
+
+
+def get_ocr_reader():
+    global _OCR_READER
+    if _OCR_READER is None:
+        import easyocr
+        # Use CPU reader
+        _OCR_READER = easyocr.Reader(["en"], gpu=False)
+    return _OCR_READER
+
+
+class SubRegionExtractor:
+    """
+    100% Dynamic, OCR & Computer-Vision driven AI decomposition of packaging.
+    Locates text blocks, tables, regulatory marks, and barcodes dynamically on ANY packaging
+    without hardcoded pixel or percentage coordinates.
+    Strictly excludes price / MRP boxes per Bigbasket SRS V1.0 Section 5.
+    """
+
+    @classmethod
+    def detect_and_extract_sub_regions(
+        cls,
+        image_bytes: bytes,
+        bbid: str,
+        category: str = "general",
+        canvas_width: int = 2000,
+        canvas_height: int = 2000,
+        dpi: int = 150,
+    ) -> List[Dict[str, Any]]:
+        raw_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        orig_w, orig_h = raw_img.size
+        arr = np.array(raw_img)
+
+        # 1. Dynamic Barcode Detection using OpenCV Barcode Detector
+        barcode_bbox = cls._detect_barcode_dynamic(arr)
+
+        # 2. Dynamic Text Localization using OCR
+        ocr = get_ocr_reader()
+        raw_ocr_results = ocr.readtext(arr)
+        logger.info(f"Dynamic OCR detected {len(raw_ocr_results)} text lines for BBID {bbid}")
+
+        # Clean and sort text lines by vertical position y1
+        lines = []
+        for bbox, text, conf in raw_ocr_results:
+            if conf < 0.20:
+                continue
+            tl, tr, br, bl = bbox
+            x1, y1 = int(min(tl[0], bl[0])), int(min(tl[1], tr[1]))
+            x2, y2 = int(max(tr[0], br[0])), int(max(bl[1], br[1]))
+            cleaned_text = text.strip()
+            if not cleaned_text:
+                continue
+            lines.append({
+                "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                "text": cleaned_text,
+                "conf": conf,
+            })
+
+        lines.sort(key=lambda item: item["y1"])
+
+        # 3. Dynamically Identify Price / MRP Box to strictly exclude per SRS Section 5
+        price_boxes = []
+        for l in lines:
+            t = l["text"].lower()
+            # Catch price stamps like "MRP # ₹ 988", "₹ 1.52/ml", "Rs. 250", "₹ 99", "MRP 150"
+            if re.search(r'(mrp|₹|\brs\.?)\s*#?\s*\d+', t) or (("mrp" in t) and ("?" in t or "₹" in t)) or re.search(r'/\s*ml', t):
+                price_boxes.append(l)
+
+        mrp_top = min([b["y1"] for b in price_boxes]) if price_boxes else orig_h
+
+        # 4. Determine if Food vs Non-Food packaging
+        cat_lower = (category or "").lower().strip()
+        is_known_non_food = any(k in cat_lower for k in [
+            "hair", "shampoo", "conditioner", "soap", "beauty", "cosmetic",
+            "personal care", "detergent", "clean", "household", "laundry"
+        ])
+
+        # 5. Dynamic Section Discovery
+        nutri_patterns = [
+            r'\bnutrition\b', r'\bnutritional\b', r'per\s+100', r'energy\s*\(kcal\)', r'approximate\s+value'
+        ]
+        ing_patterns = [
+            r'ingr', r'ingp', r'direc', r'dlrec', r'water', r'aqua', r'composition', r'contains', r'how to use', r'usage'
+        ]
+        mfg_patterns = [
+            r'\bmfd\b', r'\bmanufactur', r'\bmarket', r'\bconsumer\b', r'\bcustomercare\b', r'\bpacker\b', r'\bpacked\b', r'\bpvt\b'
+        ]
+        fssai_patterns = [
+            r'\bfssai\b', r'\blic\s*(no|\.?)\b', r'\blicense\s*(no|\.?)\b'
+        ]
+
+        # Scan line indices
+        nutri_start_idx = None
+        ing_start_idx = None
+        mfg_start_idx = None
+        fssai_indices = []
+
+        for i, l in enumerate(lines):
+            t = l["text"].lower()
+
+            # Skip lines in the MRP price box
+            if l["y2"] >= mrp_top and l in price_boxes:
+                continue
+
+            # Nutritional table (Food only)
+            if not is_known_non_food and nutri_start_idx is None:
+                if any(re.search(pat, t) for pat in nutri_patterns):
+                    nutri_start_idx = i
+
+            # Ingredients & Directions
+            if ing_start_idx is None:
+                if any(re.search(pat, t) for pat in ing_patterns):
+                    ing_start_idx = i
+
+            # Manufacturer, Marketer, Packer
+            if mfg_start_idx is None:
+                # Ensure it's after ingredients if ingredients were found
+                if any(re.search(pat, t) for pat in mfg_patterns) and (ing_start_idx is None or i > ing_start_idx):
+                    mfg_start_idx = i
+
+            # FSSAI Regulatory (Food only)
+            if not is_known_non_food:
+                if any(re.search(pat, t) for pat in fssai_patterns):
+                    fssai_indices.append(i)
+
+        # 6. Extract Dynamic Crops in Sequence
+        extracted_results = []
+        current_seq = 3
+
+        # EXTRACTION A: Nutritional Information (Food Only)
+        if nutri_start_idx is not None:
+            # End of nutritional is the start of next section or mrp_top
+            next_idx = min([idx for idx in [ing_start_idx, mfg_start_idx, len(lines)] if idx is not None and idx > nutri_start_idx])
+            nutri_group = [lines[k] for k in range(nutri_start_idx, next_idx) if lines[k]["y2"] < mrp_top]
+            if nutri_group:
+                nx1 = max(0, min(b["x1"] for b in nutri_group) - 20)
+                ny1 = max(0, min(b["y1"] for b in nutri_group) - 15)
+                nx2 = min(orig_w, max(b["x2"] for b in nutri_group) + 20)
+                ny2 = min(orig_h, max(b["y2"] for b in nutri_group) + 15)
+                crop = arr[ny1:ny2, nx1:nx2]
+                if crop.shape[0] > 30 and crop.shape[1] > 40:
+                    cls._append_crop_result(
+                        extracted_results,
+                        crop,
+                        category="nutritional",
+                        display_name="Nutritional",
+                        bbid=bbid,
+                        seq=current_seq,
+                        canvas_w=canvas_width,
+                        canvas_h=canvas_height,
+                        dpi=dpi,
+                    )
+                    current_seq += 1
+
+        # EXTRACTION B: Ingredients & Directions
+        if ing_start_idx is not None:
+            end_idx = mfg_start_idx if mfg_start_idx is not None and mfg_start_idx > ing_start_idx else len(lines)
+            ing_group = [lines[k] for k in range(ing_start_idx, end_idx) if lines[k]["y2"] < mrp_top]
+            if ing_group:
+                ix1 = max(0, min(b["x1"] for b in ing_group) - 20)
+                iy1 = max(0, min(b["y1"] for b in ing_group) - 15)
+                ix2 = min(orig_w, max(b["x2"] for b in ing_group) + 20)
+                iy2 = min(orig_h, max(b["y2"] for b in ing_group) + 15)
+                crop = arr[iy1:iy2, ix1:ix2]
+                if crop.shape[0] > 30 and crop.shape[1] > 40:
+                    cls._append_crop_result(
+                        extracted_results,
+                        crop,
+                        category="ingredient",
+                        display_name="Ingredient",
+                        bbid=bbid,
+                        seq=current_seq,
+                        canvas_w=canvas_width,
+                        canvas_h=canvas_height,
+                        dpi=dpi,
+                    )
+                    current_seq += 1
+
+        # EXTRACTION C: Marketed / Manufactured By
+        if mfg_start_idx is not None:
+            mfg_group = [l for l in lines[mfg_start_idx:] if l["y2"] < mrp_top and l not in price_boxes]
+            if mfg_group:
+                mx1 = max(0, min(b["x1"] for b in mfg_group) - 20)
+                my1 = max(0, min(b["y1"] for b in mfg_group) - 15)
+                mx2 = min(orig_w, max(b["x2"] for b in mfg_group) + 20)
+                my2 = min(orig_h, max(b["y2"] for b in mfg_group) + 15)
+                crop = arr[my1:my2, mx1:mx2]
+                if crop.shape[0] > 30 and crop.shape[1] > 40:
+                    cls._append_crop_result(
+                        extracted_results,
+                        crop,
+                        category="manufactured_by",
+                        display_name="Marketed/Manufactured By",
+                        bbid=bbid,
+                        seq=current_seq,
+                        canvas_w=canvas_width,
+                        canvas_h=canvas_height,
+                        dpi=dpi,
+                    )
+                    current_seq += 1
+
+        # EXTRACTION D: FSSAI (Food Only)
+        if fssai_indices:
+            fssai_group = [lines[k] for k in fssai_indices if lines[k]["y2"] < mrp_top]
+            if fssai_group:
+                fx1 = max(0, min(b["x1"] for b in fssai_group) - 25)
+                fy1 = max(0, min(b["y1"] for b in fssai_group) - 20)
+                fx2 = min(orig_w, max(b["x2"] for b in fssai_group) + 25)
+                fy2 = min(orig_h, max(b["y2"] for b in fssai_group) + 20)
+                crop = arr[fy1:fy2, fx1:fx2]
+                if crop.shape[0] > 20 and crop.shape[1] > 30:
+                    cls._append_crop_result(
+                        extracted_results,
+                        crop,
+                        category="fssai",
+                        display_name="FSSAI",
+                        bbid=bbid,
+                        seq=current_seq,
+                        canvas_w=canvas_width,
+                        canvas_h=canvas_height,
+                        dpi=dpi,
+                    )
+                    current_seq += 1
+
+        # EXTRACTION E: Barcode (Dynamic Barcode Detector)
+        if barcode_bbox is not None:
+            bx1, by1, bx2, by2 = barcode_bbox
+            # Ensure barcode crop does not enter the MRP box if located below
+            if mrp_top < by2:
+                by2 = mrp_top
+            crop = arr[by1:by2, bx1:bx2]
+            if crop.shape[0] >= 30 and crop.shape[1] >= 20:
+                cls._append_crop_result(
+                    extracted_results,
+                    crop,
+                    category="barcode",
+                    display_name="Barcode",
+                    bbid=bbid,
+                    seq=current_seq,
+                    canvas_w=canvas_width,
+                    canvas_h=canvas_height,
+                    dpi=dpi,
+                )
+                current_seq += 1
+
+        return extracted_results
+
+    @classmethod
+    def _detect_barcode_dynamic(cls, arr: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
+        """
+        Dynamically locates the exact pixel coordinates of an EAN/UPC barcode on ANY packaging.
+        """
+        try:
+            detector = cv2.barcode.BarcodeDetector()
+            res = detector.detectAndDecode(arr)
+            # res: (decoded_info, points, ...)
+            points = res[1] if isinstance(res[1], np.ndarray) else (res[2] if len(res) > 2 and isinstance(res[2], np.ndarray) else None)
+            if points is not None and len(points) > 0:
+                pts = points.reshape(-1, 2)
+                x1 = max(0, int(np.min(pts[:, 0])) - 15)
+                y1 = max(0, int(np.min(pts[:, 1])) - 15)
+                x2 = min(arr.shape[1], int(np.max(pts[:, 0])) + 15)
+                y2 = min(arr.shape[0], int(np.max(pts[:, 1])) + 15)
+                return (x1, y1, x2, y2)
+        except Exception as e:
+            logger.warning(f"Barcode detection error: {e}")
+        return None
+
+    @classmethod
+    def _append_crop_result(
+        cls,
+        results_list: list,
+        crop_arr: np.ndarray,
+        category: str,
+        display_name: str,
+        bbid: str,
+        seq: int,
+        canvas_w: int,
+        canvas_h: int,
+        dpi: int,
+    ):
+        crop_img = Image.fromarray(crop_arr)
+
+        canvas_bytes = cls._fit_to_standard_canvas(
+            crop_img,
+            target_w=canvas_w,
+            target_h=canvas_h,
+            dpi=dpi,
+        )
+
+        orig_buf = io.BytesIO()
+        crop_img.save(orig_buf, format="PNG")
+
+        results_list.append({
+            "category": category,
+            "display_name": display_name,
+            "filename": f"{bbid}_{seq}.png",
+            "sequence_order": seq,
+            "crop_width": crop_arr.shape[1],
+            "crop_height": crop_arr.shape[0],
+            "canvas_bytes": canvas_bytes,
+            "original_crop_bytes": orig_buf.getvalue(),
+        })
+
+    @classmethod
+    def _fit_to_standard_canvas(
+        cls,
+        crop_img: Image.Image,
+        target_w: int = 2000,
+        target_h: int = 2000,
+        dpi: int = 150,
+    ) -> bytes:
+        crop_rgba = crop_img.convert("RGBA")
+        cw, ch = crop_rgba.size
+
+        # Fit aspect ratio to fill 2000x2000 canvas edge-to-edge (0px padding per SRS)
+        scale = min(target_w / cw, target_h / ch)
+        scaled_w = max(50, int(cw * scale))
+        scaled_h = max(50, int(ch * scale))
+
+        scaled_img = crop_rgba.resize((scaled_w, scaled_h), Image.Resampling.LANCZOS)
+
+        # 100% Transparent PNG Canvas (RGBA with Alpha = 0)
+        canvas = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
+        offset_x = (target_w - scaled_w) // 2
+        offset_y = (target_h - scaled_h) // 2
+        canvas.paste(scaled_img, (offset_x, offset_y), scaled_img)
+
+        buf = io.BytesIO()
+        canvas.save(buf, format="PNG", dpi=(dpi, dpi))
+        return buf.getvalue()

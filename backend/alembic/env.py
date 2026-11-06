@@ -18,6 +18,7 @@ import app.models.menu   # noqa: F401
 import app.models.workflow  # noqa: F401
 import app.models.access  # noqa: F401
 import app.models.ticket  # noqa: F401
+import app.models.bigbasket  # noqa: F401
 
 config = context.config
 

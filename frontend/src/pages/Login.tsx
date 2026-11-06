@@ -16,6 +16,7 @@ import {
   Activity,
   ArrowRight,
   Loader2,
+  Sparkles,
 } from "lucide-react";
 import { loginApi } from "@/services/auth";
 import { preloadRoute } from "@/lib/lazyPages";
@@ -106,12 +107,18 @@ export default function LoginPage() {
         <div className="absolute -bottom-24 -right-16 w-96 h-96 rounded-full bg-white/[0.06] pointer-events-none" />
 
         {/* Top Brand Header */}
-        <div className="relative z-10">
+        <div className="relative z-10 flex items-center justify-between">
           <img
             src="/assets/logo.png"
             alt="PULSE"
             className="h-14 sm:h-16 w-auto object-contain brightness-0 invert"
           />
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-white shadow-xs">
+            <Sparkles className="w-3.5 h-3.5 text-sky-200" />
+            <span className="text-xs font-extrabold uppercase tracking-widest text-white">
+              Image AI Studio
+            </span>
+          </div>
         </div>
 
         {/* Middle Content */}
@@ -174,6 +181,15 @@ export default function LoginPage() {
                 >
                   {/* Card Title & Subtitle */}
                   <div className="mb-7 text-center">
+                    <div className="inline-flex items-center justify-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-sky-500/10 via-blue-500/10 to-indigo-500/10 dark:from-sky-500/20 dark:via-blue-500/20 dark:to-indigo-500/20 border border-sky-400/30 dark:border-sky-400/30 shadow-xs mb-3">
+                      <Sparkles className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
+                      <span className="text-xs font-extrabold tracking-wider bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 dark:from-sky-400 dark:via-blue-300 dark:to-indigo-300 bg-clip-text text-transparent uppercase whitespace-nowrap">
+                        Image AI Studio
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-gradient-to-r from-sky-500 to-blue-600 text-white uppercase tracking-wider shadow-2xs">
+                        AI
+                      </span>
+                    </div>
                     <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
                       Welcome back
                     </h2>

@@ -166,6 +166,16 @@ export default function TopBar({ onToggle, loading = false }: Props) {
       else crumbs[0].isLast = true;
       return crumbs;
     }
+    if (pathname.startsWith("/image-studio") || pathname.startsWith("/bigbasket")) {
+      const crumbs = [{ label: "Image Studio", isLast: false }];
+      if (pathname.includes("create-batch")) crumbs.push({ label: "Create Batch", isLast: true });
+      else if (pathname.includes("batch-processing")) crumbs.push({ label: "Batch Pipeline", isLast: true });
+      else if (pathname.includes("manual-review")) crumbs.push({ label: "Review Queue", isLast: true });
+      else if (pathname.includes("review-studio")) crumbs.push({ label: "Review Studio", isLast: true });
+      else if (pathname.includes("reports")) crumbs.push({ label: "Reports & Analytics", isLast: true });
+      else crumbs.push({ label: "Dashboard", isLast: true });
+      return crumbs;
+    }
     if (pathname.startsWith("/developer-management")) {
       return [
         { label: "Developer Management", isLast: false },

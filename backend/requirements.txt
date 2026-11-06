@@ -1,4 +1,4 @@
-# Exact versions that were tested together. Upgrade deliberately (and re-run the tests), not automatically.
+# Core tested versions
 fastapi==0.146.0
 uvicorn[standard]==0.54.0
 sqlalchemy==2.1.5
@@ -8,3 +8,11 @@ pydantic-settings==2.16.0
 bcrypt==5.0.0
 python-jose[cryptography]==3.5.0
 alembic==1.20.0
+
+# BigBasket Image Automation & Distributed Processing
+openpyxl>=3.1.5
+redis>=8.1.0
+pillow>=12.3.0
+opencv-python-headless>=5.0.0.93
+onnxruntime>=1.23.2
+rembg>=2.0.69

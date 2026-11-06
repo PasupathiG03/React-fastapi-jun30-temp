@@ -11,6 +11,8 @@ from app.core.database import SessionLocal
 from app.core.logger import logger
 from app.models.menu import Menu
 from app.models.process import Process
+from app.models.role import Role  # noqa: F401
+from app.models.user import User  # noqa: F401
 
 # Screen URLs. require_screen() uses these, so they must match the `url` stored in the menus table.
 DASHBOARD_SCREEN = "/dashboard"
@@ -21,12 +23,27 @@ MENU_ACCESS_SCREEN = "/access-control/menu-access"
 WORKFLOW_SCREEN = "/access-control/workflow-management"
 SUPPORT_SCREEN = "/support"
 
+# Image Studio Automation screens
+STUDIO_DASHBOARD_SCREEN = "/image-studio/dashboard"
+STUDIO_CREATE_BATCH_SCREEN = "/image-studio/create-batch"
+STUDIO_BATCH_PROCESSING_SCREEN = "/image-studio/batch-processing"
+STUDIO_MANUAL_REVIEW_SCREEN = "/image-studio/manual-review"
+STUDIO_REPORTS_SCREEN = "/image-studio/reports"
+
+# Legacy aliases
+BB_DASHBOARD_SCREEN = STUDIO_DASHBOARD_SCREEN
+BB_CREATE_BATCH_SCREEN = STUDIO_CREATE_BATCH_SCREEN
+BB_BATCH_PROCESSING_SCREEN = STUDIO_BATCH_PROCESSING_SCREEN
+BB_MANUAL_REVIEW_SCREEN = STUDIO_MANUAL_REVIEW_SCREEN
+BB_REPORTS_SCREEN = STUDIO_REPORTS_SCREEN
+
 # Their APIs are superuser/Developer only, so they are never offered in Menu Access or shown to other roles.
 DEVELOPER_ONLY_SCREENS = frozenset({ROUTER_SETUP_SCREEN})
 
 DASHBOARD_PROCESS = {"name": "Dashboard"}
 DEVELOPER_PROCESS = {"name": "Developer Management"}
 ACCESS_PROCESS = {"name": "Access Control"}
+BIGBASKET_PROCESS = {"name": "Image Studio", "order": 2}
 # Last in the sidebar (high order). Developers always see it; other roles only once it is granted in Menu Access.
 SUPPORT_PROCESS = {"name": "Support", "order": 99}
 
@@ -34,6 +51,11 @@ SUPPORT_PROCESS = {"name": "Support", "order": 99}
 DEFAULT_MENUS = [
     (DASHBOARD_PROCESS, {"name": "Dashboard", "icon": "LayoutDashboard", "url": DASHBOARD_SCREEN, "order": 1}),
     (DEVELOPER_PROCESS, {"name": "Router Setup", "icon": "Layers", "url": ROUTER_SETUP_SCREEN, "order": 1}),
+    (BIGBASKET_PROCESS, {"name": "Dashboard", "icon": "Image", "url": BB_DASHBOARD_SCREEN, "order": 1}),
+    (BIGBASKET_PROCESS, {"name": "Create Batch", "icon": "Upload", "url": BB_CREATE_BATCH_SCREEN, "order": 2}),
+    (BIGBASKET_PROCESS, {"name": "Batch Processing", "icon": "Layers", "url": BB_BATCH_PROCESSING_SCREEN, "order": 3}),
+    (BIGBASKET_PROCESS, {"name": "Manual Review", "icon": "CheckCircle", "url": BB_MANUAL_REVIEW_SCREEN, "order": 4}),
+    (BIGBASKET_PROCESS, {"name": "Reports & Analytics", "icon": "FileChartBar", "url": BB_REPORTS_SCREEN, "order": 5}),
     (ACCESS_PROCESS, {"name": "Role Management", "icon": "Shield", "url": ROLE_SCREEN, "order": 1}),
     (ACCESS_PROCESS, {"name": "User Management", "icon": "Users", "url": USER_SCREEN, "order": 2}),
     (ACCESS_PROCESS, {"name": "Menu Access", "icon": "ShieldCheck", "url": MENU_ACCESS_SCREEN, "order": 3}),

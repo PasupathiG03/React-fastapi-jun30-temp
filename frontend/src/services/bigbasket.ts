@@ -1,0 +1,274 @@
+import { API_BASE_URL } from "@/lib/constants";
+
+export interface BatchItem {
+  id: number;
+  batch_code: string;
+  name: string;
+  source_type: string;
+  status: "created" | "validating" | "queued" | "processing" | "paused" | "completed" | "failed" | "cancelled";
+  total_images: number;
+  processed_images: number;
+  approved_images: number;
+  review_needed_images: number;
+  failed_images: number;
+  idempotency_key?: string | null;
+  config?: any;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BatchListResponse {
+  items: BatchItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ImageItem {
+  id: number;
+  batch_id: number;
+  bbid: string;
+  original_filename: string;
+  original_width?: number | null;
+  original_height?: number | null;
+  file_size_bytes?: number | null;
+  image_type: string;
+  status: "pending" | "processing" | "auto_approved" | "needs_review" | "manually_approved" | "rejected" | "failed";
+  sequence_order: number;
+  confidence_score?: number | null;
+  final_output_path?: string | null;
+  error_message?: string | null;
+  created_at: string;
+  validation_status?: {
+    passed: boolean;
+    dimension_valid: boolean;
+    dpi_valid: boolean;
+    alpha_valid: boolean;
+    padding_valid: boolean;
+    aspect_ratio_valid: boolean;
+    failure_reasons?: string[] | null;
+  } | null;
+}
+
+export interface ImageListResponse {
+  items: ImageItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface DashboardSummary {
+  total_batches: number;
+  total_images: number;
+  auto_approved_images: number;
+  manually_approved_images: number;
+  review_needed_images: number;
+  failed_images: number;
+  auto_approval_rate: number;
+  avg_processing_time_ms: number;
+  recent_batches: BatchItem[];
+}
+
+export interface ExcelPreview {
+  filename: string;
+  total_rows: number;
+  columns: string[];
+  sample_rows: Record<string, any>[];
+  suggested_mapping: {
+    bbid?: string;
+    filename?: string;
+    category?: string;
+    sequence?: string;
+  };
+}
+
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const url = `${API_BASE_URL}${path}`;
+  const res = await fetch(url, {
+    ...options,
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+      ...(options.headers || {}),
+    },
+  });
+
+  if (!res.ok) {
+    let errDetail = "Request failed";
+    try {
+      const data = await res.json();
+      errDetail = data.detail || data.message || errDetail;
+    } catch { }
+    throw new Error(errDetail);
+  }
+
+  if (res.status === 204) return null as T;
+  return res.json();
+}
+
+// ── API Functions ─────────────────────────────────────────────────────────────
+
+export async function fetchDashboardSummary(): Promise<DashboardSummary> {
+  return request<DashboardSummary>("/api/image-studio/reports/dashboard");
+}
+
+export async function fetchBatches(page = 1, pageSize = 20, status?: string): Promise<BatchListResponse> {
+  const q = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+  if (status) q.append("status", status);
+  return request<BatchListResponse>(`/api/image-studio/batches/?${q.toString()}`);
+}
+
+export async function fetchBatchDetails(batchId: number): Promise<BatchItem> {
+  return request<BatchItem>(`/api/image-studio/batches/${batchId}`);
+}
+
+export async function createBatch(data: { name: string; source_type?: string; config?: any }): Promise<BatchItem> {
+  return request<BatchItem>("/api/image-studio/batches/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function startBatchProcessing(batchId: number): Promise<{ message: string }> {
+  return request<{ message: string }>(`/api/image-studio/batches/${batchId}/start`, { method: "POST" });
+}
+
+export async function pauseBatchProcessing(batchId: number): Promise<{ message: string }> {
+  return request<{ message: string }>(`/api/image-studio/batches/${batchId}/pause`, { method: "POST" });
+}
+
+export async function resumeBatchProcessing(batchId: number): Promise<{ message: string }> {
+  return request<{ message: string }>(`/api/image-studio/batches/${batchId}/resume`, { method: "POST" });
+}
+
+export async function cancelBatchProcessing(batchId: number): Promise<{ message: string }> {
+  return request<{ message: string }>(`/api/image-studio/batches/${batchId}/cancel`, { method: "POST" });
+}
+
+export async function deleteBatch(batchId: number): Promise<void> {
+  return request<void>(`/api/image-studio/batches/${batchId}`, { method: "DELETE" });
+}
+
+export async function previewManifest(file: File): Promise<ExcelPreview> {
+  const fd = new FormData();
+  fd.append("file", file);
+  return request<ExcelPreview>("/api/image-studio/uploads/manifest-preview", {
+    method: "POST",
+    body: fd,
+  });
+}
+
+export async function uploadBatchManifest(
+  batchId: number,
+  file: File,
+  mapping: { bbid: string; filename: string; category?: string; sequence?: string }
+): Promise<any> {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("bbid_col", mapping.bbid);
+  fd.append("filename_col", mapping.filename);
+  if (mapping.category) fd.append("category_col", mapping.category);
+  if (mapping.sequence) fd.append("sequence_col", mapping.sequence);
+
+  return request(`/api/image-studio/uploads/batch/${batchId}/manifest`, {
+    method: "POST",
+    body: fd,
+  });
+}
+
+export async function uploadBatchImagesZip(batchId: number, zipFile: File): Promise<any> {
+  const fd = new FormData();
+  fd.append("file", zipFile);
+  return request(`/api/image-studio/uploads/batch/${batchId}/images-zip`, {
+    method: "POST",
+    body: fd,
+  });
+}
+
+export async function fetchBatchImages(
+  batchId: number,
+  page = 1,
+  pageSize = 25,
+  status?: string,
+  search?: string
+): Promise<ImageListResponse> {
+  const q = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+  if (status) q.append("status", status);
+  if (search) q.append("search", search);
+  return request<ImageListResponse>(`/api/image-studio/images/batch/${batchId}?${q.toString()}`);
+}
+
+export async function fetchImageDetails(imageId: number): Promise<any> {
+  return request(`/api/image-studio/images/${imageId}`);
+}
+
+export async function fetchReviewQueue(
+  page = 1,
+  pageSize = 20,
+  batchId?: number
+): Promise<ImageListResponse> {
+  const q = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+  if (batchId) q.append("batch_id", String(batchId));
+  return request<ImageListResponse>(`/api/image-studio/reviews/queue?${q.toString()}`);
+}
+
+export async function submitReviewAction(
+  imageId: number,
+  decision: "approved" | "rejected" | "reprocess",
+  comments?: string,
+  cropAdjustments?: any
+): Promise<any> {
+  return request(`/api/image-studio/reviews/${imageId}/action`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decision, comments, crop_adjustments: cropAdjustments }),
+  });
+}
+
+export async function submitBulkReview(
+  imageIds: number[],
+  decision: "approved" | "rejected",
+  comments?: string
+): Promise<any> {
+  return request("/api/image-studio/reviews/bulk-action", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image_ids: imageIds, decision, comments }),
+  });
+}
+
+export async function verifyDriveFolder(folderUrl: string): Promise<any> {
+  return request("/api/image-studio/google-drive/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ folder_url: folderUrl }),
+  });
+}
+
+export async function reapplyPadding(
+  imageId: number,
+  padding: { top: number; bottom: number; left: number; right: number }
+): Promise<any> {
+  return request(`/api/image-studio/images/${imageId}/repad`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(padding),
+  });
+}
+
+export function getManifestTemplateUrl(): string {
+  return `${API_BASE_URL}/api/image-studio/uploads/template`;
+}
+
+export function getImageFileUrl(imageId: number, variant: "original" | "final" | "segmented" = "original"): string {
+  return `${API_BASE_URL}/api/image-studio/images/${imageId}/file?variant=${variant}`;
+}
+
+export function getExcelReportUrl(batchId: number): string {
+  return `${API_BASE_URL}/api/image-studio/reports/batch/${batchId}/excel`;
+}
+
+export function getOutputZipUrl(batchId: number): string {
+  return `${API_BASE_URL}/api/image-studio/reports/batch/${batchId}/zip`;
+}
