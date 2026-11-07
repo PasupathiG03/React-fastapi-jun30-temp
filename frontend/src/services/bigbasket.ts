@@ -69,19 +69,6 @@ export interface DashboardSummary {
   recent_batches: BatchItem[];
 }
 
-export interface ExcelPreview {
-  filename: string;
-  total_rows: number;
-  columns: string[];
-  sample_rows: Record<string, any>[];
-  suggested_mapping: {
-    bbid?: string;
-    filename?: string;
-    category?: string;
-    sequence?: string;
-  };
-}
-
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
   const res = await fetch(url, {
@@ -148,33 +135,6 @@ export async function cancelBatchProcessing(batchId: number): Promise<{ message:
 
 export async function deleteBatch(batchId: number): Promise<void> {
   return request<void>(`/api/image-studio/batches/${batchId}`, { method: "DELETE" });
-}
-
-export async function previewManifest(file: File): Promise<ExcelPreview> {
-  const fd = new FormData();
-  fd.append("file", file);
-  return request<ExcelPreview>("/api/image-studio/uploads/manifest-preview", {
-    method: "POST",
-    body: fd,
-  });
-}
-
-export async function uploadBatchManifest(
-  batchId: number,
-  file: File,
-  mapping: { bbid: string; filename: string; category?: string; sequence?: string }
-): Promise<any> {
-  const fd = new FormData();
-  fd.append("file", file);
-  fd.append("bbid_col", mapping.bbid);
-  fd.append("filename_col", mapping.filename);
-  if (mapping.category) fd.append("category_col", mapping.category);
-  if (mapping.sequence) fd.append("sequence_col", mapping.sequence);
-
-  return request(`/api/image-studio/uploads/batch/${batchId}/manifest`, {
-    method: "POST",
-    body: fd,
-  });
 }
 
 export async function uploadBatchImagesZip(batchId: number, zipFile: File): Promise<any> {
@@ -268,11 +228,7 @@ export async function reapplyPadding(
   });
 }
 
-export function getManifestTemplateUrl(): string {
-  return `${API_BASE_URL}/api/image-studio/uploads/template`;
-}
-
-export function getImageFileUrl(imageId: number, variant: "original" | "final" | "segmented" = "original"): string {
+export function getImageFileUrl(imageId: number, variant: "original" | "final" = "original"): string {
   return `${API_BASE_URL}/api/image-studio/images/${imageId}/file?variant=${variant}`;
 }
 

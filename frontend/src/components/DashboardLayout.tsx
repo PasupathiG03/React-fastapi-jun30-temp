@@ -15,7 +15,7 @@ import { preloadAllRoutesWhenIdle } from "@/lib/lazyPages";
 function LayoutFooter({ loading }: { loading: boolean }) {
   const { pageLoading } = usePageLoading();
   return (
-    <footer className="shrink-0 text-center pb-0.5">
+    <footer className="shrink-0 text-center py-2.5 mt-auto">
       <Copyright loading={loading || pageLoading} className="text-xs text-slate-500 dark:text-slate-400" />
     </footer>
   );
@@ -60,7 +60,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <PendingProvider>
         <SessionWatcher />
         <div
-          className="app-ambient flex flex-col h-screen w-screen overflow-hidden p-2 sm:p-3.5 gap-2 sm:gap-3.5 font-sans transition-colors duration-200"
+          className="app-ambient flex flex-col h-screen w-full max-w-[100vw] overflow-hidden p-2 sm:p-3.5 gap-2 sm:gap-3.5 font-sans transition-colors duration-200"
           style={{
             background:
               theme === "dark"
@@ -83,11 +83,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 onCloseMobile={() => setMobileNavOpen(false)}
                 onToggle={handleToggleNav}
               />
-              <div className="flex flex-col flex-1 h-full min-w-0 overflow-hidden gap-3.5">
-                <main ref={mainRef} className="flex-1 overflow-y-auto pr-1 pb-6 min-w-0 [scrollbar-width:thin]">
-                  {children}
+              <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto pr-1 custom-scrollbar flex flex-col justify-between">
+                  <div className="flex-1 min-h-0">
+                    {children}
+                  </div>
+                  <LayoutFooter loading={loading} />
                 </main>
-                <LayoutFooter loading={loading} />
               </div>
             </div>
           </PageLoadingProvider>

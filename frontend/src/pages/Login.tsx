@@ -64,7 +64,7 @@ export default function LoginPage() {
 
   return (
     <div
-      className="app-ambient login-pattern relative min-h-screen w-full flex flex-col lg:flex-row items-stretch p-3.5 sm:p-5 transition-colors duration-300 overflow-x-hidden font-sans"
+      className="app-ambient login-pattern relative h-screen w-full flex flex-col lg:flex-row items-stretch p-3.5 sm:p-5 transition-colors duration-300 overflow-x-hidden overflow-y-auto custom-scrollbar font-sans"
       style={getAppBackground(theme)}
     >
       {/* ── Top-Right Theme Toggle ── */}

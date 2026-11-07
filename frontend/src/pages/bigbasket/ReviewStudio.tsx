@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Loader2,
   Move,
+  AlertTriangle,
 } from "lucide-react";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { SECONDARY_BUTTON } from "@/components/ui";
@@ -92,6 +93,12 @@ export default function ReviewStudio() {
     setPan({ x: 0, y: 0 });
   }
 
+  function handleWheel(e: React.WheelEvent) {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? (zoom >= 300 ? 50 : 25) : (zoom > 300 ? -50 : -25);
+    setZoom((z) => Math.max(25, Math.min(1200, z + delta)));
+  }
+
   // Padding adjustment controls (per BigBasket SRS)
   const [paddingOverrides, setPaddingOverrides] = useState({
     top: 180,
@@ -153,8 +160,9 @@ export default function ReviewStudio() {
     setSubmitting(true);
     try {
       await submitReviewAction(image.id, decision, comments, paddingOverrides);
-      showSuccess(`Image marked as ${decision}!`);
-      navigate("/image-studio/manual-review");
+      const newStatus = decision === "approved" ? "manually_approved" : decision === "rejected" ? "rejected" : "pending";
+      setImage((prev: any) => (prev ? { ...prev, status: newStatus } : null));
+      showSuccess(`Image #${image.id} marked as ${decision.toUpperCase()}!`);
     } catch (e: any) {
       showError(e.message || "Failed to submit review");
     } finally {
@@ -186,14 +194,46 @@ export default function ReviewStudio() {
         subtitle={`SKU: ${image.bbid} (${image.image_type.toUpperCase()}) · Side-by-side inspection, transparent boundary validation, and reviewer sign-off`}
         actions={
           <div className="flex items-center gap-2">
-            <Link to="/image-studio/manual-review" className={SECONDARY_BUTTON}>
-              <ArrowLeft className="w-4 h-4" /> Queue
+            {/* Live Status Badge */}
+            <span
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider ${
+                image.status === "auto_approved" || image.status === "manually_approved"
+                  ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                  : image.status === "rejected"
+                  ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
+                  : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
+              }`}
+            >
+              {image.status === "manually_approved" ? (
+                <>
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> Manually Approved
+                </>
+              ) : image.status === "auto_approved" ? (
+                <>
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> Auto Approved
+                </>
+              ) : image.status === "rejected" ? (
+                <>
+                  <XCircle className="w-3.5 h-3.5 text-rose-500" /> Rejected
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> Needs Review
+                </>
+              )}
+            </span>
+
+            <Link to="/image-studio/batch-processing" className={SECONDARY_BUTTON} title="Return to Batch Processing Monitor">
+              <ArrowLeft className="w-4 h-4" /> Batch
+            </Link>
+            <Link to="/image-studio/manual-review" className={SECONDARY_BUTTON} title="View Manual Review Queue">
+              Queue
             </Link>
             <button
               type="button"
               onClick={() => handleAction("approved")}
               disabled={submitting}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm disabled:opacity-50 transition-colors"
             >
               <CheckCircle className="w-4 h-4" /> Approve
             </button>
@@ -201,7 +241,7 @@ export default function ReviewStudio() {
               type="button"
               onClick={() => handleAction("rejected")}
               disabled={submitting}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 shadow-sm"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 shadow-sm disabled:opacity-50 transition-colors"
             >
               <XCircle className="w-4 h-4" /> Reject
             </button>
@@ -214,7 +254,7 @@ export default function ReviewStudio() {
         <div className={`${isWideView ? "lg:col-span-1" : "lg:col-span-2"} space-y-4`}>
           <div className="glass-card rounded-2xl p-4 flex flex-col items-center justify-between min-h-[500px]">
             {/* Viewport Control Bar */}
-            <div className="w-full flex items-center justify-between pb-3 border-b border-slate-200/60 dark:border-white/10 text-xs">
+            <div className="w-full flex items-center justify-between pb-3 border-b border-slate-200/60 dark:border-white/10 text-xs flex-wrap gap-2">
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
@@ -248,11 +288,11 @@ export default function ReviewStudio() {
               {/* Zoom & Fullscreen Controls */}
               <div className="flex items-center gap-1.5">
                 <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-slate-400 mr-1 select-none">
-                  <Move className="w-3 h-3 text-sky-500" /> Drag to move
+                  <Move className="w-3 h-3 text-sky-500" /> Drag to move · Scroll to zoom
                 </span>
                 <button
                   type="button"
-                  onClick={() => setZoom((z) => Math.max(40, z - 25))}
+                  onClick={() => setZoom((z) => Math.max(25, z - (z > 300 ? 50 : 25)))}
                   className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-600 dark:text-slate-300"
                   title="Zoom Out"
                 >
@@ -261,19 +301,38 @@ export default function ReviewStudio() {
                 <button
                   type="button"
                   onClick={resetView}
-                  className="px-2 py-1 rounded-md font-mono text-xs font-semibold hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200"
+                  className="px-2 py-1 rounded-md font-mono text-xs font-bold hover:bg-slate-100 dark:hover:bg-white/5 text-sky-600 dark:text-sky-400"
                   title="Reset zoom & position"
                 >
                   {zoom}%
                 </button>
                 <button
                   type="button"
-                  onClick={() => setZoom((z) => Math.min(300, z + 25))}
+                  onClick={() => setZoom((z) => Math.min(1200, z + (z >= 300 ? 50 : 25)))}
                   className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-600 dark:text-slate-300"
-                  title="Zoom In"
+                  title="Zoom In (up to 1200%)"
                 >
                   <ZoomIn className="w-4 h-4" />
                 </button>
+
+                {/* Quick Zoom Presets */}
+                <div className="hidden lg:flex items-center gap-1 ml-1 text-[10px] font-semibold">
+                  {[100, 300, 600, 1200].map((level) => (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => setZoom(level)}
+                      className={`px-1.5 py-0.5 rounded transition-colors ${
+                        zoom === level
+                          ? "bg-sky-500 text-white font-bold"
+                          : "hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400"
+                      }`}
+                    >
+                      {level}%
+                    </button>
+                  ))}
+                </div>
+
                 {(zoom !== 100 || pan.x !== 0 || pan.y !== 0) && (
                   <button
                     type="button"
@@ -301,8 +360,11 @@ export default function ReviewStudio() {
               </div>
             </div>
 
-            {/* Image Canvas */}
-            <div className="w-full flex-1 flex items-center justify-center p-4 overflow-hidden min-h-[420px]">
+            {/* Image Canvas with Wheel Zoom */}
+            <div
+              className="w-full flex-1 flex items-center justify-center p-4 overflow-hidden min-h-[420px]"
+              onWheel={handleWheel}
+            >
               {viewMode === "side_by_side" ? (
                 <div className="grid grid-cols-2 gap-4 w-full h-full max-h-[480px]">
                   {/* Original */}

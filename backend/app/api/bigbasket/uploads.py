@@ -3,13 +3,12 @@ import re
 import zipfile
 from pathlib import Path
 from typing import Dict, List, Optional
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, get_db
 from app.models.bigbasket import BatchFileMapping, BatchImage, BatchSource, ImageBatch
 from app.models.user import User
-from app.schemas.bigbasket import ExcelPreviewResponse
 from app.services.bigbasket.manifest import ManifestParser
 from app.services.bigbasket.storage import BigBasketStorage
 
@@ -52,93 +51,6 @@ def parse_filename_bbid_and_seq(filename: str, fallback_seq: int = 1) -> tuple:
     if len(parts) > 1 and parts[1].strip().isdigit():
         seq = int(parts[1].strip())
     return bbid, seq, "fop" if seq == 1 else "bop"
-
-
-@router.get("/template")
-def download_manifest_template(
-    current_user: User = Depends(get_current_user),
-):
-    """Generates and downloads the official Catalog Manifest Excel template (.xlsx)."""
-    content = ManifestParser.generate_template()
-    return Response(
-        content=content,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={
-            "Content-Disposition": 'attachment; filename="Catalog_Manifest_Template.xlsx"',
-        },
-    )
-
-
-@router.post("/manifest-preview", response_model=ExcelPreviewResponse)
-async def preview_manifest(
-    file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
-):
-    """Parses uploaded Excel or CSV file and suggests automatic column mappings."""
-    if not file.filename.lower().endswith((".xlsx", ".xlsm", ".csv")):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Manifest must be an Excel (.xlsx) or CSV (.csv) file.",
-        )
-
-    content = await file.read()
-    try:
-        preview = ManifestParser.get_preview(content, file.filename)
-        return preview
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to parse manifest: {str(e)}")
-
-
-@router.post("/batch/{batch_id}/manifest")
-async def upload_batch_manifest(
-    batch_id: int,
-    file: UploadFile = File(...),
-    bbid_col: str = Form(...),
-    filename_col: str = Form(...),
-    category_col: Optional[str] = Form(None),
-    sequence_col: Optional[str] = Form(None),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    batch = db.query(ImageBatch).filter(ImageBatch.id == batch_id).first()
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
-
-    content = await file.read()
-    col_map = {
-        "bbid": bbid_col,
-        "filename": filename_col,
-        "category": category_col or "",
-        "sequence": sequence_col or "",
-    }
-
-    # Save manifest file
-    b_dir = BigBasketStorage.get_batch_dir(batch.batch_code)
-    manifest_path = b_dir / f"manifest_{file.filename}"
-    with open(manifest_path, "wb") as f:
-        f.write(content)
-
-    source = BatchSource(
-        batch_id=batch.id,
-        source_type="manifest_excel",
-        excel_filename=file.filename,
-        excel_file_path=str(manifest_path),
-    )
-    db.add(source)
-
-    mapping = BatchFileMapping(
-        batch_id=batch.id,
-        excel_column_map=col_map,
-        validation_status="mapped",
-    )
-    db.add(mapping)
-    db.commit()
-
-    return {
-        "message": "Manifest and column mapping attached successfully.",
-        "batch_id": batch.id,
-        "filename": file.filename,
-    }
 
 
 @router.post("/batch/{batch_id}/images-files")
