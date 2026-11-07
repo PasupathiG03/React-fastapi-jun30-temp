@@ -23,19 +23,24 @@ MENU_ACCESS_SCREEN = "/access-control/menu-access"
 WORKFLOW_SCREEN = "/access-control/workflow-management"
 SUPPORT_SCREEN = "/support"
 
-# Image Studio Automation screens
-STUDIO_DASHBOARD_SCREEN = "/image-studio/dashboard"
-STUDIO_CREATE_BATCH_SCREEN = "/image-studio/create-batch"
-STUDIO_BATCH_PROCESSING_SCREEN = "/image-studio/batch-processing"
-STUDIO_MANUAL_REVIEW_SCREEN = "/image-studio/manual-review"
-STUDIO_REPORTS_SCREEN = "/image-studio/reports"
+# Image Studio Automation screens (Consolidated into single unified studio)
+STUDIO_MAIN_SCREEN = "/image-studio"
 
-# Legacy aliases
-BB_DASHBOARD_SCREEN = STUDIO_DASHBOARD_SCREEN
-BB_CREATE_BATCH_SCREEN = STUDIO_CREATE_BATCH_SCREEN
-BB_BATCH_PROCESSING_SCREEN = STUDIO_BATCH_PROCESSING_SCREEN
-BB_MANUAL_REVIEW_SCREEN = STUDIO_MANUAL_REVIEW_SCREEN
-BB_REPORTS_SCREEN = STUDIO_REPORTS_SCREEN
+# API Monitoring & Usage Screen
+API_DASHBOARD_SCREEN = "/api-dashboard"
+
+# Legacy aliases for backward compatibility
+STUDIO_DASHBOARD_SCREEN = STUDIO_MAIN_SCREEN
+STUDIO_CREATE_BATCH_SCREEN = STUDIO_MAIN_SCREEN
+STUDIO_BATCH_PROCESSING_SCREEN = STUDIO_MAIN_SCREEN
+STUDIO_REVIEW_STUDIO_SCREEN = "/image-studio/review-studio"
+STUDIO_REPORTS_SCREEN = STUDIO_MAIN_SCREEN
+
+BB_DASHBOARD_SCREEN = STUDIO_MAIN_SCREEN
+BB_CREATE_BATCH_SCREEN = STUDIO_MAIN_SCREEN
+BB_BATCH_PROCESSING_SCREEN = STUDIO_MAIN_SCREEN
+BB_REVIEW_STUDIO_SCREEN = STUDIO_REVIEW_STUDIO_SCREEN
+BB_REPORTS_SCREEN = STUDIO_MAIN_SCREEN
 
 # Their APIs are superuser/Developer only, so they are never offered in Menu Access or shown to other roles.
 DEVELOPER_ONLY_SCREENS = frozenset({ROUTER_SETUP_SCREEN})
@@ -44,6 +49,7 @@ DASHBOARD_PROCESS = {"name": "Dashboard"}
 DEVELOPER_PROCESS = {"name": "Developer Management"}
 ACCESS_PROCESS = {"name": "Access Control"}
 BIGBASKET_PROCESS = {"name": "Image Studio", "order": 2}
+API_MONITORING_PROCESS = {"name": "API Monitoring", "order": 3}
 # Last in the sidebar (high order). Developers always see it; other roles only once it is granted in Menu Access.
 SUPPORT_PROCESS = {"name": "Support", "order": 99}
 
@@ -51,11 +57,8 @@ SUPPORT_PROCESS = {"name": "Support", "order": 99}
 DEFAULT_MENUS = [
     (DASHBOARD_PROCESS, {"name": "Dashboard", "icon": "LayoutDashboard", "url": DASHBOARD_SCREEN, "order": 1}),
     (DEVELOPER_PROCESS, {"name": "Router Setup", "icon": "Layers", "url": ROUTER_SETUP_SCREEN, "order": 1}),
-    (BIGBASKET_PROCESS, {"name": "Dashboard", "icon": "Image", "url": BB_DASHBOARD_SCREEN, "order": 1}),
-    (BIGBASKET_PROCESS, {"name": "Create Batch", "icon": "Upload", "url": BB_CREATE_BATCH_SCREEN, "order": 2}),
-    (BIGBASKET_PROCESS, {"name": "Batch Processing", "icon": "Layers", "url": BB_BATCH_PROCESSING_SCREEN, "order": 3}),
-    (BIGBASKET_PROCESS, {"name": "Manual Review", "icon": "CheckCircle", "url": BB_MANUAL_REVIEW_SCREEN, "order": 4}),
-    (BIGBASKET_PROCESS, {"name": "Reports & Analytics", "icon": "FileChartBar", "url": BB_REPORTS_SCREEN, "order": 5}),
+    (BIGBASKET_PROCESS, {"name": "Image Studio", "icon": "Sparkles", "url": STUDIO_MAIN_SCREEN, "order": 1}),
+    (API_MONITORING_PROCESS, {"name": "API Dashboard", "icon": "BarChart3", "url": API_DASHBOARD_SCREEN, "order": 1}),
     (ACCESS_PROCESS, {"name": "Role Management", "icon": "Shield", "url": ROLE_SCREEN, "order": 1}),
     (ACCESS_PROCESS, {"name": "User Management", "icon": "Users", "url": USER_SCREEN, "order": 2}),
     (ACCESS_PROCESS, {"name": "Menu Access", "icon": "ShieldCheck", "url": MENU_ACCESS_SCREEN, "order": 3}),
@@ -78,6 +81,20 @@ def ensure_default_menus():
     Grants are never set here: a Developer assigns them in Menu Access like any other screen."""
     db = SessionLocal()
     try:
+        # Consolidate legacy separate Image Studio menus into single /image-studio screen
+        legacy_urls = [
+            "/image-studio/dashboard",
+            "/image-studio/create-batch",
+            "/image-studio/batch-processing",
+            "/image-studio/manual-review",
+            "/image-studio/reports",
+            "/image-studio/review-studio",
+        ]
+        for m in db.query(Menu).filter(Menu.url.in_(legacy_urls)).all():
+            m.is_active = False
+            m.is_deleted = True
+        db.commit()
+
         added = 0
         for process_data, item in DEFAULT_MENUS:
             process_id = None

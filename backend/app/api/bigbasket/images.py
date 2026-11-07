@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -7,9 +6,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, get_db
-from app.models.bigbasket import BatchImage, ImageVersion
+from app.models.bigbasket import BatchImage
 from app.models.user import User
-from app.schemas.bigbasket import BatchImageDetailOut, BatchImageOut, ImageListResponse
+from app.schemas.bigbasket import BatchImageDetailOut, ImageListResponse
 from app.services.bigbasket.pipeline import PipelineService
 
 router = APIRouter()
@@ -60,9 +59,8 @@ def get_image_details(
     img = db.query(BatchImage).filter(BatchImage.id == image_id).first()
     if not img:
         raise HTTPException(status_code=404, detail="Image not found")
-    # Attach latest real validation result if available
-    latest_val = img.validation_results[-1] if img.validation_results else None
-    setattr(img, "validation_status", latest_val)
+    # Expose validation_status alias pointing to validation_results dictionary
+    setattr(img, "validation_status", img.validation_results)
     return img
 
 
@@ -80,11 +78,8 @@ def stream_image_file(
     target_path = None
     if variant == "final" and img.final_output_path:
         target_path = Path(img.final_output_path)
-    elif variant == "segmented":
-        for v in img.versions:
-            if v.version_type == "segmented":
-                target_path = Path(v.file_path)
-                break
+    elif variant == "segmented" and img.segmented_file_path:
+        target_path = Path(img.segmented_file_path)
     else:
         target_path = Path(img.original_file_path)
 
@@ -111,15 +106,12 @@ def reapply_padding_endpoint(
         raise HTTPException(status_code=404, detail="Image not found")
 
     source_path = None
-    for v in img.versions:
-        if v.version_type == "segmented":
-            source_path = Path(v.file_path)
-            break
-    if not source_path or not source_path.exists():
-        if img.final_output_path and Path(img.final_output_path).exists():
-            source_path = Path(img.final_output_path)
-        else:
-            source_path = Path(img.original_file_path)
+    if img.segmented_file_path and Path(img.segmented_file_path).exists():
+        source_path = Path(img.segmented_file_path)
+    elif img.final_output_path and Path(img.final_output_path).exists():
+        source_path = Path(img.final_output_path)
+    else:
+        source_path = Path(img.original_file_path)
 
     if not source_path.exists():
         raise HTTPException(status_code=404, detail="Source image file not found on disk")
@@ -134,7 +126,7 @@ def reapply_padding_endpoint(
     )
 
     if not img.final_output_path:
-        out_dir = Path("storage/bigbasket/processed")
+        out_dir = Path("uploads/processed")
         out_dir.mkdir(parents=True, exist_ok=True)
         img.final_output_path = str(out_dir / f"{img.id}_final.png")
     else:
@@ -143,34 +135,26 @@ def reapply_padding_endpoint(
     with open(img.final_output_path, "wb") as f:
         f.write(new_png_bytes)
 
-    for v in img.versions:
-        v.is_current = False
-
-    new_version = ImageVersion(
-        image_id=img.id,
-        version_type="repad",
-        file_path=img.final_output_path,
-        width=2000,
-        height=2000,
-        file_size_bytes=len(new_png_bytes),
-        is_current=True,
-    )
-    db.add(new_version)
     db.commit()
-
     return {"message": "Padding re-applied successfully"}
 
 
-@router.get("/service/photoroom-status")
-def get_photoroom_status(current_user: User = Depends(get_current_user)):
-    """Check Photoroom AI API key configuration and account status."""
-    from app.services.bigbasket.photoroom_service import PhotoroomService
-    from app.core.config import settings
-
-    status = PhotoroomService.check_account_status()
-    return {
-        "provider": getattr(settings, "BG_REMOVAL_PROVIDER", "photoroom"),
-        "configured": PhotoroomService.is_configured(),
-        "account_status": status,
-    }
+@router.post("/{image_id}/retry", response_model=BatchImageDetailOut)
+async def retry_image_processing(
+    image_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Retries Photoroom AI background removal and standardization for an individual image.
+    """
+    try:
+        from app.services.bigbasket.batch_processor import BatchProcessor
+        img = await BatchProcessor.retry_single_image(db, image_id)
+        setattr(img, "validation_status", img.validation_results)
+        return img
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Photoroom retry failed: {str(e)}")
 

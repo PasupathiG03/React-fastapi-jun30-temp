@@ -84,11 +84,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 onToggle={handleToggleNav}
               />
               <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto pr-1 custom-scrollbar flex flex-col justify-between">
-                  <div className="flex-1 min-h-0">
-                    {children}
+                <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto pr-1 custom-scrollbar">
+                  <div className="min-h-full flex flex-col justify-between">
+                    <div className="flex-1">
+                      {children}
+                    </div>
+                    <LayoutFooter loading={loading} />
                   </div>
-                  <LayoutFooter loading={loading} />
                 </main>
               </div>
             </div>

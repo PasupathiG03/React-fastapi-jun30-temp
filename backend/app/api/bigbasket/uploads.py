@@ -2,14 +2,13 @@ import io
 import re
 import zipfile
 from pathlib import Path
-from typing import Dict, List, Optional
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from typing import List
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, get_db
-from app.models.bigbasket import BatchFileMapping, BatchImage, BatchSource, ImageBatch
+from app.models.bigbasket import BatchImage, ImageBatch
 from app.models.user import User
-from app.services.bigbasket.manifest import ManifestParser
 from app.services.bigbasket.storage import BigBasketStorage
 
 router = APIRouter()
@@ -65,7 +64,7 @@ async def upload_image_files(
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
 
-    b_dir = BigBasketStorage.get_batch_dir(batch.batch_code)
+    b_dir = BigBasketStorage.get_batch_dir(batch)
     orig_dir = b_dir / "original"
     orig_dir.mkdir(parents=True, exist_ok=True)
 
@@ -123,7 +122,7 @@ async def upload_images_zip(
         raise HTTPException(status_code=400, detail="Images must be uploaded as a .zip archive.")
 
     content = await file.read()
-    b_dir = BigBasketStorage.get_batch_dir(batch.batch_code)
+    b_dir = BigBasketStorage.get_batch_dir(batch)
     orig_dir = b_dir / "original"
 
     # Extract all image files
@@ -139,62 +138,15 @@ async def upload_images_zip(
                     f.write(data)
                 extracted_images.append(dest)
 
-    # Check if a manifest mapping exists to register BBID rows
-    mapping_record = db.query(BatchFileMapping).filter(BatchFileMapping.batch_id == batch_id).first()
-    source_record = db.query(BatchSource).filter(BatchSource.batch_id == batch_id).first()
+    # Register extracted images directly using filename heuristics
+    registered_count = 0
+    existing_count = db.query(BatchImage).filter(BatchImage.batch_id == batch_id).count()
 
-    matched_count = 0
-    used_images = set()
-
-    if mapping_record and source_record and source_record.excel_file_path:
-        # Load and parse manifest
-        with open(source_record.excel_file_path, "rb") as mf:
-            m_content = mf.read()
-        records = ManifestParser.parse_records(m_content, source_record.excel_filename, mapping_record.excel_column_map)
-
-        # Build multiple resilient lookup tables for extracted images
-        exact_map = {p.name.lower().strip(): p for p in extracted_images}
-        stem_map = {p.stem.lower().strip(): p for p in extracted_images}
-        norm_map = {re.sub(r"[^a-z0-9]", "", p.stem.lower()): p for p in extracted_images}
-
-        for rec in records:
-            raw_target = str(rec.get("original_filename") or "").strip()
-            if not raw_target:
-                continue
-
-            target_exact = raw_target.lower()
-            target_stem = Path(raw_target).stem.lower().strip()
-            target_norm = re.sub(r"[^a-z0-9]", "", target_stem)
-
-            # 1. Exact filename match
-            matched_p = exact_map.get(target_exact)
-            # 2. Stem match (handles .png vs .jpg extension mismatch)
-            if not matched_p:
-                matched_p = stem_map.get(target_stem)
-            # 3. Normalized match (handles formatting differences)
-            if not matched_p:
-                matched_p = norm_map.get(target_norm)
-
-            if matched_p and matched_p not in used_images:
-                b_img = BatchImage(
-                    batch_id=batch.id,
-                    bbid=rec["bbid"],
-                    original_filename=matched_p.name,
-                    original_file_path=str(matched_p),
-                    image_type=rec.get("image_type", "fop") or "fop",
-                    sequence_order=rec.get("sequence_order", 1),
-                    file_size_bytes=matched_p.stat().st_size,
-                    status="pending",
-                )
-                db.add(b_img)
-                used_images.add(matched_p)
-                matched_count += 1
-
-    # For any images not matched by manifest (or if no manifest was provided), register them directly
     for p in extracted_images:
-        if p in used_images:
-            continue
-        bbid, seq, img_type = parse_filename_bbid_and_seq(p.name, fallback_seq=1)
+        bbid, seq, img_type = parse_filename_bbid_and_seq(
+            p.name,
+            fallback_seq=(existing_count + registered_count + 1),
+        )
 
         b_img = BatchImage(
             batch_id=batch.id,
@@ -207,14 +159,14 @@ async def upload_images_zip(
             status="pending",
         )
         db.add(b_img)
-        matched_count += 1
+        registered_count += 1
 
-    batch.total_images = matched_count
+    batch.total_images = (batch.total_images or 0) + registered_count
     db.commit()
 
     return {
-        "message": f"Successfully extracted and registered {matched_count} images for batch.",
+        "message": f"Successfully extracted and registered {registered_count} images for batch.",
         "batch_id": batch.id,
-        "total_images": matched_count,
+        "total_images": batch.total_images,
     }
 

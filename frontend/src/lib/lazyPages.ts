@@ -38,14 +38,15 @@ export const PAGE_ROUTES: PageRoute[] = [
   { path: "/access-control/menu-access", page: lazyPage(() => import("@/pages/MenuAccess")) },
   { path: "/access-control/workflow-management", page: lazyPage(() => import("@/pages/WorkflowManagement")) },
 
-  // Image Studio Automation
-  { path: "/image-studio/dashboard", page: lazyPage(() => import("@/pages/bigbasket/BigBasketDashboard")) },
-  { path: "/image-studio/create-batch", page: lazyPage(() => import("@/pages/bigbasket/CreateBatch")) },
+  // Image Studio Consolidated Workspace
+  { path: "/image-studio", page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
+  { path: "/image-studio/dashboard", page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
+  { path: "/image-studio/create-batch", page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
   { path: "/image-studio/batch-processing", page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
-  { path: "/image-studio/manual-review", page: lazyPage(() => import("@/pages/bigbasket/ManualReviewQueue")) },
+  { path: "/image-studio/manual-review", page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
   { path: "/image-studio/review-studio", page: lazyPage(() => import("@/pages/bigbasket/ReviewStudio")) },
   { path: "/image-studio/review-studio/:imageId", page: lazyPage(() => import("@/pages/bigbasket/ReviewStudio")) },
-  { path: "/image-studio/reports", page: lazyPage(() => import("@/pages/bigbasket/BigBasketReports")) },
+  { path: "/image-studio/reports", page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
 
   // Backward compatibility aliases
   { path: "/bigbasket/dashboard", page: lazyPage(() => import("@/pages/bigbasket/BigBasketDashboard")) },
@@ -58,6 +59,9 @@ export const PAGE_ROUTES: PageRoute[] = [
 
   // Developer Management
   { path: "/developer-management/router-setup", page: lazyPage(() => import("@/pages/MenuManagement")) },
+
+  // API Monitoring & Quota Dashboard
+  { path: "/api-dashboard", page: lazyPage(() => import("@/pages/ApiDashboard")) },
 
   // Support
   { path: "/support", page: lazyPage(() => import("@/pages/Support")) },

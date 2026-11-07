@@ -11,7 +11,6 @@ import {
   Sliders,
   ArrowLeft,
   ShieldCheck,
-  Loader2,
   Move,
   AlertTriangle,
 } from "lucide-react";
@@ -20,8 +19,9 @@ import { SECONDARY_BUTTON } from "@/components/ui";
 import {
   fetchImageDetails,
   fetchReviewQueue,
-  submitReviewAction,
-  reapplyPadding,
+  fetchBatches,
+  fetchBatchImages,
+  retryImageProcessing,
   getImageFileUrl,
 } from "@/services/bigbasket";
 import { showError, showSuccess } from "@/lib/toast";
@@ -50,8 +50,7 @@ export default function ReviewStudio() {
 
   const [image, setImage] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [repadding, setRepadding] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [isWideView, setIsWideView] = useState(false);
   const [cacheBuster, setCacheBuster] = useState(Date.now());
 
@@ -61,7 +60,6 @@ export default function ReviewStudio() {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<{ x: number; y: number; panX: number; panY: number }>({ x: 0, y: 0, panX: 0, panY: 0 });
-  const [comments, setComments] = useState("");
 
   function handleMouseDown(e: React.MouseEvent) {
     if (e.button !== 0) return; // left click only
@@ -99,14 +97,6 @@ export default function ReviewStudio() {
     setZoom((z) => Math.max(25, Math.min(1200, z + delta)));
   }
 
-  // Padding adjustment controls (per BigBasket SRS)
-  const [paddingOverrides, setPaddingOverrides] = useState({
-    top: 180,
-    bottom: 180,
-    left: 100,
-    right: 100,
-  });
-
   useEffect(() => {
     if (activeImageId) {
       loadDetails(activeImageId);
@@ -117,12 +107,22 @@ export default function ReviewStudio() {
 
   async function loadFirstPending() {
     try {
+      // 1. Check if any image needs review
       const queue = await fetchReviewQueue(1, 1);
       if (queue.items && queue.items.length > 0) {
         setActiveImageId(queue.items[0].id);
-      } else {
-        setLoading(false);
+        return;
       }
+      // 2. If automation auto-approved everything, load latest processed image from the latest batch
+      const batches = await fetchBatches(1, 1);
+      if (batches.items && batches.items.length > 0) {
+        const batchImages = await fetchBatchImages(batches.items[0].id, 1, 1);
+        if (batchImages.items && batchImages.items.length > 0) {
+          setActiveImageId(batchImages.items[0].id);
+          return;
+        }
+      }
+      setLoading(false);
     } catch {
       setLoading(false);
     }
@@ -139,34 +139,22 @@ export default function ReviewStudio() {
     }
   }
 
-  async function handleRepad() {
+  async function handleRetryPhotoroom() {
     if (!image) return;
-    setRepadding(true);
+    setRetrying(true);
     try {
-      await reapplyPadding(image.id, paddingOverrides);
+      const updated = await retryImageProcessing(image.id);
+      setImage(updated);
       setCacheBuster(Date.now());
-      showSuccess(
-        `Padding updated (Top: ${paddingOverrides.top}px, Bottom: ${paddingOverrides.bottom}px, Left: ${paddingOverrides.left}px, Right: ${paddingOverrides.right}px)!`
-      );
+      if (updated.status === "auto_approved" || (updated.confidence_score && updated.confidence_score >= 0.95)) {
+        showSuccess(`Photoroom AI background removal succeeded! SKU ${updated.bbid} is auto-approved.`);
+      } else {
+        showSuccess(`Photoroom re-processed SKU ${updated.bbid} (Confidence: ${Math.round((updated.confidence_score || 0) * 100)}%).`);
+      }
     } catch (e: any) {
-      showError(e.message || "Failed to re-apply padding");
+      showError(e.message || "Failed to retry image with Photoroom");
     } finally {
-      setRepadding(false);
-    }
-  }
-
-  async function handleAction(decision: "approved" | "rejected" | "reprocess") {
-    if (!image) return;
-    setSubmitting(true);
-    try {
-      await submitReviewAction(image.id, decision, comments, paddingOverrides);
-      const newStatus = decision === "approved" ? "manually_approved" : decision === "rejected" ? "rejected" : "pending";
-      setImage((prev: any) => (prev ? { ...prev, status: newStatus } : null));
-      showSuccess(`Image #${image.id} marked as ${decision.toUpperCase()}!`);
-    } catch (e: any) {
-      showError(e.message || "Failed to submit review");
-    } finally {
-      setSubmitting(false);
+      setRetrying(false);
     }
   }
 
@@ -181,7 +169,23 @@ export default function ReviewStudio() {
   if (!image) {
     return (
       <PageContainer>
-        <div className="text-center py-20 text-slate-400 text-xs">Image not found.</div>
+        <div className="glass-card rounded-2xl p-12 text-center max-w-md mx-auto my-12 space-y-4">
+          <div className="w-12 h-12 rounded-xl bg-sky-500/10 text-sky-500 flex items-center justify-center mx-auto">
+            <Sliders className="w-6 h-6" />
+          </div>
+          <h3 className="text-base font-bold text-slate-800 dark:text-white">Review Studio</h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            No processed images found yet. Select an image directly from the Batch Pipeline or upload a new batch to inspect here.
+          </p>
+          <div className="pt-2">
+            <Link
+              to="/image-studio"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 transition-colors"
+            >
+              Go to Image Studio
+            </Link>
+          </div>
+        </div>
       </PageContainer>
     );
   }
@@ -223,36 +227,30 @@ export default function ReviewStudio() {
               )}
             </span>
 
-            <Link to="/image-studio/batch-processing" className={SECONDARY_BUTTON} title="Return to Batch Processing Monitor">
-              <ArrowLeft className="w-4 h-4" /> Batch
+            <Link to="/image-studio" className={SECONDARY_BUTTON} title="Return to Image Studio">
+              <ArrowLeft className="w-4 h-4" /> Studio
             </Link>
-            <Link to="/image-studio/manual-review" className={SECONDARY_BUTTON} title="View Manual Review Queue">
-              Queue
-            </Link>
-            <button
-              type="button"
-              onClick={() => handleAction("approved")}
-              disabled={submitting}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm disabled:opacity-50 transition-colors"
-            >
-              <CheckCircle className="w-4 h-4" /> Approve
-            </button>
-            <button
-              type="button"
-              onClick={() => handleAction("rejected")}
-              disabled={submitting}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 shadow-sm disabled:opacity-50 transition-colors"
-            >
-              <XCircle className="w-4 h-4" /> Reject
-            </button>
+
+            {(image.status === "needs_review" || image.status === "failed" || (image.confidence_score && image.confidence_score < 0.95)) && (
+              <button
+                type="button"
+                onClick={handleRetryPhotoroom}
+                disabled={retrying}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 shadow-sm transition-all disabled:opacity-50"
+                title="Retry AI background removal with Photoroom"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 ${retrying ? "animate-spin" : ""}`} />
+                <span>{retrying ? "Processing Photoroom..." : "Retry with Photoroom"}</span>
+              </button>
+            )}
           </div>
         }
       />
 
       <div className={`grid grid-cols-1 ${isWideView ? "lg:grid-cols-1" : "lg:grid-cols-3"} gap-5 transition-all duration-300`}>
         {/* Left 2 Cols (or full width in wide view): Interactive Canvas & Viewer */}
-        <div className={`${isWideView ? "lg:col-span-1" : "lg:col-span-2"} space-y-4`}>
-          <div className="glass-card rounded-2xl p-4 flex flex-col items-center justify-between min-h-[500px]">
+        <div className={`${isWideView ? "lg:col-span-1" : "lg:col-span-2"} flex flex-col space-y-4`}>
+          <div className="glass-card rounded-2xl p-4 flex flex-col items-center justify-between flex-1 min-h-[580px] lg:min-h-[720px]">
             {/* Viewport Control Bar */}
             <div className="w-full flex items-center justify-between pb-3 border-b border-slate-200/60 dark:border-white/10 text-xs flex-wrap gap-2">
               <div className="flex items-center gap-1.5">
@@ -362,11 +360,11 @@ export default function ReviewStudio() {
 
             {/* Image Canvas with Wheel Zoom */}
             <div
-              className="w-full flex-1 flex items-center justify-center p-4 overflow-hidden min-h-[420px]"
+              className="w-full flex-1 flex items-center justify-center p-4 overflow-hidden min-h-[460px] lg:min-h-[580px]"
               onWheel={handleWheel}
             >
               {viewMode === "side_by_side" ? (
-                <div className="grid grid-cols-2 gap-4 w-full h-full max-h-[480px]">
+                <div className="grid grid-cols-2 gap-4 w-full h-full max-h-[620px]">
                   {/* Original */}
                   <div
                     className={`relative rounded-xl border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-900/40 p-2 flex flex-col items-center justify-center overflow-hidden select-none ${
@@ -419,7 +417,7 @@ export default function ReviewStudio() {
                 </div>
               ) : (
                 <div
-                  className={`relative w-full h-full max-h-[480px] rounded-xl border border-slate-200 dark:border-white/10 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] bg-slate-50 dark:bg-slate-950 p-2 flex items-center justify-center overflow-hidden select-none ${
+                  className={`relative w-full h-full max-h-[620px] rounded-xl border border-slate-200 dark:border-white/10 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] bg-slate-50 dark:bg-slate-950 p-2 flex items-center justify-center overflow-hidden select-none ${
                     isDragging ? "cursor-grabbing" : "cursor-grab"
                   }`}
                   onMouseDown={handleMouseDown}
@@ -443,8 +441,8 @@ export default function ReviewStudio() {
           </div>
         </div>
 
-        {/* Right Col / Bottom Row in Wide View: Metadata, Quality Checklist & Adjustment Controls */}
-        <div className={isWideView ? "grid grid-cols-1 md:grid-cols-3 gap-5" : "space-y-4"}>
+        {/* Right Col: Quality Checklist & Specifications */}
+        <div className={isWideView ? "grid grid-cols-1 md:grid-cols-2 gap-5" : "space-y-4"}>
           {/* Quality Validation Checklist */}
           <div className="glass-card rounded-2xl p-5 space-y-3">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -496,121 +494,32 @@ export default function ReviewStudio() {
             </div>
           </div>
 
-          {/* Padding Adjustment Controls */}
+          {/* Standardization Details Card */}
           <div className="glass-card rounded-2xl p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-sky-500" />
-                Framing & Padding Overrides
-              </h3>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div>
-                <label className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block mb-1">
-                  Top (px)
-                </label>
-                <input
-                  type="number"
-                  value={paddingOverrides.top}
-                  onChange={(e) => setPaddingOverrides({ ...paddingOverrides, top: e.target.value === "" ? 0 : Number(e.target.value) })}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold text-sm focus:outline-none focus:border-slate-300 dark:focus:border-slate-600 transition-colors"
-                />
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Sliders className="w-4 h-4 text-sky-500" />
+              Standardization Details
+            </h3>
+            <div className="space-y-2 text-xs">
+              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
+                <span className="text-slate-600 dark:text-slate-400">SKU / BBID:</span>
+                <span className="font-bold text-slate-900 dark:text-white">{image?.bbid || "N/A"}</span>
               </div>
-              <div>
-                <label className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block mb-1">
-                  Bottom (px)
-                </label>
-                <input
-                  type="number"
-                  value={paddingOverrides.bottom}
-                  onChange={(e) => setPaddingOverrides({ ...paddingOverrides, bottom: e.target.value === "" ? 0 : Number(e.target.value) })}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold text-sm focus:outline-none focus:border-slate-300 dark:focus:border-slate-600 transition-colors"
-                />
+              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
+                <span className="text-slate-600 dark:text-slate-400">Image Type:</span>
+                <span className="font-bold text-slate-900 dark:text-white uppercase">{image?.image_type || "N/A"}</span>
               </div>
-              <div>
-                <label className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block mb-1">
-                  Left (px)
-                </label>
-                <input
-                  type="number"
-                  value={paddingOverrides.left}
-                  onChange={(e) => setPaddingOverrides({ ...paddingOverrides, left: e.target.value === "" ? 0 : Number(e.target.value) })}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold text-sm focus:outline-none focus:border-slate-300 dark:focus:border-slate-600 transition-colors"
-                />
+              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
+                <span className="text-slate-600 dark:text-slate-400">Original Size:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {image?.original_width && image?.original_height ? `${image.original_width} × ${image.original_height} px` : "Unknown"}
+                </span>
               </div>
-              <div>
-                <label className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block mb-1">
-                  Right (px)
-                </label>
-                <input
-                  type="number"
-                  value={paddingOverrides.right}
-                  onChange={(e) => setPaddingOverrides({ ...paddingOverrides, right: e.target.value === "" ? 0 : Number(e.target.value) })}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold text-sm focus:outline-none focus:border-slate-300 dark:focus:border-slate-600 transition-colors"
-                />
+              <div className="flex items-center justify-between py-1">
+                <span className="text-slate-600 dark:text-slate-400">Target Standard:</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">2000 × 2000 px (150 DPI)</span>
               </div>
             </div>
-
-            {/* Quick Presets */}
-            <div className="flex items-center gap-1.5 pt-1">
-              <span className="text-[10px] text-slate-400 font-medium">Presets:</span>
-              <button
-                type="button"
-                onClick={() => setPaddingOverrides({ top: 180, bottom: 180, left: 100, right: 100 })}
-                className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
-              >
-                SRS (180/100)
-              </button>
-              <button
-                type="button"
-                onClick={() => setPaddingOverrides({ top: 140, bottom: 140, left: 80, right: 80 })}
-                className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
-              >
-                Tight (140/80)
-              </button>
-              <button
-                type="button"
-                onClick={() => setPaddingOverrides({ top: 0, bottom: 0, left: 0, right: 0 })}
-                className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
-              >
-                Full (0)
-              </button>
-            </div>
-
-            <div className="pt-2">
-              <button
-                type="button"
-                disabled={repadding}
-                onClick={handleRepad}
-                className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 shadow-sm transition-all disabled:opacity-50"
-              >
-                {repadding ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Re-calculating Canvas...
-                  </>
-                ) : (
-                  <>
-                    <RotateCcw className="w-3.5 h-3.5" /> Re-apply Padding
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Reviewer Comments & Final Sign-off */}
-          <div className="glass-card rounded-2xl p-5 space-y-3">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Reviewer Feedback</h3>
-            <textarea
-              rows={3}
-              placeholder="Add audit notes or remarks (optional)..."
-              value={comments}
-              onChange={(e) => setComments(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-medium text-xs focus:outline-none focus:border-slate-300 dark:focus:border-slate-600 transition-colors"
-            />
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Audit notes are permanently attached to this product review record.
-            </p>
           </div>
         </div>
       </div>

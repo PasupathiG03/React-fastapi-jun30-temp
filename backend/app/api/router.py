@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api import access, auth, events, menu, processes, roles, tickets, users, workflows
+from app.api import access, api_dashboard, auth, events, menu, processes, roles, tickets, users, workflows
 from app.api.bigbasket.router import bigbasket_router
 
 # Every API route in one place. main.py includes this single router.
@@ -15,5 +15,6 @@ api_router.include_router(events.router, prefix="/api/events", tags=["Live updat
 api_router.include_router(access.router, prefix="/api/access", tags=["Access"])
 api_router.include_router(workflows.router, prefix="/api/workflows", tags=["Workflows"])
 api_router.include_router(tickets.router, prefix="/api/tickets", tags=["Support tickets"])
+api_router.include_router(api_dashboard.router, prefix="/api/api-dashboard", tags=["API Dashboard"])
 api_router.include_router(bigbasket_router, prefix="/api/image-studio", tags=["Image Studio Automation"])
 api_router.include_router(bigbasket_router, prefix="/api/bigbasket", tags=["Image Studio Automation"])

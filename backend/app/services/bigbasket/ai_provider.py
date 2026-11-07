@@ -2,8 +2,6 @@ import abc
 import time
 from typing import Any, Dict
 
-from app.core.logger import logger
-
 
 class BaseAiProvider(abc.ABC):
     @abc.abstractmethod
@@ -13,7 +11,7 @@ class BaseAiProvider(abc.ABC):
 
 
 class LocalCpuAiProvider(BaseAiProvider):
-    """Fast, deterministic local CPU image classification using filename heuristics, format, and pattern analysis."""
+    """Fast, deterministic local CPU image classification using filename heuristics and pattern analysis."""
 
     async def classify_and_analyze(self, image_bytes: bytes, filename: str) -> Dict[str, Any]:
         t0 = time.perf_counter()
@@ -69,3 +67,4 @@ class HybridAiManager:
         threshold: float = 0.95,
     ) -> Dict[str, Any]:
         return await self.local_provider.classify_and_analyze(image_bytes, filename)
+

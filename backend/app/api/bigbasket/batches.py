@@ -6,14 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, get_db
-from app.models.bigbasket import BatchEvent, ImageBatch
+from app.models.bigbasket import ImageBatch
 from app.models.user import User
 from app.schemas.bigbasket import (
     BatchCreate,
     BatchListResponse,
     BatchOut,
-    BatchStatusUpdate,
-    BatchUpdate,
 )
 from app.services.bigbasket.batch_processor import BatchProcessor
 from app.services.bigbasket.storage import BigBasketStorage
@@ -56,11 +54,6 @@ def create_batch(
         if existing:
             return existing
 
-    # Generate unique human-readable batch code: BATCH-YYYYMMDD-XXXX
-    date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
-    random_suffix = secrets.token_hex(2).upper()
-    batch_code = f"BATCH-{date_str}-{random_suffix}"
-
     # Default configuration
     cfg = payload.config.model_dump() if payload.config else {
         "canvas_width": 2000,
@@ -73,8 +66,10 @@ def create_batch(
         "chunk_size": 10,
     }
 
+    # 1. Allocate batch in DB with temporary code to obtain auto-increment primary key ID
+    temp_code = f"TEMP-{secrets.token_hex(4)}"
     batch = ImageBatch(
-        batch_code=batch_code,
+        batch_code=temp_code,
         name=payload.name,
         source_type=payload.source_type,
         status="created",
@@ -84,20 +79,16 @@ def create_batch(
         updated_by_id=current_user.id,
     )
     db.add(batch)
+    db.flush()
+
+    # 2. Auto-generate Extraction Batch ID based on DB index: IS-BATCH<id based db index>
+    batch_code = f"IS-BATCH-{batch.id:03d}"
+    batch.batch_code = batch_code
     db.commit()
     db.refresh(batch)
 
-    # Initialize storage folder
-    BigBasketStorage.get_batch_dir(batch_code)
-
-    # Log creation event
-    ev = BatchEvent(
-        batch_id=batch.id,
-        event_type="created",
-        message=f"Batch {batch_code} created by {current_user.employee_id}.",
-    )
-    db.add(ev)
-    db.commit()
+    # Initialize storage folder under uploads/<dd-mm-yyyy>/<batch_name>_<batch_id>/
+    BigBasketStorage.get_batch_dir(batch)
 
     return batch
 
@@ -194,4 +185,23 @@ def delete_batch(
     db.delete(batch)
     db.commit()
     return None
+
+
+@router.post("/{batch_id}/retry-failed")
+async def retry_batch_failed(
+    batch_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Retries all images in a batch with status 'needs_review' or 'failed' through Photoroom AI.
+    """
+    try:
+        retried = await BatchProcessor.retry_batch_failed_images(db, batch_id)
+        return {"message": f"Retried {len(retried)} images with Photoroom", "count": len(retried)}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Photoroom retry failed: {str(e)}")
+
 

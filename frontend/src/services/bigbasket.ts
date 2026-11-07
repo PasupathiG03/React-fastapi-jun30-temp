@@ -174,6 +174,18 @@ export async function fetchImageDetails(imageId: number): Promise<any> {
   return request(`/api/image-studio/images/${imageId}`);
 }
 
+export async function retryImageProcessing(imageId: number): Promise<any> {
+  return request(`/api/image-studio/images/${imageId}/retry`, {
+    method: "POST",
+  });
+}
+
+export async function retryBatchFailed(batchId: number): Promise<{ message: string; count: number }> {
+  return request<{ message: string; count: number }>(`/api/image-studio/batches/${batchId}/retry-failed`, {
+    method: "POST",
+  });
+}
+
 export async function fetchReviewQueue(
   page = 1,
   pageSize = 20,

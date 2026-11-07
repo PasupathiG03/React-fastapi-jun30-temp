@@ -11,11 +11,11 @@ import {
   Lock,
   Sun,
   Moon,
-  Zap,
-  ShieldCheck,
-  Activity,
   ArrowRight,
   Loader2,
+  Crop,
+  Sparkles,
+  Sliders,
 } from "lucide-react";
 import { loginApi } from "@/services/auth";
 import { preloadRoute } from "@/lib/lazyPages";
@@ -64,16 +64,16 @@ export default function LoginPage() {
 
   return (
     <div
-      className="app-ambient login-pattern relative h-screen w-full flex flex-col lg:flex-row items-stretch p-3.5 sm:p-5 transition-colors duration-300 overflow-x-hidden overflow-y-auto custom-scrollbar font-sans"
+      className="app-ambient login-pattern relative min-h-screen lg:h-screen w-full flex flex-col lg:flex-row items-center lg:items-stretch p-3 sm:p-4 lg:p-5 transition-colors duration-300 overflow-x-hidden overflow-y-auto lg:overflow-hidden no-scrollbar font-sans"
       style={getAppBackground(theme)}
     >
       {/* ── Top-Right Theme Toggle ── */}
-      <div className="absolute top-5 right-5 sm:top-6 sm:right-6 z-30">
+      <div className="absolute top-3.5 right-3.5 sm:top-5 sm:right-5 z-30">
         <button
           type="button"
           onClick={toggleTheme}
           title={`Switch to ${theme === "dark" ? "Light" : "Dark"} Mode`}
-          className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white bg-white/80 dark:bg-white/5 border border-slate-200/80 dark:border-white/10 shadow-sm backdrop-blur-md transition-all hover:scale-105 cursor-pointer"
+          className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white bg-white/80 dark:bg-white/5 border border-slate-200/80 dark:border-white/10 shadow-sm backdrop-blur-md transition-all hover:scale-105 cursor-pointer"
         >
           {theme === "dark" ? (
             <Sun className="w-4 h-4 text-amber-400" />
@@ -88,7 +88,7 @@ export default function LoginPage() {
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.5, ease: "easeOut" }}
-        className="hidden lg:flex relative w-full lg:w-[46%] xl:w-[47%] 2xl:w-[48%] rounded-[28px] sm:rounded-[34px] overflow-hidden bg-gradient-to-br from-[#00d2ff] via-[#0084ff] to-[#0052cc] shadow-[0_20px_50px_rgba(0,198,255,0.28)] dark:shadow-[0_24px_70px_rgba(0,114,255,0.38)] p-8 sm:p-11 xl:p-16 flex-col justify-between lg:min-h-[calc(100vh-2.5rem)] shrink-0"
+        className="hidden lg:flex relative w-full lg:w-[46%] xl:w-[47%] 2xl:w-[48%] rounded-[20px] xl:rounded-[28px] overflow-hidden bg-gradient-to-br from-[#00d2ff] via-[#0084ff] to-[#0052cc] shadow-[0_20px_50px_rgba(0,198,255,0.28)] dark:shadow-[0_24px_70px_rgba(0,114,255,0.38)] p-5 lg:p-7 xl:p-9 2xl:p-12 flex-col justify-between h-full max-h-[calc(100vh-2rem)] shrink-0 select-none"
       >
         {/* Subtle dot grid */}
         <div
@@ -106,64 +106,80 @@ export default function LoginPage() {
         <div className="absolute -bottom-24 -right-16 w-96 h-96 rounded-full bg-white/[0.06] pointer-events-none" />
 
         {/* Top Brand Header */}
-        <div className="relative z-10 flex items-center">
+        <div className="relative z-10 flex items-center justify-between gap-3">
           <img
             src="/assets/logo.png"
             alt="PULSE"
-            className="h-14 sm:h-16 w-auto object-contain brightness-0 invert"
+            className="h-8 lg:h-9 xl:h-11 w-auto object-contain brightness-0 invert"
           />
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/15 border border-white/20 backdrop-blur-md text-white text-[11px] font-semibold">
+            <Crop className="w-3 h-3 text-sky-200" />
+            <span>Bigbasket-Image Cropping Tool</span>
+          </div>
         </div>
 
         {/* Middle Content */}
-        <div className="relative z-10 my-auto py-8 sm:py-10 space-y-6 sm:space-y-8 max-w-2xl w-full">
-          <div className="space-y-3">
-            <h1 className="text-3xl sm:text-4xl xl:text-[44px] font-extrabold text-white leading-[1.15] tracking-tight">
-              Everything your team needs, <br className="hidden sm:inline" />
-              unified in one place
+        <div className="relative z-10 my-auto py-3 xl:py-6 space-y-3.5 xl:space-y-6 max-w-xl w-full">
+          <div className="space-y-2">
+            <h1 className="text-xl lg:text-2xl xl:text-3xl 2xl:text-[34px] font-bold text-white leading-snug tracking-tight">
+              Automated image cropping & <br className="hidden sm:inline" />
+              standardization platform
             </h1>
-            <p className="text-sm sm:text-base text-white/85 leading-relaxed max-w-xl font-normal">
-              Streamline multi-stage workflows, role-based screen security, process lifecycles, and team collaboration on an enterprise-ready architecture.
+            <p className="text-xs xl:text-[13px] text-white/85 leading-relaxed max-w-lg font-normal">
+              AI-powered background removal, 2000×2000 canvas standardization, intelligent back-of-pack sub-region extraction, and reviewer sign-off for BigBasket cataloging.
             </p>
           </div>
 
           {/* Feature Pills */}
-          <div className="space-y-3 pt-1 w-full">
+          <div className="space-y-2 pt-1 w-full">
             {[
-              { Icon: Zap, text: "Intelligent Workflow & Pipeline Automation" },
-              { Icon: ShieldCheck, text: "Zero-Trust Role & Permission Matrix" },
-              { Icon: Activity, text: "Real-Time Monitoring & Comprehensive Audit Trails" },
+              { Icon: Sparkles, text: "AI Background Removal & Photoroom Pipeline" },
+              { Icon: Crop, text: "2000 × 2000 Square Canvas & 150 DPI Margins" },
+              { Icon: Sliders, text: "Sub-Region Extraction & Interactive Review Studio" },
             ].map(({ Icon, text }, i) => (
               <motion.div
                 key={text}
                 initial={{ opacity: 0, x: -16 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.25 + i * 0.12, duration: 0.45, ease: "easeOut" }}
-                className="group flex items-center gap-4 px-5 py-3.5 rounded-2xl bg-white/[0.12] hover:bg-white/[0.2] backdrop-blur-md border border-white/20 hover:border-white/35 transition-all shadow-sm w-full"
+                className="group flex items-center gap-3 px-3.5 py-2 xl:py-2.5 rounded-xl bg-white/[0.12] hover:bg-white/[0.2] backdrop-blur-md border border-white/20 hover:border-white/35 transition-all shadow-sm w-full"
               >
-                <div className="w-10 h-10 rounded-xl bg-white/15 group-hover:bg-white/25 flex items-center justify-center shrink-0 text-white shadow-inner transition-colors">
-                  <Icon className="w-5 h-5" />
+                <div className="w-7 h-7 xl:w-8 xl:h-8 rounded-lg bg-white/15 group-hover:bg-white/25 flex items-center justify-center shrink-0 text-white shadow-inner transition-colors">
+                  <Icon className="w-3.5 h-3.5 xl:w-4 xl:h-4" />
                 </div>
-                <span className="text-sm sm:text-[15px] font-semibold text-white tracking-wide">{text}</span>
+                <span className="text-xs xl:text-[13px] font-semibold text-white tracking-wide">{text}</span>
               </motion.div>
             ))}
           </div>
         </div>
 
         {/* Bottom Copyright */}
-        <div className="relative z-10 pt-4">
-          <Copyright className="text-xs sm:text-sm text-white/75 font-normal" />
+        <div className="relative z-10 pt-2">
+          <Copyright className="text-[11px] xl:text-xs text-white/75 font-normal" />
         </div>
       </motion.div>
 
       {/* ── Right Half: Centered Form Column ── */}
-      <div className="flex-1 w-full lg:w-[54%] xl:w-[53%] 2xl:w-[52%] flex flex-col items-center justify-center p-4 sm:p-8 lg:p-12 my-auto">
+      <div className="flex-1 w-full lg:w-[54%] xl:w-[53%] 2xl:w-[52%] flex flex-col items-center justify-center p-3 sm:p-6 lg:p-8 xl:p-12 my-auto">
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
-          className="w-full max-w-[440px] flex flex-col shrink-0"
+          className="w-full max-w-[380px] sm:max-w-[430px] flex flex-col shrink-0"
         >
-          <div className="glass-panel rounded-[28px] p-7 sm:p-10 transition-colors duration-200">
+          {/* Mobile & Tablet Logo Header (< lg) */}
+          <div className="lg:hidden flex flex-col items-center justify-center mb-6 pt-6 sm:pt-0 gap-2">
+            <img
+              src="/assets/logo.png"
+              alt="PULSE"
+              className="h-11 sm:h-13 w-auto object-contain dark:brightness-0 dark:invert"
+            />
+            <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+              Bigbasket-Image Cropping Tool
+            </span>
+          </div>
+
+          <div className="glass-panel rounded-[24px] sm:rounded-[28px] p-6 sm:p-8 lg:p-9 xl:p-10 transition-colors duration-200 shadow-xl">
             <AnimatePresence mode="wait">
               {!isSuccess ? (
                 <motion.div
@@ -174,11 +190,14 @@ export default function LoginPage() {
                 >
                   {/* Card Title & Subtitle */}
                   <div className="mb-7 text-center">
+                    <span className="inline-block text-[11px] font-semibold text-sky-600 dark:text-sky-400 mb-1.5">
+                      Bigbasket-Image Cropping Tool
+                    </span>
                     <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
                       Welcome back
                     </h2>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                      Sign in to continue to your workspace.
+                    <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+                      Sign in to manage extraction batches and catalog assets.
                     </p>
                   </div>
 
@@ -336,6 +355,11 @@ export default function LoginPage() {
           <p className="text-center text-[11px] text-slate-400 dark:text-slate-500 mt-4 font-normal">
             Protected by secure authentication. Never share your password.
           </p>
+
+          {/* Mobile Copyright (< lg) */}
+          <div className="lg:hidden mt-6 text-center">
+            <Copyright className="text-[11px] text-slate-400 dark:text-slate-500 font-normal" />
+          </div>
         </motion.div>
       </div>
     </div>

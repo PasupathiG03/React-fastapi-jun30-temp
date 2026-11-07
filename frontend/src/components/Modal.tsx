@@ -106,7 +106,7 @@ export default function Modal({
     <div className="fixed inset-0 z-[100] overflow-y-auto">
       <div className="fixed inset-0 bg-slate-950/55 backdrop-blur-sm modal-backdrop-in" aria-hidden="true" />
       <div
-        className="relative min-h-full flex items-center justify-center p-4"
+        className="relative min-h-full flex items-center justify-center p-3 sm:p-4"
         onMouseDown={(e) => {
           if (closeOnBackdrop && e.target === e.currentTarget) onClose();
         }}
@@ -117,7 +117,7 @@ export default function Modal({
           aria-modal="true"
           aria-labelledby={titleId}
           tabIndex={-1}
-          className={`glass-modal rounded-2xl w-full ${SIZE_CLASS[size]} focus:outline-none`}
+          className={`glass-modal rounded-2xl w-full max-h-[calc(100dvh-2rem)] flex flex-col ${SIZE_CLASS[size]} focus:outline-none`}
         >
           <div className="px-5 sm:px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between gap-3 rounded-t-2xl bg-white/30 dark:bg-white/[0.02]">
             {header ? (
@@ -158,7 +158,7 @@ export default function Modal({
 }
 
 export function ModalBody({ className = "", children }: { className?: string; children: React.ReactNode }) {
-  return <div className={`p-5 sm:p-6 space-y-5 ${className}`}>{children}</div>;
+  return <div className={`p-5 sm:p-6 space-y-5 overflow-y-auto no-scrollbar flex-1 min-h-0 ${className}`}>{children}</div>;
 }
 
 export function ModalFooter({ children }: { children: React.ReactNode }) {

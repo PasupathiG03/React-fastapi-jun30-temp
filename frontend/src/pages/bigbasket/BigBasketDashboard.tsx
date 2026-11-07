@@ -10,6 +10,7 @@ import {
   ArrowRight,
   TrendingUp,
   Sparkles,
+  Sliders,
 } from "lucide-react";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/components/ui";
@@ -85,9 +86,9 @@ export default function BigBasketDashboard() {
         subtitle="Catalog image background removal, precision FOP/BOP padding, and automated quality validation"
         actions={
           <div className="flex items-center gap-3">
-            <Link to="/image-studio/manual-review" className={SECONDARY_BUTTON}>
-              <AlertTriangle className="w-4 h-4 text-amber-500" />
-              Review Queue ({summary?.review_needed_images ?? 0})
+            <Link to="/image-studio/review-studio" className={SECONDARY_BUTTON}>
+              <Sliders className="w-4 h-4 text-sky-500" />
+              Review Studio
             </Link>
             <Link to="/image-studio/create-batch" className={PRIMARY_BUTTON}>
               <PlusCircle className="w-4 h-4" />

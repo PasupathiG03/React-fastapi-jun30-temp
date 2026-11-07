@@ -28,7 +28,7 @@ class BatchProcessConfig(BaseModel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# BATCH SCHEMAS
+# BATCH SCHEMAS (Model 1: ImageBatch)
 # ─────────────────────────────────────────────────────────────────────────────
 
 class BatchCreate(BaseModel):
@@ -60,6 +60,8 @@ class BatchOut(BaseModel):
     failed_images: int
     idempotency_key: Optional[str] = None
     config: Optional[dict[str, Any]] = None
+    zip_export_path: Optional[str] = None
+    excel_report_path: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     created_by: Optional[CreatorOut] = None
@@ -75,97 +77,17 @@ class BatchListResponse(BaseModel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EXCEL & MAPPING SCHEMAS
+# IMAGE SCHEMAS (Model 2: BatchImage)
 # ─────────────────────────────────────────────────────────────────────────────
-
-class ExcelColumnMapRequest(BaseModel):
-    bbid_column: str
-    filename_column: str
-    category_column: Optional[str] = None
-    sequence_column: Optional[str] = None
-
-
-class ExcelPreviewResponse(BaseModel):
-    filename: str
-    total_rows: int
-    columns: list[str]
-    sample_rows: list[dict[str, Any]]
-    suggested_mapping: dict[str, str]
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# IMAGE & ATTEMPTS SCHEMAS
-# ─────────────────────────────────────────────────────────────────────────────
-
-class ImageVersionOut(BaseModel):
-    id: int
-    version_type: str
-    file_path: str
-    width: Optional[int] = None
-    height: Optional[int] = None
-    file_size_bytes: Optional[int] = None
-    is_current: bool
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class ValidationResultOut(BaseModel):
-    id: int
-    passed: bool
-    dimension_valid: bool
-    dpi_valid: bool
-    alpha_valid: bool
-    padding_valid: bool
-    aspect_ratio_valid: bool
-    failure_reasons: Optional[list[str]] = None
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class AiPredictionOut(BaseModel):
-    id: int
-    provider: str
-    predicted_category: str
-    confidence_score: float
-    latency_ms: Optional[float] = None
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class ProcessingAttemptOut(BaseModel):
-    id: int
-    attempt_number: int
-    worker_id: Optional[str] = None
-    status: str
-    stage: Optional[str] = None
-    error_type: Optional[str] = None
-    error_message: Optional[str] = None
-    execution_time_ms: Optional[float] = None
-    started_at: datetime
-    ended_at: Optional[datetime] = None
-
-    model_config = {"from_attributes": True}
-
-
-class ImageReviewOut(BaseModel):
-    id: int
-    reviewer_id: Optional[int] = None
-    decision: str
-    crop_adjustments: Optional[dict[str, Any]] = None
-    comments: Optional[str] = None
-    reviewed_at: datetime
-
-    model_config = {"from_attributes": True}
-
 
 class BatchImageOut(BaseModel):
     id: int
     batch_id: int
     bbid: str
     original_filename: str
+    original_file_path: Optional[str] = None
+    segmented_file_path: Optional[str] = None
+    final_output_path: Optional[str] = None
     original_width: Optional[int] = None
     original_height: Optional[int] = None
     file_size_bytes: Optional[int] = None
@@ -173,19 +95,20 @@ class BatchImageOut(BaseModel):
     status: str
     sequence_order: int
     confidence_score: Optional[float] = None
-    final_output_path: Optional[str] = None
+    validation_results: Optional[dict[str, Any]] = None
+    validation_status: Optional[dict[str, Any]] = None
+    review_decision: Optional[str] = None
+    reviewer_id: Optional[int] = None
+    review_comments: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
     error_message: Optional[str] = None
     created_at: datetime
-    validation_status: Optional[ValidationResultOut] = None
-    ai_prediction: Optional[AiPredictionOut] = None
 
     model_config = {"from_attributes": True}
 
 
 class BatchImageDetailOut(BatchImageOut):
-    attempts: list[ProcessingAttemptOut] = []
-    versions: list[ImageVersionOut] = []
-    reviews: list[ImageReviewOut] = []
+    pass
 
 
 class ImageListResponse(BaseModel):
@@ -212,7 +135,7 @@ class BulkReviewActionRequest(BaseModel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# DASHBOARD & EVENTS SCHEMAS
+# DASHBOARD SUMMARY
 # ─────────────────────────────────────────────────────────────────────────────
 
 class DashboardSummaryOut(BaseModel):
@@ -225,26 +148,3 @@ class DashboardSummaryOut(BaseModel):
     auto_approval_rate: float
     avg_processing_time_ms: float
     recent_batches: list[BatchOut]
-
-
-class BatchEventOut(BaseModel):
-    id: int
-    batch_id: int
-    event_type: str
-    message: str
-    details: Optional[dict[str, Any]] = None
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class BatchExportOut(BaseModel):
-    id: int
-    batch_id: int
-    zip_file_path: str
-    excel_report_path: str
-    exported_count: int
-    exported_at: datetime
-
-    model_config = {"from_attributes": True}
-

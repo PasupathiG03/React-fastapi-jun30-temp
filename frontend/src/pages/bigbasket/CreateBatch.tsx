@@ -146,16 +146,24 @@ export default function CreateBatch() {
         {step === 1 && (
           <div className="space-y-5">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1.5">
-                Batch Name *
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  Batch Title *
+                </label>
+                <span className="text-[10px] font-mono font-medium text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-md border border-sky-500/20">
+                  Auto-assigned ID: IS-BATCH&lt;id&gt;
+                </span>
+              </div>
               <input
                 type="text"
                 value={batchName}
                 onChange={(e) => setBatchName(e.target.value)}
-                placeholder="e.g. Catalog Product Ingestion - Batch #1"
+                placeholder="e.g. Catalog Batch - Nov 7"
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 text-xs font-medium focus:outline-none focus:border-slate-300 dark:focus:border-slate-600 transition-colors"
               />
+              <p className="text-[11px] text-slate-500 mt-1">
+                Enter descriptive title. The extraction batch ID is automatically created as <span className="text-sky-400 font-mono font-medium">IS-BATCH-&lt;id&gt;</span> based on the database index.
+              </p>
             </div>
 
             <div>
@@ -257,7 +265,7 @@ export default function CreateBatch() {
                 {/* Divider */}
                 <div className="flex items-center gap-3">
                   <div className="flex-1 h-px bg-slate-200 dark:bg-white/10" />
-                  <span className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Or upload as ZIP</span>
+                  <span className="text-xs text-slate-400 font-medium">Or upload as ZIP</span>
                   <div className="flex-1 h-px bg-slate-200 dark:bg-white/10" />
                 </div>
 

@@ -4,7 +4,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, get_db
-from app.models.bigbasket import BatchExport, BatchImage, ImageBatch
+from app.models.bigbasket import BatchImage, ImageBatch
 from app.models.user import User
 from app.schemas.bigbasket import DashboardSummaryOut
 
@@ -48,11 +48,11 @@ def download_excel_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    export = db.query(BatchExport).filter(BatchExport.batch_id == batch_id).order_by(BatchExport.id.desc()).first()
-    if not export or not export.excel_report_path:
+    batch = db.query(ImageBatch).filter(ImageBatch.id == batch_id).first()
+    if not batch or not batch.excel_report_path:
         raise HTTPException(status_code=404, detail="Excel report not yet generated for this batch.")
 
-    p = Path(export.excel_report_path)
+    p = Path(batch.excel_report_path)
     if not p.exists():
         raise HTTPException(status_code=404, detail="Excel report file not found on disk.")
 
@@ -69,11 +69,11 @@ def download_output_zip(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    export = db.query(BatchExport).filter(BatchExport.batch_id == batch_id).order_by(BatchExport.id.desc()).first()
-    if not export or not export.zip_file_path:
+    batch = db.query(ImageBatch).filter(ImageBatch.id == batch_id).first()
+    if not batch or not batch.zip_export_path:
         raise HTTPException(status_code=404, detail="Output ZIP archive not yet generated for this batch.")
 
-    p = Path(export.zip_file_path)
+    p = Path(batch.zip_export_path)
     if not p.exists():
         raise HTTPException(status_code=404, detail="ZIP archive file not found on disk.")
 
@@ -82,4 +82,3 @@ def download_output_zip(
         media_type="application/zip",
         filename=p.name,
     )
-

@@ -8,7 +8,6 @@ import numpy as np
 from PIL import Image
 
 from app.core.logger import logger
-from app.services.bigbasket.storage import BigBasketStorage
 
 # Global singleton OCR reader loaded once into memory
 _OCR_READER = None

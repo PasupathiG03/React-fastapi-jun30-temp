@@ -98,9 +98,9 @@ function pageWindow(page: number, totalPages: number): (number | "…")[] {
 
 /** Footer: rows-per-page (left), first/prev/pages/next/last (center), "Showing x–y of z" (right). */
 export function TablePagination({ page, pageSize, totalPages, totalItems, onPageChange, onPageSizeChange }: PaginationProps) {
-  if (totalItems === 0) return null;
-  const from = (page - 1) * pageSize + 1;
+  const from = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, totalItems);
+  const effectiveTotalPages = Math.max(1, totalPages);
   const nav =
     "w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-sky-600 dark:hover:text-sky-400 disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-slate-400 disabled:cursor-not-allowed transition-colors";
 
@@ -119,13 +119,13 @@ export function TablePagination({ page, pageSize, totalPages, totalItems, onPage
       </div>
 
       <div className="flex items-center justify-center gap-1 sm:justify-self-center">
-        <button onClick={() => onPageChange(1)} disabled={page === 1} className={nav} title="First page">
+        <button onClick={() => onPageChange(1)} disabled={page <= 1 || totalItems === 0} className={nav} title="First page">
           <ChevronsLeft className="w-3.5 h-3.5" />
         </button>
-        <button onClick={() => onPageChange(page - 1)} disabled={page === 1} className={nav} title="Previous">
+        <button onClick={() => onPageChange(page - 1)} disabled={page <= 1 || totalItems === 0} className={nav} title="Previous">
           <ChevronLeft className="w-3.5 h-3.5" />
         </button>
-        {pageWindow(page, totalPages).map((p, i) =>
+        {pageWindow(page, effectiveTotalPages).map((p, i) =>
           p === "…" ? (
             <span key={`e${i}`} className="px-1 text-slate-400">
               …
@@ -134,7 +134,8 @@ export function TablePagination({ page, pageSize, totalPages, totalItems, onPage
             <button
               key={p}
               onClick={() => onPageChange(p)}
-              className={`min-w-7 h-7 px-2 rounded-lg text-xs font-semibold transition-all ${p === page
+              disabled={totalItems === 0}
+              className={`min-w-7 h-7 px-2 rounded-lg text-xs font-semibold transition-all ${p === page && totalItems > 0
                   ? "bg-gradient-to-br from-[#00c6ff] to-[#0072ff] text-white shadow-[0_0_12px_rgba(0,198,255,0.4)]"
                   : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-sky-600 dark:hover:text-sky-400"
                 }`}
@@ -143,16 +144,16 @@ export function TablePagination({ page, pageSize, totalPages, totalItems, onPage
             </button>
           )
         )}
-        <button onClick={() => onPageChange(page + 1)} disabled={page === totalPages} className={nav} title="Next">
+        <button onClick={() => onPageChange(page + 1)} disabled={page >= effectiveTotalPages || totalItems === 0} className={nav} title="Next">
           <ChevronRight className="w-3.5 h-3.5" />
         </button>
-        <button onClick={() => onPageChange(totalPages)} disabled={page === totalPages} className={nav} title="Last page">
+        <button onClick={() => onPageChange(effectiveTotalPages)} disabled={page >= effectiveTotalPages || totalItems === 0} className={nav} title="Last page">
           <ChevronsRight className="w-3.5 h-3.5" />
         </button>
       </div>
 
       <div className="text-slate-500 dark:text-slate-400 sm:justify-self-end">
-        Showing {from}–{to} of {totalItems}
+        {totalItems === 0 ? "Showing 0 of 0" : `Showing ${from}–${to} of ${totalItems}`}
       </div>
     </div>
   );

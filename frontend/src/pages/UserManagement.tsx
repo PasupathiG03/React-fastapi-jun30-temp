@@ -658,7 +658,7 @@ export default function UserManagementPage() {
                 <li key={user.id} className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-4 px-6 py-3.5 hover:bg-white/35 dark:hover:bg-white/[0.03] transition-colors">
 
                   <div className="flex items-center gap-4 flex-1 min-w-0">
-                    {/* S.No */}
+                    {/* # */}
                     <div className="w-8 shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500 text-center">
                       {(table.page - 1) * table.pageSize + index + 1}
                     </div>

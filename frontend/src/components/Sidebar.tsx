@@ -42,6 +42,7 @@ const ADMIN_SCREEN_URLS = new Set([
 
 // Image Studio process screens: separated into their own dedicated process section in the sidebar.
 const IMAGE_STUDIO_SCREEN_URLS = new Set([
+  "/image-studio",
   "/image-studio/dashboard",
   "/image-studio/create-batch",
   "/image-studio/batch-processing",
@@ -72,14 +73,8 @@ const DEV_ACCESS_CONTROL: FlyoutItem[] = [
   { href: "/access-control/menu-access", label: "Menu Access", Icon: ShieldCheck },
   { href: "/access-control/workflow-management", label: "Workflow Management", Icon: Network },
 ];
-const DEV_IMAGE_STUDIO: FlyoutItem[] = [
-  { href: "/image-studio/dashboard", label: "Studio Dashboard", Icon: ICON_MAP.Image },
-  { href: "/image-studio/create-batch", label: "Create Batch", Icon: ICON_MAP.Upload },
-  { href: "/image-studio/batch-processing", label: "Batch Pipeline", Icon: ICON_MAP.Layers },
-  { href: "/image-studio/manual-review", label: "Review Studio", Icon: ICON_MAP.CheckCircle },
-  { href: "/image-studio/reports", label: "Reports & Analytics", Icon: ICON_MAP.FileChartBar },
-];
-const BUILT_IN_URLS = new Set([DEV_DASHBOARD.href, DEV_ROUTER_SETUP.href, DEV_SUPPORT.href, ...DEV_ACCESS_CONTROL.map((i) => i.href)]);
+const DEV_IMAGE_STUDIO = { href: "/image-studio", label: "Image Studio", Icon: Sparkles };
+const BUILT_IN_URLS = new Set([DEV_DASHBOARD.href, DEV_ROUTER_SETUP.href, DEV_SUPPORT.href, DEV_IMAGE_STUDIO.href, ...DEV_ACCESS_CONTROL.map((i) => i.href)]);
 
 export function getProcessIcon(name: string): React.ElementType {
   const n = name.trim().toLowerCase();
@@ -193,7 +188,7 @@ function FlyoutGroup({
           className="fixed z-[1000]"
           style={{ top: pos.top, left: pos.left, paddingLeft: pos.gap, maxHeight: `calc(100vh - ${pos.top}px - 8px)` }}
         >
-          <div className="sidebar-flyout-in w-60 max-h-[inherit] overflow-y-auto rounded-2xl p-2 shadow-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0c1427]">
+          <div className="sidebar-flyout-in w-60 max-h-[inherit] overflow-y-auto no-scrollbar rounded-2xl p-2 shadow-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0c1427]">
             <div className="px-3 pt-1 pb-1.5 flex items-center justify-between">
               <p className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                 {label}
@@ -371,7 +366,6 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
 
   const [adminOpen, setAdminOpen] = useState<boolean | null>(null);
   const [devOpen, setDevOpen] = useState<boolean | null>(null);
-  const [bbOpen, setBbOpen] = useState<boolean | null>(null);
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/auth/me`)
@@ -539,7 +533,7 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
       <div className="lg:hidden mx-3 mt-1 mb-3 h-px bg-gradient-to-r from-transparent via-[#0084ff]/40 to-transparent" />
 
       {/* ── Nav Items Scroll Area ── */}
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden space-y-1">
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden no-scrollbar space-y-1">
         {loading || fetching || !roleReady ? (
           <div className="space-y-2.5 py-1 px-1">
             {/* Section 1: Developer */}
@@ -740,7 +734,7 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
               </>
             )}
 
-            {/* Image Automation: Placed after Administration process */}
+            {/* Image Automation: Single Unified Workspace */}
             {(isDeveloper || menuGroups.imageStudio.length > 0) && (
               <>
                 {!collapsed && (
@@ -748,76 +742,7 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
                     Image Automation
                   </p>
                 )}
-                {menuGroups.imageStudio.length > 0 ? (
-                  collapsed ? (
-                    menuGroups.imageStudio.map((e) =>
-                      e.kind === "item" ? (
-                        renderItem(e.item.url, e.item.name, getScreenIcon(e.item.name, e.item.url, e.item.icon))
-                      ) : (
-                        <FlyoutGroup
-                          key={e.group.key}
-                          label="Image Studio"
-                          Icon={Sparkles}
-                          active={isGroupActive(e.group.items)}
-                          items={e.group.items.map((i) => ({
-                            href: i.url,
-                            label: i.url.includes("dashboard") ? "Studio Dashboard" : i.url.includes("batch-processing") ? "Batch Pipeline" : i.url.includes("manual-review") ? "Review Studio" : i.name,
-                            Icon: getScreenIcon(i.name, i.url, i.icon),
-                          }))}
-                        />
-                      )
-                    )
-                  ) : (
-                    <>
-                      {menuGroups.imageStudio.map((e) =>
-                        e.kind === "item"
-                          ? renderItem(e.item.url, e.item.name, getScreenIcon(e.item.name, e.item.url, e.item.icon))
-                          : renderGroup(
-                              "Image Studio",
-                              Sparkles,
-                              isProcessOpen(e.group),
-                              isGroupActive(e.group.items),
-                              () => toggleProcess(e.group),
-                              e.group.items.map((item) =>
-                                renderItem(
-                                  item.url,
-                                  item.url.includes("dashboard") ? "Studio Dashboard" : item.url.includes("batch-processing") ? "Batch Pipeline" : item.url.includes("manual-review") ? "Review Studio" : item.name,
-                                  getScreenIcon(item.name, item.url, item.icon),
-                                  true
-                                )
-                              ),
-                              e.group.key,
-                              undefined,
-                              undefined,
-                              "Image Studio"
-                            )
-                      )}
-                    </>
-                  )
-                ) : (
-                  /* Developer fallback if dynamicMenus is empty */
-                  collapsed ? (
-                    <FlyoutGroup
-                      label="Image Studio"
-                      Icon={Sparkles}
-                      active={DEV_IMAGE_STUDIO.some((i) => pathname === i.href || pathname.startsWith(i.href + "/"))}
-                      items={DEV_IMAGE_STUDIO}
-                    />
-                  ) : (
-                    renderGroup(
-                      "Image Studio",
-                      Sparkles,
-                      bbOpen ?? DEV_IMAGE_STUDIO.some((i) => pathname === i.href || pathname.startsWith(i.href + "/")),
-                      DEV_IMAGE_STUDIO.some((i) => pathname === i.href || pathname.startsWith(i.href + "/")),
-                      () => setBbOpen(!(bbOpen ?? DEV_IMAGE_STUDIO.some((i) => pathname === i.href || pathname.startsWith(i.href + "/")))),
-                      DEV_IMAGE_STUDIO.map((i) => renderItem(i.href, i.label, i.Icon, true)),
-                      "dev-bb-group",
-                      undefined,
-                      undefined,
-                      "Image Studio"
-                    )
-                  )
-                )}
+                {renderItem(DEV_IMAGE_STUDIO.href, DEV_IMAGE_STUDIO.label, DEV_IMAGE_STUDIO.Icon)}
               </>
             )}
 

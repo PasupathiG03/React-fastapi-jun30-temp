@@ -103,6 +103,23 @@ html.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover,
   background: rgba(255, 255, 255, 0.35);
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   Hide scrollbars utility: hides the scrollbar bar while allowing smooth scrolling
+   ══════════════════════════════════════════════════════════════════════════ */
+.no-scrollbar,
+.scrollbar-none,
+[data-no-scrollbar] {
+  -ms-overflow-style: none !important; /* IE and Edge */
+  scrollbar-width: none !important;    /* Firefox */
+}
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar,
+[data-no-scrollbar]::-webkit-scrollbar {
+  display: none !important;            /* Chrome, Safari, WebKit */
+  width: 0 !important;
+  height: 0 !important;
+}
+
 /* Browser autofill (saved logins) paints its own grey/blue box over the input. Keep the field's own
    background instead and only fix the text colour for light and dark themes. */
 input:-webkit-autofill,

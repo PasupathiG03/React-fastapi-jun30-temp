@@ -4,10 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, get_db
-from app.models.bigbasket import BatchImage, ImageBatch, ImageReview
+from app.models.bigbasket import BatchImage, ImageBatch
 from app.models.user import User
 from app.schemas.bigbasket import (
-    BatchImageOut,
     BulkReviewActionRequest,
     ImageListResponse,
     ReviewActionRequest,
@@ -57,15 +56,10 @@ def submit_review_action(
     if not img:
         raise HTTPException(status_code=404, detail="Image not found")
 
-    rev = ImageReview(
-        image_id=img.id,
-        reviewer_id=current_user.id,
-        decision=payload.decision,
-        crop_adjustments=payload.crop_adjustments,
-        comments=payload.comments,
-        reviewed_at=datetime.now(timezone.utc),
-    )
-    db.add(rev)
+    img.review_decision = payload.decision
+    img.reviewer_id = current_user.id
+    img.review_comments = payload.comments
+    img.reviewed_at = datetime.now(timezone.utc)
 
     if payload.decision == "approved":
         img.status = "manually_approved"
@@ -106,16 +100,11 @@ def submit_bulk_review(
     new_status = "manually_approved" if payload.decision == "approved" else "rejected"
 
     for img in images:
-        rev = ImageReview(
-            image_id=img.id,
-            reviewer_id=current_user.id,
-            decision=payload.decision,
-            comments=payload.comments,
-            reviewed_at=now,
-        )
-        db.add(rev)
+        img.review_decision = payload.decision
+        img.reviewer_id = current_user.id
+        img.review_comments = payload.comments
+        img.reviewed_at = now
         img.status = new_status
 
     db.commit()
     return {"message": f"Bulk {payload.decision} applied to {len(images)} images."}
-
