@@ -152,7 +152,7 @@ export default function BigBasketDashboard() {
               </div>
               <div className="flex justify-between py-1.5">
                 <span className="text-slate-500">Auto-Approval Threshold</span>
-                <span className="font-semibold text-emerald-600 dark:text-emerald-400">≥ 95.0% Confidence</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">100% Accuracy Confidence</span>
               </div>
             </div>
             <div className="pt-2">

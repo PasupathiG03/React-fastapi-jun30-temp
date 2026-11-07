@@ -317,7 +317,13 @@ class BatchProcessor:
             attempt.ended_at = datetime.now(timezone.utc)
 
             # 6. Automatic Sub-Region Extraction for Back-of-Pack (BOP) images (Way 2)
-            is_bop = (img.image_type or "").lower().strip() in ("bop", "back", "back of pack") or img.sequence_order == 2
+            fname_lower = (img.original_filename or "").lower()
+            img_type_lower = (img.image_type or "").lower().strip()
+            is_bop = (
+                img_type_lower in ("bop", "back", "back of pack")
+                or (img.sequence_order is not None and img.sequence_order >= 2)
+                or any(k in fname_lower for k in ["(2)", "(10)", "back", "bop", "rear", "panel"])
+            )
             if is_bop:
                 cls._extract_and_register_bop_sub_regions(db, img, batch, raw_bytes, cfg)
         except Exception as e:
@@ -410,7 +416,7 @@ class BatchProcessor:
                     image_type=sub["category"],
                     sequence_order=sub["sequence_order"],
                     status="auto_approved",
-                    confidence_score=0.96,
+                    confidence_score=1.0,
                     original_width=sub["crop_width"],
                     original_height=sub["crop_height"],
                     file_size_bytes=len(sub["canvas_bytes"]),

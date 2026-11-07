@@ -393,22 +393,44 @@ export default function ReviewStudio() {
             <div className="space-y-2 text-xs">
               <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
                 <span className="text-slate-600 dark:text-slate-400">Dimensions (2000 × 2000):</span>
-                <span className="font-semibold text-emerald-600 dark:text-emerald-400">PASSED</span>
+                <span className={`font-semibold ${image?.validation_status?.dimension_valid !== false ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}`}>
+                  {image?.validation_status?.dimension_valid !== false ? "PASSED" : "FAILED"}
+                </span>
               </div>
               <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
                 <span className="text-slate-600 dark:text-slate-400">DPI Header (150 DPI):</span>
-                <span className="font-semibold text-emerald-600 dark:text-emerald-400">PASSED</span>
+                <span className={`font-semibold ${image?.validation_status?.dpi_valid !== false ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}`}>
+                  {image?.validation_status?.dpi_valid !== false ? "PASSED" : "FAILED"}
+                </span>
               </div>
               <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
                 <span className="text-slate-600 dark:text-slate-400">Transparent Background:</span>
-                <span className="font-semibold text-emerald-600 dark:text-emerald-400">PASSED</span>
+                <span className={`font-semibold ${image?.validation_status?.alpha_valid !== false ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}`}>
+                  {image?.validation_status?.alpha_valid !== false ? "PASSED" : "FAILED"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
+                <span className="text-slate-600 dark:text-slate-400">Framing (Table 3 Margins):</span>
+                <span className={`font-semibold ${image?.validation_status?.padding_valid !== false ? "text-emerald-600 dark:text-emerald-400" : "text-amber-500"}`}>
+                  {image?.validation_status?.padding_valid !== false ? "PASSED" : "WARNING"}
+                </span>
               </div>
               <div className="flex items-center justify-between py-1">
                 <span className="text-slate-600 dark:text-slate-400">AI Confidence:</span>
                 <span className="font-bold text-slate-900 dark:text-white">
-                  {Math.round((image.confidence_score || 0.95) * 100)}%
+                  {Math.round((image?.confidence_score ?? 1.0) * 100)}%
                 </span>
               </div>
+              {image?.validation_status?.failure_reasons && image.validation_status.failure_reasons.length > 0 && (
+                <div className="mt-2 p-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-500 text-[11px] space-y-1">
+                  <div className="font-bold">Detected Defect Warnings:</div>
+                  <ul className="list-disc pl-3 space-y-0.5">
+                    {image.validation_status.failure_reasons.map((r: string, idx: number) => (
+                      <li key={idx}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
 

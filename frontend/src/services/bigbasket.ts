@@ -186,6 +186,17 @@ export async function uploadBatchImagesZip(batchId: number, zipFile: File): Prom
   });
 }
 
+export async function uploadBatchImageFiles(batchId: number, files: File[]): Promise<any> {
+  const fd = new FormData();
+  for (const f of files) {
+    fd.append("files", f);
+  }
+  return request(`/api/image-studio/uploads/batch/${batchId}/images-files`, {
+    method: "POST",
+    body: fd,
+  });
+}
+
 export async function fetchBatchImages(
   batchId: number,
   page = 1,

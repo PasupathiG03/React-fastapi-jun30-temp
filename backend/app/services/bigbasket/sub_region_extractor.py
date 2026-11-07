@@ -17,9 +17,32 @@ _OCR_READER = None
 def get_ocr_reader():
     global _OCR_READER
     if _OCR_READER is None:
-        import easyocr
-        # Use CPU reader
-        _OCR_READER = easyocr.Reader(["en"], gpu=False)
+        try:
+            from rapidocr_onnxruntime import RapidOCR
+            engine = RapidOCR()
+
+            class RapidOCRWrapper:
+                def readtext(self, img_arr):
+                    res, _ = engine(img_arr)
+                    if not res:
+                        return []
+                    return [[r[0], r[1], float(r[2])] for r in res]
+
+            _OCR_READER = RapidOCRWrapper()
+            logger.info("Initialized high-speed RapidOCR ONNX engine.")
+        except Exception as e:
+            try:
+                import easyocr
+                _OCR_READER = easyocr.Reader(["en"], gpu=False)
+                logger.info("Initialized EasyOCR engine.")
+            except Exception as e2:
+                logger.warning(f"No OCR engine available: {e}, {e2}")
+
+                class DummyOCR:
+                    def readtext(self, img_arr):
+                        return []
+
+                _OCR_READER = DummyOCR()
     return _OCR_READER
 
 
@@ -45,10 +68,7 @@ class SubRegionExtractor:
         orig_w, orig_h = raw_img.size
         arr = np.array(raw_img)
 
-        # 1. Dynamic Barcode Detection using OpenCV Barcode Detector
-        barcode_bbox = cls._detect_barcode_dynamic(arr)
-
-        # 2. Dynamic Text Localization using OCR
+        # 1. Dynamic Text Localization using OCR
         ocr = get_ocr_reader()
         raw_ocr_results = ocr.readtext(arr)
         logger.info(f"Dynamic OCR detected {len(raw_ocr_results)} text lines for BBID {bbid}")
@@ -82,6 +102,9 @@ class SubRegionExtractor:
 
         mrp_top = min([b["y1"] for b in price_boxes]) if price_boxes else orig_h
 
+        # Dynamic Barcode Detection with MRP boundary awareness
+        barcode_bbox = cls._detect_barcode_dynamic(arr, mrp_top=mrp_top)
+
         # 4. Determine if Food vs Non-Food packaging
         cat_lower = (category or "").lower().strip()
         is_known_non_food = any(k in cat_lower for k in [
@@ -89,18 +112,18 @@ class SubRegionExtractor:
             "personal care", "detergent", "clean", "household", "laundry"
         ])
 
-        # 5. Dynamic Section Discovery
+        # 5. Dynamic Section Discovery (robust to glued words in packaging OCR)
         nutri_patterns = [
-            r'\bnutrition\b', r'\bnutritional\b', r'per\s+100', r'energy\s*\(kcal\)', r'approximate\s+value'
+            r'nutrition', r'nutritional', r'per\s*100', r'energy', r'approximate\s*value', r'typical\s*value'
         ]
         ing_patterns = [
-            r'ingr', r'ingp', r'direc', r'dlrec', r'water', r'aqua', r'composition', r'contains', r'how to use', r'usage'
+            r'ingr', r'ingp', r'direc', r'dlrec', r'water', r'aqua', r'composition', r'contains', r'how\s*to\s*use', r'usage'
         ]
         mfg_patterns = [
-            r'\bmfd\b', r'\bmanufactur', r'\bmarket', r'\bconsumer\b', r'\bcustomercare\b', r'\bpacker\b', r'\bpacked\b', r'\bpvt\b'
+            r'mfd', r'mfg', r'manufactur', r'market', r'consumer', r'customercare', r'customer\s*care', r'packer', r'packed', r'pvt'
         ]
         fssai_patterns = [
-            r'\bfssai\b', r'\blic\s*(no|\.?)\b', r'\blicense\s*(no|\.?)\b'
+            r'fssai', r'lic\s*(no|\.?)', r'license\s*(no|\.?)'
         ]
 
         # Scan line indices
@@ -260,9 +283,15 @@ class SubRegionExtractor:
         return extracted_results
 
     @classmethod
-    def _detect_barcode_dynamic(cls, arr: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
+    def _detect_barcode_dynamic(
+        cls,
+        arr: np.ndarray,
+        mrp_top: Optional[int] = None,
+    ) -> Optional[Tuple[int, int, int, int]]:
         """
-        Dynamically locates the exact pixel coordinates of an EAN/UPC barcode on ANY packaging.
+        Dynamically locates the complete pixel coordinates of an EAN/UPC barcode on ANY packaging,
+        including the full zebra bars, Human Readable Interpretation (HRI) digits, and GS1 quiet zones.
+        Ensures neither the numbers nor the margins are cut off.
         """
         try:
             detector = cv2.barcode.BarcodeDetector()
@@ -271,11 +300,49 @@ class SubRegionExtractor:
             points = res[1] if isinstance(res[1], np.ndarray) else (res[2] if len(res) > 2 and isinstance(res[2], np.ndarray) else None)
             if points is not None and len(points) > 0:
                 pts = points.reshape(-1, 2)
-                x1 = max(0, int(np.min(pts[:, 0])) - 15)
-                y1 = max(0, int(np.min(pts[:, 1])) - 15)
-                x2 = min(arr.shape[1], int(np.max(pts[:, 0])) + 15)
-                y2 = min(arr.shape[0], int(np.max(pts[:, 1])) + 15)
-                return (x1, y1, x2, y2)
+                bx1 = int(np.min(pts[:, 0]))
+                by1 = int(np.min(pts[:, 1]))
+                bx2 = int(np.max(pts[:, 0]))
+                by2 = int(np.max(pts[:, 1]))
+
+                bw = bx2 - bx1
+                bh = by2 - by1
+                is_vertical = bh > bw
+
+                h_img, w_img, _ = arr.shape
+                gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+
+                if is_vertical:
+                    # Vertical barcode (height > width):
+                    # The numbers are printed alongside the bars (usually on the right or left).
+                    # Check which side has the digits by sampling dark pixels in 35px strips:
+                    right_strip = gray[by1:by2, bx2:min(w_img, bx2 + 35)]
+                    left_strip = gray[by1:by2, max(0, bx1 - 35):bx1]
+                    right_dark = int(np.sum(right_strip < 130))
+                    left_dark = int(np.sum(left_strip < 130))
+
+                    # Allow 48px on the numbers side to capture all digits + quiet zone margin
+                    # Allow 25px on the non-numbers side for quiet zone
+                    if right_dark >= left_dark:
+                        fx1 = max(0, bx1 - 25)
+                        fx2 = min(w_img, bx2 + 48)
+                    else:
+                        fx1 = max(0, bx1 - 48)
+                        fx2 = min(w_img, bx2 + 25)
+                    fy1 = max(0, by1 - 20)
+                    fy2 = min(h_img, by2 + 15)
+                else:
+                    # Standard horizontal barcode (width >= height):
+                    # Numbers are printed below the bars, extending 35-45px.
+                    fx1 = max(0, bx1 - 30)
+                    fx2 = min(w_img, bx2 + 30)
+                    fy1 = max(0, by1 - 20)
+                    fy2 = min(h_img, by2 + 48)
+
+                if mrp_top and fy2 > mrp_top:
+                    fy2 = mrp_top - 5
+
+                return (fx1, fy1, fx2, fy2)
         except Exception as e:
             logger.warning(f"Barcode detection error: {e}")
         return None

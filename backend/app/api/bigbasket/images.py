@@ -60,6 +60,9 @@ def get_image_details(
     img = db.query(BatchImage).filter(BatchImage.id == image_id).first()
     if not img:
         raise HTTPException(status_code=404, detail="Image not found")
+    # Attach latest real validation result if available
+    latest_val = img.validation_results[-1] if img.validation_results else None
+    setattr(img, "validation_status", latest_val)
     return img
 
 

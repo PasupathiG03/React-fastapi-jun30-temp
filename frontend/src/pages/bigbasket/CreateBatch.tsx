@@ -10,6 +10,8 @@ import {
   ArrowLeft,
   Sparkles,
   Download,
+  Image as ImageIcon,
+  Zap,
 } from "lucide-react";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/components/ui";
@@ -19,6 +21,7 @@ import {
   previewManifest,
   uploadBatchManifest,
   uploadBatchImagesZip,
+  uploadBatchImageFiles,
   verifyDriveFolder,
   getManifestTemplateUrl,
   type ExcelPreview,
@@ -31,9 +34,9 @@ export default function CreateBatch() {
 
   // Step 1: Basics
   const [batchName, setBatchName] = useState("");
-  const [sourceType, setSourceType] = useState<"manual_upload" | "google_drive">("manual_upload");
+  const [sourceType, setSourceType] = useState<"auto_images" | "manual_upload" | "google_drive">("auto_images");
 
-  // Step 2: Manifest
+  // Step 2: Manifest (Optional)
   const [manifestFile, setManifestFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ExcelPreview | null>(null);
   const [mapping, setMapping] = useState({
@@ -43,7 +46,8 @@ export default function CreateBatch() {
     sequence: "",
   });
 
-  // Step 3: Images
+  // Step 3: Images (Direct files or ZIP)
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [zipFile, setZipFile] = useState<File | null>(null);
   const [driveUrl, setDriveUrl] = useState("");
   const [driveVerified, setDriveVerified] = useState(false);
@@ -54,7 +58,7 @@ export default function CreateBatch() {
     canvas_height: 2000,
     dpi: 150,
     fop_bop_padding: { top: 180, bottom: 180, left: 100, right: 100 },
-    confidence_threshold: 0.95,
+    confidence_threshold: 1.0,
     auto_inpaint_mrp: true,
   });
 
@@ -109,13 +113,15 @@ export default function CreateBatch() {
         config,
       });
 
-      // 2. Upload Manifest if present
+      // 2. Upload Manifest if user provided one
       if (manifestFile && preview) {
         await uploadBatchManifest(batch.id, manifestFile, mapping);
       }
 
-      // 3. Upload ZIP if manual
-      if (sourceType === "manual_upload" && zipFile) {
+      // 3. Upload Images
+      if (imageFiles.length > 0) {
+        await uploadBatchImageFiles(batch.id, imageFiles);
+      } else if (zipFile) {
         await uploadBatchImagesZip(batch.id, zipFile);
       }
 
@@ -133,22 +139,33 @@ export default function CreateBatch() {
     }
   }
 
+  // Wizard steps dynamically adjusted if user skips Excel
+  const wizardSteps = sourceType === "auto_images"
+    ? [
+        { num: 1, label: "Batch Setup" },
+        { num: 3, label: "Upload Images" },
+        { num: 4, label: "Review & Launch" },
+      ]
+    : [
+        { num: 1, label: "Batch Setup" },
+        { num: 2, label: "Excel Mapping (Optional)" },
+        { num: 3, label: "Image Source" },
+        { num: 4, label: "Review & Launch" },
+      ];
+
+  const totalImageSizeMb = imageFiles.reduce((acc, f) => acc + f.size, 0) / (1024 * 1024);
+
   return (
     <PageContainer>
       <PageHeader
         icon={Upload}
         title="Create Image Ingestion Batch"
-        subtitle="Upload catalog manifest and product images for automated processing"
+        subtitle="Automated image ingestion, background removal, repadding & catalog export"
       />
 
       {/* Step Indicator */}
       <div className="flex items-center justify-between max-w-2xl mx-auto py-2">
-        {[
-          { num: 1, label: "Batch Setup" },
-          { num: 2, label: "Excel Mapping" },
-          { num: 3, label: "Image Source" },
-          { num: 4, label: "Review & Launch" },
-        ].map((s) => (
+        {wizardSteps.map((s, idx) => (
           <div key={s.num} className="flex items-center gap-2">
             <div
               className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
@@ -159,7 +176,7 @@ export default function CreateBatch() {
                   : "bg-slate-200 dark:bg-white/10 text-slate-500"
               }`}
             >
-              {step > s.num ? <CheckCircle className="w-4 h-4" /> : s.num}
+              {step > s.num ? <CheckCircle className="w-4 h-4" /> : idx + 1}
             </div>
             <span
               className={`text-xs font-medium hidden sm:inline ${
@@ -192,9 +209,30 @@ export default function CreateBatch() {
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-2">
-                Input Source Type
+                Ingestion Mode
               </label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* 1. Direct Image Only (Automated) */}
+                <button
+                  type="button"
+                  onClick={() => setSourceType("auto_images")}
+                  className={`p-4 rounded-xl border text-left transition-all relative ${
+                    sourceType === "auto_images"
+                      ? "border-sky-500 bg-sky-500/10 shadow-sm ring-1 ring-sky-500/30"
+                      : "border-slate-200 dark:border-white/10 hover:border-slate-300"
+                  }`}
+                >
+                  <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-sky-500 text-white uppercase tracking-wider">
+                    Automated
+                  </span>
+                  <Zap className="w-5 h-5 text-sky-500 mb-2" />
+                  <div className="font-semibold text-xs text-slate-900 dark:text-white">Images Only</div>
+                  <div className="text-[11px] text-slate-500 mt-1 leading-snug">
+                    Upload images directly. AI auto-detects SKU and angles without Excel.
+                  </div>
+                </button>
+
+                {/* 2. Manual with Excel */}
                 <button
                   type="button"
                   onClick={() => setSourceType("manual_upload")}
@@ -204,11 +242,14 @@ export default function CreateBatch() {
                       : "border-slate-200 dark:border-white/10 hover:border-slate-300"
                   }`}
                 >
-                  <FolderArchive className="w-5 h-5 text-sky-500 mb-2" />
-                  <div className="font-semibold text-xs text-slate-900 dark:text-white">Manual Upload</div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">Upload Excel sheet and ZIP archive of images</div>
+                  <FileSpreadsheet className="w-5 h-5 text-sky-500 mb-2" />
+                  <div className="font-semibold text-xs text-slate-900 dark:text-white">Excel + Images</div>
+                  <div className="text-[11px] text-slate-500 mt-1 leading-snug">
+                    Upload an Excel/CSV catalog sheet to map custom columns.
+                  </div>
                 </button>
 
+                {/* 3. Google Drive */}
                 <button
                   type="button"
                   onClick={() => setSourceType("google_drive")}
@@ -220,7 +261,9 @@ export default function CreateBatch() {
                 >
                   <Cloud className="w-5 h-5 text-sky-500 mb-2" />
                   <div className="font-semibold text-xs text-slate-900 dark:text-white">Google Drive</div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">Ingest from shared Google Drive folder link</div>
+                  <div className="text-[11px] text-slate-500 mt-1 leading-snug">
+                    Ingest directly from a shared Google Drive folder link.
+                  </div>
                 </button>
               </div>
             </div>
@@ -229,10 +272,10 @@ export default function CreateBatch() {
               <button
                 type="button"
                 disabled={!batchName.trim()}
-                onClick={() => setStep(2)}
+                onClick={() => setStep(sourceType === "auto_images" ? 3 : 2)}
                 className={PRIMARY_BUTTON}
               >
-                Next: Excel Mapping
+                {sourceType === "auto_images" ? "Next: Upload Images" : "Next: Excel Mapping"}
                 <ArrowRight className="w-4 h-4 ml-1" />
               </button>
             </div>
@@ -241,10 +284,31 @@ export default function CreateBatch() {
 
         {step === 2 && (
           <div className="space-y-4">
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">Excel Manifest & Column Mapping</h3>
-            <p className="text-xs text-slate-500">
-              Upload the product metadata sheet (XLSX or CSV). The tool will auto-detect product ID and image name columns.
-            </p>
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Excel Manifest (Optional)</h3>
+              <button
+                type="button"
+                onClick={() => setStep(3)}
+                className="text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline inline-flex items-center gap-1"
+              >
+                Skip Excel & Upload Images Only
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Quick Helper Banner */}
+            <div className="p-3.5 rounded-xl border border-sky-200 dark:border-sky-500/20 bg-sky-50 dark:bg-sky-500/10 flex items-start justify-between gap-3">
+              <div className="text-xs text-sky-900 dark:text-sky-200">
+                <span className="font-bold">No Excel sheet?</span> You can skip this step completely. If you upload only image files, the AI automatically assigns SKU codes and angles directly from your file names.
+              </div>
+              <button
+                type="button"
+                onClick={() => setStep(3)}
+                className="shrink-0 px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-600 text-white text-xs font-semibold shadow-xs transition-colors"
+              >
+                Skip Excel →
+              </button>
+            </div>
 
             {/* Quick Template Download */}
             <div className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-900/40">
@@ -317,38 +381,6 @@ export default function CreateBatch() {
                       ))}
                     </select>
                   </div>
-
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
-                      Category / Type
-                    </label>
-                    <select
-                      value={mapping.category}
-                      onChange={(e) => setMapping({ ...mapping, category: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-medium focus:outline-none focus:border-slate-300 dark:focus:border-slate-600 cursor-pointer transition-colors"
-                    >
-                      <option value="" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">(Optional - Local AI auto-classifies)</option>
-                      {preview.columns.map((c) => (
-                        <option key={c} value={c} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{c}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
-                      Sequence / Order
-                    </label>
-                    <select
-                      value={mapping.sequence}
-                      onChange={(e) => setMapping({ ...mapping, sequence: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-medium focus:outline-none focus:border-slate-300 dark:focus:border-slate-600 cursor-pointer transition-colors"
-                    >
-                      <option value="" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">(Optional - natural index)</option>
-                      {preview.columns.map((c) => (
-                        <option key={c} value={c} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{c}</option>
-                      ))}
-                    </select>
-                  </div>
                 </div>
               </div>
             )}
@@ -371,25 +403,70 @@ export default function CreateBatch() {
 
         {step === 3 && (
           <div className="space-y-4">
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">Product Images Ingestion</h3>
-            {sourceType === "manual_upload" ? (
-              <div className="border-2 border-dashed border-slate-200 dark:border-white/10 rounded-2xl p-6 text-center hover:border-sky-500 transition-colors">
-                <FolderArchive className="w-8 h-8 text-sky-500 mx-auto mb-2" />
-                <label className="cursor-pointer text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline">
-                  Choose Images ZIP Archive
-                  <input
-                    type="file"
-                    accept=".zip"
-                    className="hidden"
-                    onChange={(e) => setZipFile(e.target.files?.[0] || null)}
-                  />
-                </label>
-                {zipFile && (
-                  <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-2 font-medium">
-                    Selected: {zipFile.name} ({(zipFile.size / (1024 * 1024)).toFixed(1)} MB)
-                  </div>
-                )}
-                <p className="text-[11px] text-slate-400 mt-1">Accepts ZIP archives containing PNG and JPEG images</p>
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Product Images Ingestion</h3>
+              <span className="text-xs text-sky-600 dark:text-sky-400 font-medium">
+                {sourceType === "auto_images" ? "Direct Image Upload Mode" : "Catalog Mode"}
+              </span>
+            </div>
+
+            {sourceType !== "google_drive" ? (
+              <div className="space-y-4">
+                {/* 1. Direct multiple image files upload */}
+                <div className="border-2 border-dashed border-slate-200 dark:border-white/10 rounded-2xl p-6 text-center hover:border-sky-500 transition-colors">
+                  <ImageIcon className="w-9 h-9 text-sky-500 mx-auto mb-2" />
+                  <label className="cursor-pointer text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline">
+                    Choose Image Files (Select Multiple)
+                    <input
+                      type="file"
+                      multiple
+                      accept=".png,.jpg,.jpeg,.webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        setImageFiles(files);
+                        if (files.length > 0) setZipFile(null);
+                      }}
+                    />
+                  </label>
+                  <p className="text-[11px] text-slate-400 mt-1">Select one or multiple images (.jpg, .png, .webp)</p>
+                  {imageFiles.length > 0 && (
+                    <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-2 font-medium flex items-center justify-center gap-1.5">
+                      <CheckCircle className="w-4 h-4" />
+                      Selected {imageFiles.length} image file(s) ({totalImageSizeMb.toFixed(1)} MB)
+                    </div>
+                  )}
+                </div>
+
+                {/* Divider */}
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px bg-slate-200 dark:bg-white/10" />
+                  <span className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Or upload as ZIP</span>
+                  <div className="flex-1 h-px bg-slate-200 dark:bg-white/10" />
+                </div>
+
+                {/* 2. ZIP Archive option */}
+                <div className="border-2 border-dashed border-slate-200 dark:border-white/10 rounded-2xl p-4 text-center hover:border-sky-500 transition-colors">
+                  <FolderArchive className="w-6 h-6 text-slate-400 mx-auto mb-1.5" />
+                  <label className="cursor-pointer text-xs font-semibold text-slate-600 dark:text-slate-300 hover:underline">
+                    Choose Images ZIP Archive
+                    <input
+                      type="file"
+                      accept=".zip"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setZipFile(file);
+                        if (file) setImageFiles([]);
+                      }}
+                    />
+                  </label>
+                  {zipFile && (
+                    <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-2 font-medium">
+                      Selected ZIP: {zipFile.name} ({(zipFile.size / (1024 * 1024)).toFixed(1)} MB)
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="space-y-3">
@@ -425,11 +502,16 @@ export default function CreateBatch() {
             )}
 
             <div className="flex justify-between pt-3">
-              <button type="button" onClick={() => setStep(2)} className={SECONDARY_BUTTON}>
+              <button
+                type="button"
+                onClick={() => setStep(sourceType === "auto_images" ? 1 : 2)}
+                className={SECONDARY_BUTTON}
+              >
                 <ArrowLeft className="w-4 h-4 mr-1" /> Back
               </button>
               <button
                 type="button"
+                disabled={imageFiles.length === 0 && !zipFile && !driveVerified}
                 onClick={() => setStep(4)}
                 className={PRIMARY_BUTTON}
               >
@@ -451,19 +533,27 @@ export default function CreateBatch() {
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Source:</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200 capitalize">{sourceType.replace("_", " ")}</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {sourceType === "auto_images" ? "Images Only (Auto-detected SKU)" : sourceType.replace("_", " ")}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Images to Ingest:</span>
+                <span className="font-semibold text-sky-600 dark:text-sky-400">
+                  {imageFiles.length > 0
+                    ? `${imageFiles.length} file(s) selected`
+                    : zipFile
+                    ? `ZIP: ${zipFile.name}`
+                    : "Google Drive Folder"}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Target Output Canvas:</span>
                 <span className="font-semibold text-slate-800 dark:text-slate-200">2000 × 2000 px, 150 DPI</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">FOP/BOP Padding:</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200">Top/Bottom: 180px, Left/Right: 100px</span>
-              </div>
-              <div className="flex justify-between">
                 <span className="text-slate-500">Confidence Threshold:</span>
-                <span className="font-semibold text-emerald-600 dark:text-emerald-400">95.0% Confidence Level</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">100% Accuracy / Confidence Level</span>
               </div>
             </div>
 

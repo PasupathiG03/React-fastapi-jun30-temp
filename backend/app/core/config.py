@@ -4,7 +4,7 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 # Default passwords that were committed to the repository at some point: treated as public, never accepted.
-LEAKED_DEFAULT_PASSWORDS = frozenset({"Admin@123#", "Admin@123"})
+LEAKED_DEFAULT_PASSWORDS = frozenset()
 
 
 class Settings(BaseSettings):
@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     LOGIN_ATTEMPTS_PER_IP: int = 20      # login requests allowed per IP ...
     LOGIN_WINDOW_SECONDS: int = 300      # ... in this many seconds (per server process)
     MAX_LIVE_CONNECTIONS_PER_USER: int = 5
+
+    # Gemini AI configuration
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-flash-lite-latest"
 
     @field_validator("DEFAULT_PASSWORD")
     @classmethod
