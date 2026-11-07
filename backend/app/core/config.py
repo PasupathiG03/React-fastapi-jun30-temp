@@ -1,7 +1,11 @@
 import re
+from pathlib import Path
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
+
+_BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+_ROOT_DIR = _BACKEND_DIR.parent
 
 # Default passwords that were committed to the repository at some point: treated as public, never accepted.
 LEAKED_DEFAULT_PASSWORDS = frozenset()
@@ -17,8 +21,8 @@ class Settings(BaseSettings):
     # Initial password for new users. Required, no default: a default in code is a password everyone can read.
     DEFAULT_PASSWORD: str
 
-    # Browser origins allowed to call the API (comma separated). Never "*": requests carry the session cookie.
-    CORS_ORIGINS: str = "http://localhost:8106"
+    # Browser origins allowed to call the API (comma separated). Fetched from .env. Never "*": requests carry the session cookie.
+    CORS_ORIGINS: str
 
     # Sessions. ACCESS_TOKEN_EXPIRE_MINUTES is the longest a sign-in can last in total; the session also ends
     # after SESSION_IDLE_MINUTES without activity (it is renewed while the user keeps working).
@@ -36,9 +40,9 @@ class Settings(BaseSettings):
     LOGIN_WINDOW_SECONDS: int = 300      # ... in this many seconds (per server process)
     MAX_LIVE_CONNECTIONS_PER_USER: int = 5
 
-    # Gemini AI configuration
-    GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-flash-lite-latest"
+    # Photoroom AI Background Removal configuration (https://docs.photoroom.com/)
+    PHOTOROOM_API_KEY: str = ""
+    BG_REMOVAL_PROVIDER: str = "photoroom"  # "photoroom", "local", or "hybrid"
 
     @field_validator("DEFAULT_PASSWORD")
     @classmethod
@@ -50,8 +54,9 @@ class Settings(BaseSettings):
         return v
 
     class Config:
-        env_file = ".env"
+        env_file = str(_ROOT_DIR / ".env")
         env_file_encoding = "utf-8"
+        extra = "ignore"
 
     @property
     def cookie_secure(self) -> bool:

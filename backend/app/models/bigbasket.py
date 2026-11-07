@@ -161,7 +161,7 @@ class ImageAiPrediction(Base):
     id = Column(Integer, primary_key=True, index=True)
     image_id = Column(Integer, ForeignKey("batch_images.id", ondelete="CASCADE"), nullable=False, index=True)
     attempt_id = Column(Integer, ForeignKey("processing_attempts.id", ondelete="SET NULL"), nullable=True, index=True)
-    provider = Column(String(50), nullable=False)  # local_cpu, gemini
+    provider = Column(String(50), nullable=False)  # local_cpu
     predicted_category = Column(String(50), nullable=False)
     confidence_score = Column(Float, nullable=False)
     raw_response = Column(JSON, nullable=True)

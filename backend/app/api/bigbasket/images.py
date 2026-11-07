@@ -160,3 +160,17 @@ def reapply_padding_endpoint(
 
     return {"message": "Padding re-applied successfully"}
 
+
+@router.get("/service/photoroom-status")
+def get_photoroom_status(current_user: User = Depends(get_current_user)):
+    """Check Photoroom AI API key configuration and account status."""
+    from app.services.bigbasket.photoroom_service import PhotoroomService
+    from app.core.config import settings
+
+    status = PhotoroomService.check_account_status()
+    return {
+        "provider": getattr(settings, "BG_REMOVAL_PROVIDER", "photoroom"),
+        "configured": PhotoroomService.is_configured(),
+        "account_status": status,
+    }
+
