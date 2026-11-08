@@ -91,12 +91,6 @@ export default function ReviewStudio() {
     setPan({ x: 0, y: 0 });
   }
 
-  function handleWheel(e: React.WheelEvent) {
-    e.preventDefault();
-    const delta = e.deltaY < 0 ? (zoom >= 300 ? 50 : 25) : (zoom > 300 ? -50 : -25);
-    setZoom((z) => Math.max(25, Math.min(1200, z + delta)));
-  }
-
   useEffect(() => {
     if (activeImageId) {
       loadDetails(activeImageId);
@@ -286,7 +280,7 @@ export default function ReviewStudio() {
               {/* Zoom & Fullscreen Controls */}
               <div className="flex items-center gap-1.5">
                 <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-slate-400 mr-1 select-none">
-                  <Move className="w-3 h-3 text-sky-500" /> Drag to move · Scroll to zoom
+                  <Move className="w-3 h-3 text-sky-500" /> Drag to move
                 </span>
                 <button
                   type="button"
@@ -358,10 +352,9 @@ export default function ReviewStudio() {
               </div>
             </div>
 
-            {/* Image Canvas with Wheel Zoom */}
+            {/* Image Canvas */}
             <div
               className="w-full flex-1 flex items-center justify-center p-4 overflow-hidden min-h-[460px] lg:min-h-[580px]"
-              onWheel={handleWheel}
             >
               {viewMode === "side_by_side" ? (
                 <div className="grid grid-cols-2 gap-4 w-full h-full max-h-[620px]">

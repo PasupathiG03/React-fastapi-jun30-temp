@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   Download,
   LineChart as LineChartIcon,
+  RotateCcw,
   ShieldCheck,
   Users,
   CheckCircle2,
@@ -17,6 +18,8 @@ import {
   type TimeseriesPoint,
 } from "@/services/apiDashboard";
 import { showError, showSuccess } from "@/lib/toast";
+import { TablePagination, TableSearchInput, TableExportButton } from "@/components/DataTableControls";
+import { useTableData } from "@/hooks/useTableData";
 
 export default function ApiDashboard() {
   const [activeTab, setActiveTab] = useState<"overview" | "usage">("overview");
@@ -24,14 +27,19 @@ export default function ApiDashboard() {
   // Overview data state
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [planMode, setPlanMode] = useState<"free_trial" | "sandbox">("free_trial");
+  const [overviewRoleFilter, setOverviewRoleFilter] = useState<string>("all");
 
   // Usage tab state & filters
   const [days, setDays] = useState(7);
   const [interval, setInterval] = useState("daily");
+  const [selectedService, setSelectedService] = useState<string>("all");
+  const [selectedUser, setSelectedUser] = useState<string>("all");
   const [usage, setUsage] = useState<UsageData | null>(null);
   const [viewMode, setViewMode] = useState<"chart" | "table">("table");
   const [chartType, setChartType] = useState<"line" | "bar">("line");
   const [isChartTypeOpen, setIsChartTypeOpen] = useState(false);
+  const [usageUserRoleFilter, setUsageUserRoleFilter] = useState<string>("all");
+  const [usageUserServiceFilter, setUsageUserServiceFilter] = useState<string>("all");
 
   useEffect(() => {
     loadOverview();
@@ -41,7 +49,7 @@ export default function ApiDashboard() {
     if (activeTab === "usage") {
       loadUsage();
     }
-  }, [activeTab, days, interval]);
+  }, [activeTab, days, interval, selectedService, selectedUser]);
 
   async function loadOverview(plan?: string) {
     try {
@@ -57,7 +65,12 @@ export default function ApiDashboard() {
 
   async function loadUsage() {
     try {
-      const data = await fetchApiUsage({ days, interval });
+      const data = await fetchApiUsage({
+        days,
+        interval,
+        user_id: selectedUser === "all" ? undefined : Number(selectedUser),
+        service_name: selectedService === "all" ? undefined : selectedService,
+      });
       setUsage(data);
     } catch (e: any) {
       showError(e.message || "Failed to load API usage breakdown");
@@ -65,8 +78,126 @@ export default function ApiDashboard() {
   }
 
   function handleExportCsv() {
-    window.open(getExportCsvUrl(days), "_blank");
+    window.open(
+      getExportCsvUrl(
+        days,
+        selectedUser === "all" ? undefined : Number(selectedUser),
+        selectedService === "all" ? undefined : selectedService
+      ),
+      "_blank"
+    );
     showSuccess(`Exporting API usage breakdown for last ${days} days...`);
+  }
+
+  // ── Overview Tab Derived Data & Table State ─────────────────────────────
+  const overviewRoles = useMemo(() => {
+    if (!overview?.user_usage) return [];
+    return Array.from(new Set(overview.user_usage.map((u) => u.role_name).filter(Boolean)));
+  }, [overview?.user_usage]);
+
+  const filteredOverviewUsers = useMemo(() => {
+    let list = overview?.user_usage || [];
+    if (overviewRoleFilter !== "all") {
+      list = list.filter((u) => u.role_name === overviewRoleFilter);
+    }
+    return list;
+  }, [overview?.user_usage, overviewRoleFilter]);
+
+  const overviewTable = useTableData(
+    filteredOverviewUsers,
+    (u) => [u.employee_name, u.employee_id, u.role_name, u.compliance_status].join(" "),
+    10
+  );
+
+  function handleExportOverviewUsers() {
+    void import("@/lib/exportData").then(({ exportToCsv }) =>
+      exportToCsv(
+        "user_api_consumption",
+        [
+          { header: "Employee Name", value: (u) => u.employee_name },
+          { header: "Employee ID", value: (u) => u.employee_id },
+          { header: "Role", value: (u) => u.role_name },
+          { header: "Total Requests", value: (u) => u.total_requests },
+          { header: "Successful", value: (u) => u.success_requests },
+          { header: "Failed", value: (u) => u.failed_requests },
+          { header: "Success Rate (%)", value: (u) => `${u.success_rate}%` },
+          { header: "Audit Status", value: (u) => u.compliance_status },
+          { header: "Last Active", value: (u) => (u.last_active ? new Date(u.last_active).toLocaleString() : "Never") },
+        ],
+        overviewTable.filtered
+      )
+    );
+  }
+
+  // ── Usage Tab Derived Data & Table State ────────────────────────────────
+  const availableServices = useMemo(() => {
+    const set = new Set<string>();
+    usage?.services?.forEach((s) => {
+      if (s.service_name && s.service_name !== "Total") set.add(s.service_name);
+    });
+    if (set.size === 0) set.add("Classic background remover");
+    return Array.from(set);
+  }, [usage?.services]);
+
+  const availableUsers = useMemo(() => {
+    const map = new Map<number, { id: number; name: string; employee_id: string }>();
+    overview?.user_usage?.forEach((u) => {
+      if (u.user_id) map.set(u.user_id, { id: u.user_id, name: u.employee_name, employee_id: u.employee_id });
+    });
+    usage?.user_breakdown?.forEach((u) => {
+      if (u.user_id && !map.has(u.user_id)) {
+        map.set(u.user_id, { id: u.user_id, name: u.employee_name, employee_id: u.employee_id });
+      }
+    });
+    return Array.from(map.values());
+  }, [overview?.user_usage, usage?.user_breakdown]);
+
+  const usageUserRoles = useMemo(() => {
+    if (!usage?.user_breakdown) return [];
+    return Array.from(new Set(usage.user_breakdown.map((u) => u.role_name).filter(Boolean)));
+  }, [usage?.user_breakdown]);
+
+  const filteredUsageUsers = useMemo(() => {
+    let list = usage?.user_breakdown || [];
+    if (usageUserRoleFilter !== "all") {
+      list = list.filter((u) => u.role_name === usageUserRoleFilter);
+    }
+    if (usageUserServiceFilter !== "all") {
+      list = list.filter((u) => u.service_name === usageUserServiceFilter);
+    }
+    return list;
+  }, [usage?.user_breakdown, usageUserRoleFilter, usageUserServiceFilter]);
+
+  const usageUserTable = useTableData(
+    filteredUsageUsers,
+    (u) => [u.employee_name, u.employee_id, u.role_name, u.service_name].join(" "),
+    10
+  );
+
+  function handleExportUsageUsers() {
+    void import("@/lib/exportData").then(({ exportToCsv }) =>
+      exportToCsv(
+        "api_requests_by_user",
+        [
+          { header: "Employee Name", value: (u) => u.employee_name },
+          { header: "Employee ID", value: (u) => u.employee_id },
+          { header: "Role", value: (u) => u.role_name },
+          { header: "API Service", value: (u) => u.service_name },
+          { header: "Total Requests", value: (u) => u.requests },
+          { header: "Successful", value: (u) => u.successful },
+          { header: "Failed", value: (u) => u.failed },
+          { header: "Last Active", value: (u) => (u.last_active ? new Date(u.last_active).toLocaleDateString() : "—") },
+        ],
+        usageUserTable.filtered
+      )
+    );
+  }
+
+  function resetUsageFilters() {
+    setDays(7);
+    setInterval("daily");
+    setSelectedService("all");
+    setSelectedUser("all");
   }
 
   return (
@@ -348,9 +479,62 @@ export default function ApiDashboard() {
                     How many requests have been done by each user with API calls & remaining quota
                   </p>
                 </div>
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                  <ShieldCheck className="w-3 h-3" /> Copyright Compliant
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    <ShieldCheck className="w-3 h-3" /> Copyright Compliant
+                  </span>
+                  <TableExportButton
+                    onExport={handleExportOverviewUsers}
+                    disabled={overviewTable.filtered.length === 0}
+                  />
+                </div>
+              </div>
+
+              {/* Filter controls bar for Overview users */}
+              <div className="flex items-center justify-between flex-wrap gap-3 pt-1">
+                <TableSearchInput
+                  query={overviewTable.query}
+                  onQueryChange={overviewTable.setQuery}
+                  placeholder="Search user, ID or role..."
+                  className="w-full sm:w-64"
+                />
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Role filter */}
+                  {overviewRoles.length > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-semibold text-slate-400">Role:</span>
+                      <select
+                        value={overviewRoleFilter}
+                        onChange={(e) => setOverviewRoleFilter(e.target.value)}
+                        className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 text-xs font-semibold focus:outline-none shadow-2xs"
+                      >
+                        <option value="all">All Roles</option>
+                        {overviewRoles.map((r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Reset button if filters active */}
+                  {(overviewTable.query || overviewRoleFilter !== "all") && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        overviewTable.setQuery("");
+                        setOverviewRoleFilter("all");
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-white bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 transition-colors"
+                      title="Reset filters"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Reset</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-white/10">
@@ -368,8 +552,8 @@ export default function ApiDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-white/5 font-medium">
-                    {overview?.user_usage && overview.user_usage.length > 0 ? (
-                      overview.user_usage.map((u) => (
+                    {overviewTable.paged && overviewTable.paged.length > 0 ? (
+                      overviewTable.paged.map((u) => (
                         <tr key={u.user_id} className="hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors">
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2.5">
@@ -421,13 +605,26 @@ export default function ApiDashboard() {
                     ) : (
                       <tr>
                         <td colSpan={8} className="py-8 text-center text-slate-400">
-                          No user API requests recorded yet.
+                          {overviewTable.total === 0
+                            ? "No user API requests recorded yet."
+                            : "No user records match your search or filter criteria."}
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
+
+              {overviewTable.filtered.length > 0 && (
+                <TablePagination
+                  page={overviewTable.page}
+                  pageSize={overviewTable.pageSize}
+                  totalPages={overviewTable.totalPages}
+                  totalItems={overviewTable.filtered.length}
+                  onPageChange={overviewTable.setPage}
+                  onPageSizeChange={overviewTable.setPageSize}
+                />
+              )}
             </div>
           </div>
         )}
@@ -439,7 +636,7 @@ export default function ApiDashboard() {
           <div className="space-y-6">
             {/* Filter Bar matching Screenshot 2 & 3 */}
             <div className="flex items-center justify-between flex-wrap gap-3">
-              {/* Left Filters: Range, Interval, API */}
+              {/* Left Filters: Range, Interval, API, User */}
               <div className="flex items-center gap-2 flex-wrap">
                 {/* Date range filter */}
                 <select
@@ -450,6 +647,8 @@ export default function ApiDashboard() {
                   <option value={7}>Last 7 days</option>
                   <option value={14}>Last 14 days</option>
                   <option value={30}>Last 30 days</option>
+                  <option value={60}>Last 60 days</option>
+                  <option value={90}>Last 90 days</option>
                 </select>
 
                 {/* Interval filter */}
@@ -463,9 +662,45 @@ export default function ApiDashboard() {
                 </select>
 
                 {/* API Filter */}
-                <div className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 text-xs font-semibold shadow-2xs">
-                  API: All
-                </div>
+                <select
+                  value={selectedService}
+                  onChange={(e) => setSelectedService(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-semibold focus:outline-none shadow-2xs"
+                >
+                  <option value="all">API: All</option>
+                  {availableServices.map((svc) => (
+                    <option key={svc} value={svc}>
+                      API: {svc}
+                    </option>
+                  ))}
+                </select>
+
+                {/* User Filter */}
+                <select
+                  value={selectedUser}
+                  onChange={(e) => setSelectedUser(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-semibold focus:outline-none shadow-2xs"
+                >
+                  <option value="all">User: All Users</option>
+                  {availableUsers.map((u) => (
+                    <option key={u.id} value={String(u.id)}>
+                      User: {u.name} ({u.employee_id})
+                    </option>
+                  ))}
+                </select>
+
+                {/* Reset button */}
+                {(days !== 7 || interval !== "daily" || selectedService !== "all" || selectedUser !== "all") && (
+                  <button
+                    type="button"
+                    onClick={resetUsageFilters}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-white bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 transition-colors"
+                    title="Reset Usage Filters"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Reset</span>
+                  </button>
+                )}
               </div>
 
               {/* Right: View Toggle (Chart / Table) */}
@@ -628,9 +863,85 @@ export default function ApiDashboard() {
 
                 {/* User Breakdown Section */}
                 <div className="pt-4 space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Requests Completed by User
-                  </h4>
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        Requests Completed by User
+                      </h4>
+                      <p className="text-[11px] text-slate-400">
+                        Detailed request log by employee and endpoint
+                      </p>
+                    </div>
+                    <TableExportButton
+                      onExport={handleExportUsageUsers}
+                      disabled={usageUserTable.filtered.length === 0}
+                    />
+                  </div>
+
+                  {/* Filter and search bar for Usage Users */}
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <TableSearchInput
+                      query={usageUserTable.query}
+                      onQueryChange={usageUserTable.setQuery}
+                      placeholder="Search employee, ID, service..."
+                      className="w-full sm:w-60"
+                    />
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {usageUserRoles.length > 0 && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-semibold text-slate-400">Role:</span>
+                          <select
+                            value={usageUserRoleFilter}
+                            onChange={(e) => setUsageUserRoleFilter(e.target.value)}
+                            className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 text-xs font-semibold focus:outline-none shadow-2xs"
+                          >
+                            <option value="all">All Roles</option>
+                            {usageUserRoles.map((r) => (
+                              <option key={r} value={r}>
+                                {r}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {availableServices.length > 1 && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-semibold text-slate-400">API:</span>
+                          <select
+                            value={usageUserServiceFilter}
+                            onChange={(e) => setUsageUserServiceFilter(e.target.value)}
+                            className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 text-xs font-semibold focus:outline-none shadow-2xs"
+                          >
+                            <option value="all">All APIs</option>
+                            {availableServices.map((svc) => (
+                              <option key={svc} value={svc}>
+                                {svc}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {(usageUserTable.query || usageUserRoleFilter !== "all" || usageUserServiceFilter !== "all") && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            usageUserTable.setQuery("");
+                            setUsageUserRoleFilter("all");
+                            setUsageUserServiceFilter("all");
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-white bg-slate-100 hover:bg-slate-200 dark:bg-white/5 transition-colors"
+                          title="Reset table filters"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>Reset</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-white/10">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
@@ -645,8 +956,8 @@ export default function ApiDashboard() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-white/5 font-medium">
-                        {usage?.user_breakdown && usage.user_breakdown.length > 0 ? (
-                          usage.user_breakdown.map((ub, idx) => (
+                        {usageUserTable.paged && usageUserTable.paged.length > 0 ? (
+                          usageUserTable.paged.map((ub, idx) => (
                             <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors">
                               <td className="py-2.5 px-4 font-bold text-slate-900 dark:text-white">
                                 {ub.employee_name} ({ub.employee_id})
@@ -674,13 +985,26 @@ export default function ApiDashboard() {
                         ) : (
                           <tr>
                             <td colSpan={7} className="py-6 text-center text-slate-400">
-                              No user request logs for this range.
+                              {usageUserTable.total === 0
+                                ? "No user request logs for this range."
+                                : "No user request logs match your search or filter criteria."}
                             </td>
                           </tr>
                         )}
                       </tbody>
                     </table>
                   </div>
+
+                  {usageUserTable.filtered.length > 0 && (
+                    <TablePagination
+                      page={usageUserTable.page}
+                      pageSize={usageUserTable.pageSize}
+                      totalPages={usageUserTable.totalPages}
+                      totalItems={usageUserTable.filtered.length}
+                      onPageChange={usageUserTable.setPage}
+                      onPageSizeChange={usageUserTable.setPageSize}
+                    />
+                  )}
                 </div>
               </div>
             ) : (

@@ -324,13 +324,20 @@ def get_api_usage(
 def export_api_usage_csv(
     days: int = Query(7, ge=1, le=90),
     user_id: Optional[int] = Query(None),
+    service_name: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
     Generates and downloads a CSV export matching the table view.
     """
-    usage_data = get_api_usage(days=days, user_id=user_id, db=db, current_user=current_user)
+    usage_data = get_api_usage(
+        days=days,
+        user_id=user_id,
+        service_name=service_name,
+        db=db,
+        current_user=current_user,
+    )
 
     out = io.StringIO()
     writer = csv.writer(out)

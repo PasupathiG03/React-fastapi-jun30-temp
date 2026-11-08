@@ -126,8 +126,9 @@ export async function fetchApiUsage(params: {
   return request<UsageData>(`/api/api-dashboard/usage?${q.toString()}`);
 }
 
-export function getExportCsvUrl(days = 7, userId?: number): string {
+export function getExportCsvUrl(days = 7, userId?: number, serviceName?: string): string {
   const q = new URLSearchParams({ days: String(days) });
   if (userId) q.append("user_id", String(userId));
+  if (serviceName && serviceName !== "all") q.append("service_name", serviceName);
   return `/api/api-dashboard/export-csv?${q.toString()}`;
 }
