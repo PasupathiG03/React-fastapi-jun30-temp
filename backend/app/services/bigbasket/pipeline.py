@@ -133,12 +133,17 @@ class ImageProcessingPipeline:
                     if h_info[3] != -1:
                         hole_area = cv2.contourArea(contours[i])
                         parent_area = cv2.contourArea(contours[h_info[3]]) if h_info[3] < len(contours) else 0
-                        # Heal interior punch-throughs on solid, glossy, or translucent products
-                        if parent_area > 0 and (hole_area / parent_area < 0.40 or not is_kitchen):
+                        # Heal genuine specular glare punch-throughs inside products (area >= 10 px).
+                        # Skip micro-edge boundary indentations (area < 10 px) so background is never inflated into corners.
+                        if parent_area > 0 and 10.0 <= hole_area and (hole_area / parent_area < 0.40 or not is_kitchen):
                             hole_mask = np.zeros_like(alpha_channel)
                             cv2.drawContours(hole_mask, [contours[i]], -1, 255, thickness=cv2.FILLED)
-                            # Slightly dilate to seal semi-transparent fringe artifacts around glare
-                            hole_mask = cv2.dilate(hole_mask, np.ones((3, 3), np.uint8), iterations=1)
+                            # Dilate to fully seal semi-transparent fringe artifacts around glare
+                            hole_mask = cv2.dilate(hole_mask, np.ones((5, 5), np.uint8), iterations=3)
+                            # Constrain dilation strictly inside parent product contour to protect outer borders
+                            parent_mask = np.zeros_like(alpha_channel)
+                            cv2.drawContours(parent_mask, [contours[h_info[3]]], -1, 255, thickness=cv2.FILLED)
+                            hole_mask = cv2.bitwise_and(hole_mask, parent_mask)
                             hole_pixels = (hole_mask > 0)
                             alpha_channel[hole_pixels] = 255
                             rgba_arr[hole_pixels, :3] = raw_rgba_arr[hole_pixels, :3]

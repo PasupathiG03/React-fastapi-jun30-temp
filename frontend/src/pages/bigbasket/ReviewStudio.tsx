@@ -687,7 +687,7 @@ export default function ReviewStudio() {
                 </span>
               </div>
               <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
-                <span className="text-slate-600 dark:text-slate-400">FOP/BOP Framing (Table 3 Margins):</span>
+                <span className="text-slate-600 dark:text-slate-400">FOP/BOP Framing:</span>
                 <span className={`font-semibold ${image?.validation_status?.padding_valid !== false ? "text-emerald-600 dark:text-emerald-400" : "text-amber-500"}`}>
                   {image?.validation_status?.padding_valid !== false ? "PASSED" : "WARNING"}
                 </span>
