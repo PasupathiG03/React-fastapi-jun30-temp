@@ -800,7 +800,7 @@ function BatchTableRow({
                 type="button"
                 onClick={onStart}
                 disabled={actionLoading}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 shadow-2xs transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-[0_2px_10px_rgba(14,165,233,0.25)] transition-all cursor-pointer active:scale-95"
                 title="Start automated processing"
               >
                 <Play className="w-3.5 h-3.5" /> Start
@@ -812,7 +812,7 @@ function BatchTableRow({
                 type="button"
                 onClick={onPause}
                 disabled={actionLoading}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-500/10 border border-amber-300 dark:border-amber-500/30 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-500/10 border border-amber-300 dark:border-amber-500/30 transition-colors"
                 title="Pause processing"
               >
                 <Pause className="w-3.5 h-3.5" /> Pause
@@ -824,7 +824,7 @@ function BatchTableRow({
                 type="button"
                 onClick={onResume}
                 disabled={actionLoading}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 shadow-2xs transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-[0_2px_10px_rgba(14,165,233,0.25)] transition-all cursor-pointer active:scale-95"
                 title="Resume processing"
               >
                 <Play className="w-3.5 h-3.5" /> Resume
@@ -967,7 +967,7 @@ function BatchTableRow({
                           images[0];
                         navigate("/image-studio/review-studio", { state: { imageId: targetImg.id } });
                       }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 shadow-2xs transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-[0_2px_10px_rgba(14,165,233,0.25)] hover:shadow-[0_4px_14px_rgba(14,165,233,0.35)] transition-all cursor-pointer active:scale-95"
                     >
                       <Eye className="w-3.5 h-3.5" />
                       <span>Open in Review Studio</span>

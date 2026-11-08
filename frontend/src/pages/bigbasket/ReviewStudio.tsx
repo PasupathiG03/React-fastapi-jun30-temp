@@ -10,7 +10,6 @@ import {
   Minimize2,
   Sliders,
   ArrowLeft,
-  ShieldCheck,
   Move,
   AlertTriangle,
   Package,
@@ -665,270 +664,271 @@ export default function ReviewStudio() {
         {/* Right Col: Quality Checklist & Specifications */}
         <div className={isWideView ? "grid grid-cols-1 md:grid-cols-2 gap-5" : "space-y-4"}>
           {/* Quality Validation Checklist */}
-          <div className="glass-card rounded-2xl p-5 space-y-3">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-500" />
-              Automated Quality Checklist
-            </h3>
+          {/* Quality Validation Checklist (Strict 6 BigBasket SRS Categories) */}
+          <div className="glass-card rounded-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-white/5">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                Automated Quality Checklist
+              </h3>
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                6 Checks
+              </span>
+            </div>
 
-            <div className="space-y-2 text-xs">
-              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
-                <span className="text-slate-600 dark:text-slate-400">Dimensions (2000 × 2000):</span>
-                <span className={`font-semibold ${image?.validation_status?.dimension_valid !== false ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}`}>
-                  {image?.validation_status?.dimension_valid !== false ? "PASSED" : "FAILED"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
-                <span className="text-slate-600 dark:text-slate-400">DPI Header (150 DPI):</span>
-                <span className={`font-semibold ${image?.validation_status?.dpi_valid !== false ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}`}>
-                  {image?.validation_status?.dpi_valid !== false ? "PASSED" : "FAILED"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
-                <span className="text-slate-600 dark:text-slate-400">Background Transparency:</span>
-                <span className={`font-semibold ${image?.validation_status?.alpha_valid !== false ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}`}>
-                  {image?.validation_status?.alpha_valid !== false ? "PASSED" : "FAILED"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
-                <span className="text-slate-600 dark:text-slate-400">FOP/BOP Framing:</span>
-                <span className={`font-semibold ${image?.validation_status?.padding_valid !== false ? "text-emerald-600 dark:text-emerald-400" : "text-amber-500"}`}>
-                  {image?.validation_status?.padding_valid !== false ? "PASSED" : "WARNING"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
-                <span className="text-slate-600 dark:text-slate-400">Complete Product Boundary:</span>
-                <span className={`font-semibold ${image?.validation_status?.complete_product_boundary !== false ? "text-emerald-600 dark:text-emerald-400" : "text-amber-500"}`}>
-                  {image?.validation_status?.complete_product_boundary !== false ? "PASSED" : "WARNING"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
-                <span className="text-slate-600 dark:text-slate-400">Top Content Preservation:</span>
-                <span className={`font-semibold ${image?.validation_status?.top_content_preservation !== false ? "text-emerald-600 dark:text-emerald-400" : "text-amber-500"}`}>
-                  {image?.validation_status?.top_content_preservation !== false ? "PASSED" : "WARNING"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
-                <span className="text-slate-600 dark:text-slate-400">Bottom Content Preservation:</span>
-                <span className={`font-semibold ${image?.validation_status?.bottom_content_preservation !== false ? "text-emerald-600 dark:text-emerald-400" : "text-amber-500"}`}>
-                  {image?.validation_status?.bottom_content_preservation !== false ? "PASSED" : "WARNING"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
-                <span className="text-slate-600 dark:text-slate-400">Image-Type Classification:</span>
-                <span className={`font-semibold ${image?.image_type?.toLowerCase() !== "caution" && image?.validation_status?.classification_valid !== false ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}`}>
-                  {image?.image_type?.toLowerCase() === "caution" ? "FAILED (Invalid Type)" : "PASSED"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
-                <span className="text-slate-600 dark:text-slate-400">Text Readability:</span>
-                <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                  PASSED
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
-                <span className="text-slate-600 dark:text-slate-400">Unexpected Blank Areas:</span>
-                <span className={`font-semibold ${image?.validation_status?.unexpected_blank_areas !== false ? "text-emerald-600 dark:text-emerald-400" : "text-amber-500"}`}>
-                  {image?.validation_status?.unexpected_blank_areas !== false ? "PASSED" : "WARNING"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
-                <span className="text-slate-600 dark:text-slate-400">Overall Processing Status:</span>
-                <span className={`font-bold px-1.5 py-0.5 rounded text-[10px] ${image?.validation_status?.passed !== false ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"}`}>
-                  {image?.validation_status?.passed !== false ? "PASSED" : "REQUIRES REVIEW"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1">
-                <span className="text-slate-600 dark:text-slate-400">AI Confidence:</span>
-                <span className="font-bold text-slate-900 dark:text-white">
-                  {Math.round((image?.confidence_score ?? 0.98) * 100)}%
-                </span>
-              </div>
-              {image?.validation_status?.failure_reasons && image.validation_status.failure_reasons.length > 0 && (
-                <div className="mt-2 p-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-500 text-[11px] space-y-1">
-                  <div className="font-bold">Detected Defect Warnings:</div>
-                  <ul className="list-disc pl-3 space-y-0.5">
-                    {image.validation_status.failure_reasons.map((r: string, idx: number) => (
-                      <li key={idx}>{r}</li>
+            <div className="space-y-2.5 text-xs">
+              {(() => {
+                const check1Passed = image?.validation_status?.dimension_valid !== false && image?.validation_status?.dpi_valid !== false;
+                const check2Passed = image?.validation_status?.alpha_valid !== false;
+                const check3Passed = image?.validation_status?.padding_valid !== false;
+                const check4Passed = image?.image_type?.toLowerCase() !== "caution" && image?.validation_status?.classification_valid !== false;
+                const check5Passed = (
+                  image?.validation_status?.complete_product_boundary !== false &&
+                  image?.validation_status?.top_content_preservation !== false &&
+                  image?.validation_status?.bottom_content_preservation !== false &&
+                  image?.validation_status?.unexpected_blank_areas !== false
+                );
+                const check6Passed = image?.validation_status?.passed !== false && !image?.status?.includes("failed");
+
+                const srsChecks = [
+                  {
+                    num: "01",
+                    title: "Image Dimensions & DPI",
+                    desc: "2000 × 2000 · PNG · 150 DPI · RGB",
+                    passed: check1Passed,
+                  },
+                  {
+                    num: "02",
+                    title: "Background Transparency",
+                    desc: "Background and internal-hole validation",
+                    passed: check2Passed,
+                  },
+                  {
+                    num: "03",
+                    title: "Cropping & Padding",
+                    desc: "FOP/BOP margins or edge-to-edge coverage",
+                    passed: check3Passed,
+                  },
+                  {
+                    num: "04",
+                    title: "Image Classification",
+                    desc: "FOP · BOP · Ingredient · Nutrition · Others",
+                    passed: check4Passed,
+                  },
+                  {
+                    num: "05",
+                    title: "Content Completeness & Quality",
+                    desc: "Complete boundaries, text and image quality",
+                    passed: check5Passed,
+                  },
+                  {
+                    num: "06",
+                    title: "Processing Status & Exceptions",
+                    desc: "Success · Failed · Manual Review",
+                    passed: check6Passed,
+                  },
+                ];
+
+                return (
+                  <>
+                    {srsChecks.map((c) => (
+                      <div key={c.num} className="flex items-center justify-between gap-3 py-1">
+                        <div className="flex items-start gap-2.5">
+                          <span className="w-5 h-5 rounded-md bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 text-[11px] font-mono font-bold flex items-center justify-center shrink-0 mt-0.5">
+                            {c.num}
+                          </span>
+                          <div className="space-y-0.5">
+                            <div className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
+                              {c.title}
+                            </div>
+                            <div className="text-[11px] text-slate-400 dark:text-slate-500 leading-tight">
+                              {c.desc}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="shrink-0">
+                          {c.passed ? (
+                            <CheckCircle className="w-4 h-4 text-emerald-400" />
+                          ) : (
+                            <AlertTriangle className="w-4 h-4 text-rose-400" />
+                          )}
+                        </div>
+                      </div>
                     ))}
-                  </ul>
-                </div>
-              )}
+
+                    <div className="pt-2 border-t border-slate-100 dark:border-white/5 flex items-center justify-between text-xs">
+                      <span className="text-slate-500 dark:text-slate-400">AI Confidence:</span>
+                      <span className="font-bold text-slate-900 dark:text-white font-mono text-sm">
+                        {Math.round((image?.confidence_score ?? 1.0) * 100)}%
+                      </span>
+                    </div>
+
+                    {image?.validation_status?.failure_reasons && image.validation_status.failure_reasons.length > 0 && (
+                      <div className="mt-2 p-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-500 text-[11px] space-y-1">
+                        <div className="font-bold">Detected Defect Warnings:</div>
+                        <ul className="list-disc pl-3 space-y-0.5">
+                          {image.validation_status.failure_reasons.map((r: string, idx: number) => (
+                            <li key={idx}>{r}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
 
-          {/* Standardization Details Card */}
-          <div className="glass-card rounded-2xl p-5 space-y-3">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <Sliders className="w-4 h-4 text-sky-500" />
-              Standardization Details
-            </h3>
-            <div className="space-y-2 text-xs">
-              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
-                <span className="text-slate-600 dark:text-slate-400">Category:</span>
-                {(() => {
-                  const rawCat = (
-                    image?.product_category ||
-                    image?.validation_status?.product_category ||
-                    image?.validation_results?.product_category ||
-                    image?.validation_status?.gemini_classification?.primary_category ||
-                    image?.validation_results?.gemini_classification?.primary_category ||
-                    image?.validation_status?.five_point_audit?.category_compliance?.product_category ||
-                    (image?.validation_status?.category_exemptions?.fssai_exempt ? "NON_FOOD" : null) ||
-                    "UNKNOWN"
-                  ).toUpperCase();
-                  const cat = rawCat.replace(/-/g, "_");
+          {/* Standardization Details Card (Option 1: Compact 2-Column Grid) */}
+          <div className="glass-card rounded-2xl p-4 space-y-2.5">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-white/5">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-sky-500" />
+                Standardization Details
+              </h3>
+              {(() => {
+                const rawCat = (
+                  image?.product_category ||
+                  image?.validation_status?.product_category ||
+                  image?.validation_results?.product_category ||
+                  image?.validation_status?.gemini_classification?.primary_category ||
+                  image?.validation_results?.gemini_classification?.primary_category ||
+                  image?.validation_status?.five_point_audit?.category_compliance?.product_category ||
+                  (image?.validation_status?.category_exemptions?.fssai_exempt ? "NON_FOOD" : null) ||
+                  "UNKNOWN"
+                ).toUpperCase();
+                const cat = rawCat.replace(/-/g, "_");
 
-                  const badgeConfig =
-                    cat === "KITCHEN_ITEMS" || cat === "KITCHEN"
-                      ? { label: "KITCHEN ITEMS", cls: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25" }
-                      : cat === "NON_FOOD" || cat === "NONFOOD"
-                      ? { label: "NON-FOOD PRODUCT", cls: "bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 hover:bg-purple-500/25" }
-                      : cat === "FOOD"
-                      ? { label: "FOOD PRODUCT", cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25" }
-                      : { label: "UNKNOWN (REVIEW)", cls: "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/25" };
-
-                  return (
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        disabled={updatingCat}
-                        onClick={() => handleCycleCategory(cat)}
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center gap-1 ${badgeConfig.cls}`}
-                        title="Click to cycle between Non-Food, Kitchen Items, and Food"
-                      >
-                        {badgeConfig.label}
-                        <span className="text-[9px] opacity-70 underline ml-0.5 font-normal">(change)</span>
-                      </button>
-                    </div>
-                  );
-                })()}
-              </div>
-              {image?.validation_status?.gemini_classification?.subcategory && (
-                <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
-                  <span className="text-slate-600 dark:text-slate-400">Subcategory:</span>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">
-                    {image.validation_status.gemini_classification.subcategory}
-                  </span>
-                </div>
-              )}
-
-              {/* Dynamic Detected Products Breakdown */}
-              {image?.validation_status?.gemini_classification?.detected_products?.length > 0 && (() => {
-                const detCount = image.validation_status.gemini_classification.total_detected_products || image.validation_status.gemini_classification.detected_products.length;
-                const isMulti = detCount > 1 || image.validation_status.gemini_classification.is_multi_product_image;
-                const subCat = image.validation_status.gemini_classification.subcategory || image.validation_status.gemini_classification.product_type || "Product";
-                const label = isMulti ? `${subCat} Set (${detCount} Items Detected)` : `${subCat} (${detCount} Item Detected)`;
+                const badgeConfig =
+                  cat === "KITCHEN_ITEMS" || cat === "KITCHEN"
+                    ? { label: "KITCHEN ITEMS", cls: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25" }
+                    : cat === "NON_FOOD" || cat === "NONFOOD"
+                    ? { label: "NON-FOOD", cls: "bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 hover:bg-purple-500/25" }
+                    : cat === "FOOD"
+                    ? { label: "FOOD", cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25" }
+                    : { label: "UNKNOWN", cls: "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/25" };
 
                 return (
-                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
-                        <Package className="w-3.5 h-3.5" />
-                        {label}
-                      </span>
-                      {isMulti && (
-                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 uppercase">
-                          Multi-Object
-                        </span>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      {image.validation_status.gemini_classification.detected_products.map((item: any, pIdx: number) => (
-                        <div
-                          key={pIdx}
-                          className="p-2 rounded-lg bg-white/70 dark:bg-slate-900/60 border border-slate-200/50 dark:border-white/5 text-[11px] space-y-0.5"
-                        >
-                          <div className="flex items-center justify-between font-semibold text-slate-800 dark:text-slate-200">
-                            <span className="flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                              {item.product_type?.replace(/_/g, " ")}
-                            </span>
-                            <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 font-bold">
-                              Qty: {item.quantity || 1}
-                            </span>
-                          </div>
-                          {item.components && item.components.length > 0 && (
-                            <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                              <span className="font-medium text-slate-600 dark:text-slate-300">Parts: </span>
-                              {item.components.join(", ")}
-                            </div>
-                          )}
-                          {item.materials && item.materials.length > 0 && (
-                            <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                              <span className="font-medium text-slate-600 dark:text-slate-300">Materials: </span>
-                              {item.materials.join(", ")}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  <button
+                    type="button"
+                    disabled={updatingCat}
+                    onClick={() => handleCycleCategory(cat)}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center gap-1 ${badgeConfig.cls}`}
+                    title="Click to cycle between Non-Food, Kitchen Items, and Food"
+                  >
+                    {badgeConfig.label}
+                    <span className="text-[9px] opacity-70 underline font-normal">(change)</span>
+                  </button>
                 );
               })()}
-              {image?.validation_status?.gemini_classification?.materials?.length > 0 && (
-                <div className="py-1 border-b border-slate-100 dark:border-white/5 space-y-1">
-                  <span className="text-slate-600 dark:text-slate-400">Materials:</span>
-                  <div className="flex flex-wrap gap-1">
+            </div>
+
+            {/* 2-Column Compact Metadata Grid */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="p-2 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/5 space-y-0.5">
+                <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">SKU / BBID</span>
+                <p className="font-bold text-slate-900 dark:text-white truncate">{image?.bbid || "N/A"}</p>
+              </div>
+              <div className="p-2 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/5 space-y-0.5">
+                <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Image Type</span>
+                <p className="font-bold text-slate-900 dark:text-white uppercase truncate">
+                  {image?.image_type?.toLowerCase() === "caution" ? "BOP" : (image?.image_type || "N/A")}
+                </p>
+              </div>
+              <div className="p-2 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/5 space-y-0.5">
+                <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Original Size</span>
+                <p className="font-semibold text-slate-800 dark:text-slate-200 truncate">
+                  {image?.original_width && image?.original_height ? `${image.original_width} × ${image.original_height}` : "Unknown"}
+                </p>
+              </div>
+              <div className="p-2 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/5 space-y-0.5">
+                <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Target Standard</span>
+                <p className="font-semibold text-emerald-600 dark:text-emerald-400 truncate">2000 × 2000 (150 DPI)</p>
+              </div>
+            </div>
+
+            {/* Subcategory if present */}
+            {image?.validation_status?.gemini_classification?.subcategory && (
+              <div className="flex items-center justify-between text-xs py-1 border-t border-slate-100 dark:border-white/5">
+                <span className="text-slate-500">Subcategory:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {image.validation_status.gemini_classification.subcategory}
+                </span>
+              </div>
+            )}
+
+            {/* Dynamic Detected Products Breakdown (Compact Scroll) */}
+            {image?.validation_status?.gemini_classification?.detected_products?.length > 0 && (() => {
+              const detCount = image.validation_status.gemini_classification.total_detected_products || image.validation_status.gemini_classification.detected_products.length;
+              const isMulti = detCount > 1 || image.validation_status.gemini_classification.is_multi_product_image;
+              const subCat = image.validation_status.gemini_classification.subcategory || image.validation_status.gemini_classification.product_type || "Product";
+              const label = isMulti ? `${subCat} Set (${detCount} Items)` : `${subCat} (${detCount} Item)`;
+
+              return (
+                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5" />
+                      {label}
+                    </span>
+                    {isMulti && (
+                      <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 uppercase">
+                        Multi-Object
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-1 max-h-24 overflow-y-auto pr-1 scrollbar-thin">
+                    {image.validation_status.gemini_classification.detected_products.map((item: any, pIdx: number) => (
+                      <div
+                        key={pIdx}
+                        className="p-1.5 rounded-lg bg-white/70 dark:bg-slate-900/60 border border-slate-200/50 dark:border-white/5 text-[10px] space-y-0.5"
+                      >
+                        <div className="flex items-center justify-between font-semibold text-slate-800 dark:text-slate-200">
+                          <span className="flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                            {item.product_type?.replace(/_/g, " ")}
+                          </span>
+                          <span className="font-mono text-[9px] px-1 py-0.2 rounded bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 font-bold">
+                            Qty: {item.quantity || 1}
+                          </span>
+                        </div>
+                        {item.components && item.components.length > 0 && (
+                          <div className="text-[9px] text-slate-500 dark:text-slate-400 truncate">
+                            <span className="font-medium text-slate-600 dark:text-slate-300">Parts: </span>
+                            {item.components.join(", ")}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Materials & Components compact tags */}
+            {(image?.validation_status?.gemini_classification?.materials?.length > 0 || image?.validation_status?.gemini_classification?.components?.length > 0) && (
+              <div className="pt-1 border-t border-slate-100 dark:border-white/5 space-y-1 text-[11px]">
+                {image?.validation_status?.gemini_classification?.materials?.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-slate-400 text-[10px]">Materials:</span>
                     {image.validation_status.gemini_classification.materials.map((m: any, idx: number) => (
-                      <span key={idx} className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-white/10 text-[10px] text-slate-700 dark:text-slate-300 font-medium">
+                      <span key={idx} className="px-1.5 py-0.2 rounded bg-slate-100 dark:bg-white/10 text-[9px] text-slate-700 dark:text-slate-300 font-medium">
                         {m.name || m}
                       </span>
                     ))}
                   </div>
-                </div>
-              )}
-              {image?.validation_status?.gemini_classification?.components?.length > 0 && (
-                <div className="py-1 border-b border-slate-100 dark:border-white/5 space-y-1">
-                  <span className="text-slate-600 dark:text-slate-400">Components:</span>
-                  <div className="flex flex-wrap gap-1">
+                )}
+                {image?.validation_status?.gemini_classification?.components?.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-slate-400 text-[10px]">Components:</span>
                     {image.validation_status.gemini_classification.components.map((c: string, idx: number) => (
-                      <span key={idx} className="px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[10px] font-medium">
+                      <span key={idx} className="px-1.5 py-0.2 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[9px] font-medium">
                         {c}
                       </span>
                     ))}
                   </div>
-                </div>
-              )}
-              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
-                <span className="text-slate-600 dark:text-slate-400">SKU / BBID:</span>
-                <span className="font-bold text-slate-900 dark:text-white">{image?.bbid || "N/A"}</span>
+                )}
               </div>
-              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
-                <span className="text-slate-600 dark:text-slate-400">Complete Image Type:</span>
-                <span className="font-bold text-slate-900 dark:text-white uppercase">
-                  {image?.image_type?.toLowerCase() === "caution" ? "BOP" : (image?.image_type || "N/A")}
-                </span>
-              </div>
-              {(() => {
-                const sections =
-                  image?.validation_status?.detected_sections?.sections ||
-                  image?.validation_results?.detected_sections?.sections;
-                if (!sections || sections.length === 0) return null;
-                return (
-                  <div className="py-1 border-b border-slate-100 dark:border-white/5 space-y-1">
-                    <span className="text-slate-600 dark:text-slate-400">Detected Packaging Sections:</span>
-                    <div className="flex flex-wrap gap-1">
-                      {sections.map((s: string, idx: number) => (
-                        <span key={idx} className="px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[10px] font-medium border border-sky-500/20">
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
-              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
-                <span className="text-slate-600 dark:text-slate-400">Original Size:</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  {image?.original_width && image?.original_height ? `${image.original_width} × ${image.original_height} px` : "Unknown"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1">
-                <span className="text-slate-600 dark:text-slate-400">Target Standard:</span>
-                <span className="font-semibold text-emerald-600 dark:text-emerald-400">2000 × 2000 px (150 DPI)</span>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
