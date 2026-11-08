@@ -26,8 +26,9 @@ SUPPORT_SCREEN = "/support"
 # Image Studio Automation screens (Consolidated into single unified studio)
 STUDIO_MAIN_SCREEN = "/image-studio"
 
-# API Monitoring & Usage Screen
+# API Monitoring & Usage Screens
 API_DASHBOARD_SCREEN = "/api-dashboard"
+GEMINI_MONITORING_SCREEN = "/api-monitoring/gemini"
 
 # Legacy aliases for backward compatibility
 STUDIO_DASHBOARD_SCREEN = STUDIO_MAIN_SCREEN
@@ -58,7 +59,8 @@ DEFAULT_MENUS = [
     (DASHBOARD_PROCESS, {"name": "Dashboard", "icon": "LayoutDashboard", "url": DASHBOARD_SCREEN, "order": 1}),
     (DEVELOPER_PROCESS, {"name": "Router Setup", "icon": "Layers", "url": ROUTER_SETUP_SCREEN, "order": 1}),
     (BIGBASKET_PROCESS, {"name": "Image Studio", "icon": "Sparkles", "url": STUDIO_MAIN_SCREEN, "order": 1}),
-    (API_MONITORING_PROCESS, {"name": "API Dashboard", "icon": "BarChart3", "url": API_DASHBOARD_SCREEN, "order": 1}),
+    (API_MONITORING_PROCESS, {"name": "Photoroom API", "icon": "BarChart3", "url": API_DASHBOARD_SCREEN, "order": 1}),
+    (API_MONITORING_PROCESS, {"name": "Gemini API Monitor", "icon": "Cpu", "url": GEMINI_MONITORING_SCREEN, "order": 2}),
     (ACCESS_PROCESS, {"name": "Role Management", "icon": "Shield", "url": ROLE_SCREEN, "order": 1}),
     (ACCESS_PROCESS, {"name": "User Management", "icon": "Users", "url": USER_SCREEN, "order": 2}),
     (ACCESS_PROCESS, {"name": "Menu Access", "icon": "ShieldCheck", "url": MENU_ACCESS_SCREEN, "order": 3}),

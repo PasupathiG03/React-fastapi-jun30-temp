@@ -37,6 +37,13 @@ def get_review_queue(
     total = query.count()
     images = query.order_by(BatchImage.confidence_score.asc(), BatchImage.id).offset((page - 1) * page_size).limit(page_size).all()
 
+    for img in images:
+        if not getattr(img, "validation_status", None):
+            setattr(img, "validation_status", img.validation_results)
+        val = img.validation_results or {}
+        cat = val.get("product_category") or (val.get("gemini_classification") or {}).get("primary_category")
+        setattr(img, "product_category", cat)
+
     return {
         "items": images,
         "total": total,

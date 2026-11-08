@@ -21,6 +21,7 @@ class BatchProcessConfig(BaseModel):
     canvas_height: int = 2000
     dpi: int = 150
     fop_bop_padding: PaddingConfig = Field(default_factory=PaddingConfig)
+    product_category: str = "auto"  # "auto", "food", "non_food"
     confidence_threshold: float = 0.95
     auto_inpaint_mrp: bool = True
     max_workers: int = 4
@@ -97,6 +98,7 @@ class BatchImageOut(BaseModel):
     confidence_score: Optional[float] = None
     validation_results: Optional[dict[str, Any]] = None
     validation_status: Optional[dict[str, Any]] = None
+    product_category: Optional[str] = None
     review_decision: Optional[str] = None
     reviewer_id: Optional[int] = None
     review_comments: Optional[str] = None

@@ -31,7 +31,7 @@ import {
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/components/ui";
 import { TablePagination } from "@/components/DataTableControls";
-import Modal, { ModalBody, ModalFooter, ModalCancelButton } from "@/components/Modal";
+import Modal, { ModalBody, ModalFooter, ModalCancelButton, ConfirmDialog } from "@/components/Modal";
 import {
   fetchBatches,
   fetchBatchImages,
@@ -89,6 +89,7 @@ export default function BatchProcessing() {
   // Modal dialog states
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isAnalyticsModalOpen, setIsAnalyticsModalOpen] = useState(false);
+  const [batchToDelete, setBatchToDelete] = useState<BatchItem | null>(null);
 
   useEffect(() => {
     loadBatches(true);
@@ -263,12 +264,13 @@ export default function BatchProcessing() {
     }
   }
 
-  async function handleDelete(batch: BatchItem) {
-    const confirmed = window.confirm(
-      `Permanently delete batch "${batch.batch_code}"?\n\nThis will remove all uploaded images, processed files, and database records.`
-    );
-    if (!confirmed) return;
+  function handleDelete(batch: BatchItem) {
+    setBatchToDelete(batch);
+  }
 
+  async function confirmDeleteBatch() {
+    if (!batchToDelete) return;
+    const batch = batchToDelete;
     setActionLoadingId(batch.id);
     try {
       await deleteBatch(batch.id);
@@ -277,6 +279,7 @@ export default function BatchProcessing() {
       if (expandedBatchId === batch.id) {
         setExpandedBatchId(null);
       }
+      setBatchToDelete(null);
     } catch (e: any) {
       showError(e.message || "Failed to delete batch");
     } finally {
@@ -460,7 +463,7 @@ export default function BatchProcessing() {
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="border-b border-slate-200 dark:border-white/10 bg-slate-50/75 dark:bg-slate-900/50 text-slate-600 dark:text-slate-300 font-semibold text-xs">
-                <th className="py-3 px-3 w-12 text-center">S.No</th>
+                <th className="py-3 px-3 w-12 text-center">#</th>
                 <th className="py-3 px-2 w-8 text-center"></th>
                 <th className="py-3 px-4">Extraction Batch</th>
                 <th className="py-3 px-4">Pipeline Status</th>
@@ -570,6 +573,24 @@ export default function BatchProcessing() {
         isOpen={isAnalyticsModalOpen}
         onClose={() => setIsAnalyticsModalOpen(false)}
       />
+
+      {/* CUSTOM CONFIRM DELETE MODAL */}
+      {batchToDelete && (
+        <ConfirmDialog
+          title={`Permanently delete batch "${batchToDelete.batch_code}"?`}
+          message={
+            <span>
+              This will remove all uploaded images, processed files, and database records.
+              <span className="block mt-1 text-rose-500 font-medium">This action cannot be undone.</span>
+            </span>
+          }
+          confirmLabel="Delete Batch"
+          busyLabel="Deleting..."
+          danger={true}
+          onConfirm={confirmDeleteBatch}
+          onCancel={() => setBatchToDelete(null)}
+        />
+      )}
     </PageContainer>
   );
 }
@@ -656,8 +677,8 @@ function BatchTableRow({
       <tr
         onClick={onToggle}
         className={`group transition-colors cursor-pointer select-none ${isExpanded
-            ? "bg-sky-500/5 dark:bg-white/[0.04]"
-            : "hover:bg-slate-50/80 dark:hover:bg-white/[0.02]"
+          ? "bg-sky-500/5 dark:bg-white/[0.04]"
+          : "hover:bg-slate-50/80 dark:hover:bg-white/[0.02]"
           }`}
       >
         {/* # */}
@@ -699,12 +720,12 @@ function BatchTableRow({
         <td className="py-3.5 px-4">
           <span
             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${batch.status === "completed"
-                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
-                : batch.status === "processing"
-                  ? "bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/20 animate-pulse"
-                  : batch.status === "paused"
-                    ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                    : "bg-slate-500/15 text-slate-600 dark:text-slate-400 border border-slate-500/20"
+              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+              : batch.status === "processing"
+                ? "bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/20 animate-pulse"
+                : batch.status === "paused"
+                  ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                  : "bg-slate-500/15 text-slate-600 dark:text-slate-400 border border-slate-500/20"
               }`}
           >
             {batch.status === "processing" && (
@@ -849,8 +870,8 @@ function BatchTableRow({
               type="button"
               onClick={onToggle}
               className={`p-1.5 rounded-lg transition-colors ${isExpanded
-                  ? "bg-sky-500/15 text-sky-600 dark:text-sky-400 hover:bg-sky-500/25"
-                  : "text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-500/10"
+                ? "bg-sky-500/15 text-sky-600 dark:text-sky-400 hover:bg-sky-500/25"
+                : "text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-500/10"
                 }`}
               title={isExpanded ? "Close images view" : "Inspect processed images"}
               aria-label={isExpanded ? "Close images view" : "Inspect processed images"}
@@ -940,10 +961,13 @@ function BatchTableRow({
                   {images.length > 0 && (
                     <button
                       type="button"
-                      onClick={() =>
-                        navigate("/image-studio/review-studio", { state: { imageId: images[0].id } })
-                      }
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 shadow-2xs transition-colors"
+                      onClick={() => {
+                        const targetImg =
+                          images.find((img) => img.status.includes("approved") || img.status === "needs_review") ||
+                          images[0];
+                        navigate(`/image-studio/review-studio?imageId=${targetImg.id}`, { state: { imageId: targetImg.id } });
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 shadow-2xs transition-colors cursor-pointer"
                     >
                       <Eye className="w-3.5 h-3.5" />
                       <span>Open in Review Studio</span>
@@ -962,11 +986,12 @@ function BatchTableRow({
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
                       <tr className="bg-slate-100/75 dark:bg-slate-900/80 text-slate-600 dark:text-slate-300 font-semibold text-xs border-b border-slate-200/60 dark:border-white/5">
-                        <th className="py-2.5 px-3 w-12 text-center">S.No</th>
+                        <th className="py-2.5 px-3 w-12 text-center">#</th>
                         <th className="py-2.5 px-3 w-16">Preview</th>
                         <th className="py-2.5 px-3">Product SKU</th>
                         <th className="py-2.5 px-3">Original Filename</th>
                         <th className="py-2.5 px-3">Angle / View</th>
+                        <th className="py-2.5 px-3">Category</th>
                         <th className="py-2.5 px-3">Standardization Quality</th>
                         <th className="py-2.5 px-3">AI Confidence</th>
                         <th className="py-2.5 px-3">Status</th>
@@ -979,11 +1004,11 @@ function BatchTableRow({
                           key={img.id}
                           className="hover:bg-sky-500/5 dark:hover:bg-white/[0.02] transition-colors cursor-pointer group"
                           onClick={() =>
-                            navigate("/image-studio/review-studio", { state: { imageId: img.id } })
+                            navigate(`/image-studio/review-studio?imageId=${img.id}`, { state: { imageId: img.id } })
                           }
                           title="Click to inspect in Review Studio"
                         >
-                          {/* S.No */}
+                          {/* # */}
                           <td className="py-2 px-3 text-center text-xs font-medium text-slate-400 dark:text-slate-500 font-mono">
                             {(imgPage - 1) * imgPageSize + imgIdx + 1}
                           </td>
@@ -993,8 +1018,8 @@ function BatchTableRow({
                             <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-white/10 overflow-hidden flex items-center justify-center relative shadow-2xs shrink-0">
                               <img
                                 src={getImageFileUrl(
-                                  img.id,
-                                  img.status.includes("approved") ? "final" : "original"
+                                   img.id,
+                                   img.status.includes("approved") ? "final" : "original"
                                 )}
                                 alt={img.original_filename}
                                 className="max-h-full max-w-full object-contain"
@@ -1023,6 +1048,49 @@ function BatchTableRow({
                             </span>
                           </td>
 
+                          {/* Category (Food vs Non-Food vs Kitchen Items) */}
+                          <td className="py-2 px-3">
+                            {(() => {
+                              const valStatus = img.validation_status || img.validation_results;
+                              const rawCat = (
+                                (img as any).product_category ||
+                                valStatus?.product_category ||
+                                valStatus?.gemini_classification?.primary_category ||
+                                valStatus?.five_point_audit?.category_compliance?.product_category ||
+                                (valStatus?.category_exemptions?.fssai_exempt ? "NON_FOOD" : null) ||
+                                "UNKNOWN"
+                              ).toUpperCase();
+                              const cat = rawCat.replace(/-/g, "_");
+
+                              if (cat === "KITCHEN_ITEMS" || cat === "KITCHEN") {
+                                return (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25 whitespace-nowrap">
+                                    Kitchen Items
+                                  </span>
+                                );
+                              }
+                              if (cat === "NON_FOOD" || cat === "NONFOOD") {
+                                return (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/25 whitespace-nowrap">
+                                    Non-Food
+                                  </span>
+                                );
+                              }
+                              if (cat === "FOOD") {
+                                return (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 whitespace-nowrap">
+                                    Food
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25 whitespace-nowrap">
+                                  Unknown
+                                </span>
+                              );
+                            })()}
+                          </td>
+
                           {/* Resolution Specs */}
                           <td className="py-2 px-3 text-slate-500 dark:text-slate-400 text-[11px]">
                             {img.final_output_path ? "2000×2000 · 150 DPI" : "Processing..."}
@@ -1035,8 +1103,8 @@ function BatchTableRow({
                                 <div className="w-8 h-1.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden">
                                   <div
                                     className={`h-full rounded-full ${(img.confidence_score || 0) >= 0.95
-                                        ? "bg-emerald-500"
-                                        : "bg-amber-500"
+                                      ? "bg-emerald-500"
+                                      : "bg-amber-500"
                                       }`}
                                     style={{
                                       width: `${Math.round((img.confidence_score || 0) * 100)}%`,
@@ -1069,11 +1137,10 @@ function BatchTableRow({
                                   onRetryImage(img.id);
                                 }}
                                 title="Click to retry background removal with Photoroom AI"
-                                className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all hover:scale-105 ${
-                                  img.status === "needs_review"
+                                className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all hover:scale-105 ${img.status === "needs_review"
                                     ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25"
                                     : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/25"
-                                }`}
+                                  }`}
                               >
                                 <RotateCcw className={`w-2.5 h-2.5 ${retryingImageId === img.id ? "animate-spin" : ""}`} />
                                 <span>{retryingImageId === img.id ? "Retrying..." : img.status.replace("_", " ")}</span>
@@ -1081,10 +1148,10 @@ function BatchTableRow({
                             ) : (
                               <span
                                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${img.status.includes("approved")
-                                    ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
-                                    : img.status === "processing"
-                                      ? "bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/20 animate-pulse"
-                                      : "bg-slate-500/15 text-slate-600 dark:text-slate-400 border border-slate-500/20"
+                                  ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                                  : img.status === "processing"
+                                    ? "bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/20 animate-pulse"
+                                    : "bg-slate-500/15 text-slate-600 dark:text-slate-400 border border-slate-500/20"
                                   }`}
                               >
                                 {img.status.replace("_", " ")}
@@ -1108,7 +1175,7 @@ function BatchTableRow({
                                 </button>
                               )}
                               <Link
-                                to="/image-studio/review-studio"
+                                to={`/image-studio/review-studio?imageId=${img.id}`}
                                 state={{ imageId: img.id }}
                                 className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-sky-600 dark:hover:text-sky-400 transition-colors"
                               >
@@ -1158,6 +1225,7 @@ function CreateBatchModal({
 }) {
   const [batchName, setBatchName] = useState("");
   const [mode, setMode] = useState<"files" | "zip">("files");
+  const [productCategory, setProductCategory] = useState<"auto" | "food" | "non_food" | "kitchen_items">("auto");
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [zipFile, setZipFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -1193,6 +1261,7 @@ function CreateBatchModal({
           canvas_width: 2000,
           canvas_height: 2000,
           dpi: 150,
+          product_category: productCategory,
           fop_bop_padding: { top: 180, bottom: 180, left: 100, right: 100 },
           confidence_threshold: 1.0,
         },
@@ -1265,8 +1334,8 @@ function CreateBatchModal({
                 type="button"
                 onClick={() => setMode("files")}
                 className={`p-3 rounded-xl border text-left transition-all flex items-center gap-3 ${mode === "files"
-                    ? "border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 shadow-2xs ring-1 ring-sky-500/30"
-                    : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-slate-300"
+                  ? "border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 shadow-2xs ring-1 ring-sky-500/30"
+                  : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-slate-300"
                   }`}
               >
                 <ImageIcon className="w-5 h-5 shrink-0" />
@@ -1280,8 +1349,8 @@ function CreateBatchModal({
                 type="button"
                 onClick={() => setMode("zip")}
                 className={`p-3 rounded-xl border text-left transition-all flex items-center gap-3 ${mode === "zip"
-                    ? "border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 shadow-2xs ring-1 ring-sky-500/30"
-                    : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-slate-300"
+                  ? "border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 shadow-2xs ring-1 ring-sky-500/30"
+                  : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-slate-300"
                   }`}
               >
                 <FolderArchive className="w-5 h-5 shrink-0" />
@@ -1289,6 +1358,59 @@ function CreateBatchModal({
                   <div className="font-semibold text-xs text-slate-900 dark:text-white">ZIP Archive</div>
                   <div className="text-[10px] text-slate-500">Upload single .zip with images</div>
                 </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Product Category Selector */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1.5">
+              Product Category Logic
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <button
+                type="button"
+                onClick={() => setProductCategory("auto")}
+                className={`p-2.5 rounded-xl border text-left transition-all ${productCategory === "auto"
+                    ? "border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 ring-1 ring-sky-500/30"
+                    : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-slate-300"
+                  }`}
+              >
+                <div className="font-semibold text-xs text-slate-900 dark:text-white">Auto-Detect</div>
+                <div className="text-[10px] text-slate-500">Gemini AI classification</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setProductCategory("food")}
+                className={`p-2.5 rounded-xl border text-left transition-all ${productCategory === "food"
+                    ? "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30"
+                    : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-slate-300"
+                  }`}
+              >
+                <div className="font-semibold text-xs text-emerald-600 dark:text-emerald-400">Food</div>
+                <div className="text-[10px] text-slate-500">FSSAI & Nutrition rules</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setProductCategory("non_food")}
+                className={`p-2.5 rounded-xl border text-left transition-all ${productCategory === "non_food"
+                    ? "border-purple-500 bg-purple-500/10 text-purple-600 dark:text-purple-400 ring-1 ring-purple-500/30"
+                    : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-slate-300"
+                  }`}
+              >
+                <div className="font-semibold text-xs text-purple-600 dark:text-purple-400">Non-Food</div>
+                <div className="text-[10px] text-slate-500">Directions & Safety rules</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setProductCategory("kitchen_items")}
+                className={`p-2.5 rounded-xl border text-left transition-all ${productCategory === "kitchen_items"
+                    ? "border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/30"
+                    : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-slate-300"
+                  }`}
+              >
+                <div className="font-semibold text-xs text-amber-600 dark:text-amber-400">Kitchen Items</div>
+                <div className="text-[10px] text-slate-500">Cookware, Glass & Metal</div>
               </button>
             </div>
           </div>

@@ -62,6 +62,7 @@ export const PAGE_ROUTES: PageRoute[] = [
 
   // API Monitoring & Quota Dashboard
   { path: "/api-dashboard", page: lazyPage(() => import("@/pages/ApiDashboard")) },
+  { path: "/api-monitoring/gemini", page: lazyPage(() => import("@/pages/GeminiApiMonitoring")) },
 
   // Support
   { path: "/support", page: lazyPage(() => import("@/pages/Support")) },

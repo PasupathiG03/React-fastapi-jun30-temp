@@ -15,41 +15,41 @@ router = APIRouter()
 
 
 def parse_filename_bbid_and_seq(filename: str, fallback_seq: int = 1) -> tuple:
+    """
+    Dynamically auto-detects BBID / SKU identifier and sequence order from filename.
+    Never hardcodes catalog view angles, product categories, or FOP/BOP assumptions;
+    visual classification is left entirely to Gemini Multimodal Vision AI.
+    """
     stem = Path(filename).stem.strip()
+    if not stem:
+        return f"ITEM_{fallback_seq}", fallback_seq, "unknown"
 
-    # 1. BBID (SEQ) pattern: e.g. "20004725 (10)" or "20004725(1)"
-    m = re.match(r"^([A-Za-z0-9_-]+?)\s*\((.+?)\)$", stem)
-    if m:
-        raw_id, raw_seq = m.group(1).strip(), m.group(2).strip()
-        if raw_seq.isdigit():
-            seq = int(raw_seq)
-            return raw_id, seq, "fop" if seq == 1 else "bop"
-        if any(f in raw_seq.lower() for f in ["front", "fop"]):
-            return raw_id, 1, "fop"
-        if any(b in raw_seq.lower() for b in ["back", "bop", "rear"]):
-            return raw_id, 2, "bop"
+    # Dynamic auto-detection of sequence number from trailing tokens:
+    # 1. Enclosed sequence: e.g. "SKU (10)", "SKU(1)", "SKU [2]", "SKU_{3}"
+    m_enclosed = re.search(r"[\(\[\{]\s*(\d+)\s*[\)\]\}]\s*$", stem)
+    if m_enclosed:
+        seq = int(m_enclosed.group(1))
+        raw_id = stem[:m_enclosed.start()].rstrip("-_ \t")
+        bbid = raw_id if raw_id else stem
+        return bbid, seq, "unknown"
 
-    # 2. BBID[-_ ](front|back|fop|bop|rear)
-    m = re.match(r"^([A-Za-z0-9_-]+?)[-_ ]+(front|fop|back|bop|rear)$", stem, re.IGNORECASE)
-    if m:
-        raw_id, tag = m.group(1).strip(), m.group(2).lower()
-        if tag in ("front", "fop"):
-            return raw_id, 1, "fop"
-        return raw_id, 2, "bop"
+    # 2. Delimited trailing sequence: e.g. "SKU_10", "SKU-2", "SKU 03"
+    m_delimited = re.search(r"[-_\s]+(\d+)\s*$", stem)
+    if m_delimited:
+        seq = int(m_delimited.group(1))
+        raw_id = stem[:m_delimited.start()].rstrip("-_ \t")
+        bbid = raw_id if raw_id else stem
+        return bbid, seq, "unknown"
 
-    # 3. BBID[-_ ](\d+) e.g. "20004725_10" or "20004725-2" or "20004725 10"
-    m = re.match(r"^([A-Za-z0-9_-]+?)[-_ ]+(\d+)$", stem)
-    if m:
-        raw_id, raw_seq = m.group(1).strip(), int(m.group(2))
-        return raw_id, raw_seq, "fop" if raw_seq == 1 else "bop"
+    # 3. Pure numeric stem: e.g. "1.jpg" or "20004725.png"
+    if stem.isdigit():
+        val = int(stem)
+        if val < 100:
+            return stem, val, "unknown"
+        return stem, fallback_seq, "unknown"
 
-    # 4. Fallback split on whitespace, dash, or underscore
-    parts = re.split(r"[-_ ]+", stem)
-    bbid = parts[0].strip() if parts and parts[0].strip() else stem
-    seq = fallback_seq
-    if len(parts) > 1 and parts[1].strip().isdigit():
-        seq = int(parts[1].strip())
-    return bbid, seq, "fop" if seq == 1 else "bop"
+    # 4. General identifier with no sequence suffix
+    return stem, fallback_seq, "unknown"
 
 
 @router.post("/batch/{batch_id}/images-files")

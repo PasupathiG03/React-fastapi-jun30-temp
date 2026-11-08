@@ -143,6 +143,22 @@ export default function ManualReviewQueue() {
                   <span className="font-mono font-bold text-xs text-slate-900 dark:text-white">
                     ID: {img.bbid}
                   </span>
+                  {(() => {
+                    const valStatus = img.validation_status || img.validation_results;
+                    const isNonFood =
+                      valStatus?.product_category === "non_food" ||
+                      valStatus?.five_point_audit?.category_compliance?.product_category === "non_food" ||
+                      valStatus?.category_exemptions?.fssai_exempt === true;
+                    return isNonFood ? (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 uppercase tracking-wide">
+                        Non-Food
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 uppercase tracking-wide">
+                        Food
+                      </span>
+                    );
+                  })()}
                 </button>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 uppercase tracking-wide">
                   {Math.round((img.confidence_score || 0) * 100)}% Confidence
@@ -189,7 +205,7 @@ export default function ManualReviewQueue() {
               {/* Inspect Button */}
               <div className="pt-2 border-t border-slate-100 dark:border-white/5 flex justify-end">
                 <Link
-                  to="/image-studio/review-studio"
+                  to={`/image-studio/review-studio?imageId=${img.id}`}
                   state={{ imageId: img.id }}
                   className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-600 dark:text-sky-400 hover:text-sky-700"
                 >

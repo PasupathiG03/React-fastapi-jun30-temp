@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
+  BarChart3,
   ChevronDown,
+  Cpu,
   GitBranch,
   Layers,
   LayoutDashboard,
@@ -79,6 +81,7 @@ const BUILT_IN_URLS = new Set([DEV_DASHBOARD.href, DEV_ROUTER_SETUP.href, DEV_SU
 export function getProcessIcon(name: string): React.ElementType {
   const n = name.trim().toLowerCase();
   if (n.includes("bigbasket") || n.includes("image")) return Sparkles;
+  if (n.includes("api") || n.includes("monitor")) return BarChart3;
   if (n.includes("workflow")) return Network;
   if (n.includes("access") || n.includes("admin")) return Lock;
   if (n.includes("developer") || n.includes("dev")) return Sparkles;
@@ -97,6 +100,8 @@ export function getScreenIcon(name: string, url: string, iconKey?: string | null
   const lowerUrl = url.trim().toLowerCase();
 
   if (lowerUrl === DEV_SUPPORT.href) return DEV_SUPPORT.Icon; // Support, even if its row has no icon saved
+  if (lowerUrl.includes("gemini") || lowerName.includes("gemini")) return Cpu;
+  if (lowerUrl.includes("api-dashboard") || lowerName.includes("photoroom")) return BarChart3;
   if (lowerUrl.includes("user-management") || lowerName.includes("user")) return Users;
   if (lowerUrl.includes("role-management") || lowerName.includes("role")) return Shield;
   if (lowerUrl.includes("menu-access") || lowerName.includes("access") || lowerName.includes("permission")) return ShieldCheck;

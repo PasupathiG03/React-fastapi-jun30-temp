@@ -42,6 +42,13 @@ def list_batch_images(
     total = query.count()
     images = query.order_by(BatchImage.sequence_order, BatchImage.id).offset((page - 1) * page_size).limit(page_size).all()
 
+    for img in images:
+        if not getattr(img, "validation_status", None):
+            setattr(img, "validation_status", img.validation_results)
+        val = img.validation_results or {}
+        cat = val.get("product_category") or (val.get("gemini_classification") or {}).get("primary_category")
+        setattr(img, "product_category", cat)
+
     return {
         "items": images,
         "total": total,
@@ -61,6 +68,9 @@ def get_image_details(
         raise HTTPException(status_code=404, detail="Image not found")
     # Expose validation_status alias pointing to validation_results dictionary
     setattr(img, "validation_status", img.validation_results)
+    val = img.validation_results or {}
+    cat = val.get("product_category") or (val.get("gemini_classification") or {}).get("primary_category")
+    setattr(img, "product_category", cat)
     return img
 
 
@@ -157,4 +167,72 @@ async def retry_image_processing(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Photoroom retry failed: {str(e)}")
+
+
+class UpdateCategoryPayload(BaseModel):
+    product_category: str  # "FOOD", "NON_FOOD", "KITCHEN_ITEMS"
+
+
+@router.post("/{image_id}/update-category", response_model=BatchImageDetailOut)
+def update_image_product_category(
+    image_id: int,
+    payload: UpdateCategoryPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Updates the product category (FOOD, NON_FOOD, or KITCHEN_ITEMS) for an image and all sibling
+    images sharing the same BBID, re-evaluating category compliance and exemptions.
+    """
+    cat = payload.product_category.upper().strip()
+    if cat in ("NON-FOOD", "NONFOOD"):
+        cat = "NON_FOOD"
+    elif cat in ("KITCHEN", "KITCHEN ITEMS", "KITCHEN-ITEMS"):
+        cat = "KITCHEN_ITEMS"
+
+    if cat not in ("FOOD", "NON_FOOD", "KITCHEN_ITEMS"):
+        raise HTTPException(status_code=400, detail="Category must be 'FOOD', 'NON_FOOD', or 'KITCHEN_ITEMS'")
+
+    img = db.query(BatchImage).filter(BatchImage.id == image_id).first()
+    if not img:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    # Update all images for this BBID in the batch
+    sibling_imgs = db.query(BatchImage).filter(
+        BatchImage.batch_id == img.batch_id,
+        BatchImage.bbid == img.bbid,
+    ).all()
+
+    is_food = (cat == "FOOD")
+    is_kitchen = (cat == "KITCHEN_ITEMS")
+
+    for item in sibling_imgs:
+        v = dict(item.validation_results or {})
+        v["product_category"] = cat
+        v["category_exemptions"] = {
+            "fssai_exempt": not is_food,
+            "nutrition_exempt": not is_food,
+            "veg_nonveg_exempt": not is_food,
+        }
+        fpa = dict(v.get("five_point_audit") or {})
+        fpa["category_compliance"] = {
+            "product_category": cat,
+            "fssai_applicable": is_food,
+            "nutrition_applicable": is_food,
+            "kitchen_rules_active": is_kitchen,
+            "notes": (
+                "Food product: FSSAI & Nutritional validation enabled" if is_food
+                else "Kitchen item: Metal sheen, glass structure & narrow handle preservation active" if is_kitchen
+                else "Non-food product: Directions, Material Composition, & Safety warnings active"
+            ),
+        }
+        v["five_point_audit"] = fpa
+        item.validation_results = v
+
+    db.commit()
+    db.refresh(img)
+    setattr(img, "validation_status", img.validation_results)
+    setattr(img, "product_category", cat)
+    return img
+
 

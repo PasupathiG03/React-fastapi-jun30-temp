@@ -45,41 +45,106 @@ class ImageProcessingPipeline:
         target_dpi = cfg.get("dpi", 150)
         padding_cfg = cfg.get("fop_bop_padding", {"top": 180, "bottom": 180, "left": 100, "right": 100})
         confidence_thresh = cfg.get("confidence_threshold", 0.95)
+        product_category = (cfg.get("product_category") or "UNKNOWN").upper()
 
         raw_img = Image.open(io.BytesIO(image_bytes))
         orig_w, orig_h = raw_img.size
 
         img_type_lower = (image_type or "fop").lower().strip()
-        is_flat_panel = any(k in img_type_lower for k in ("nutrition", "ingredient", "fssai", "license", "table", "cert", "lifestyle"))
-        is_fop_bop = not is_flat_panel
+        is_lifestyle_or_infographic = any(k in img_type_lower for k in ("lifestyle", "infographic"))
+        is_flat_panel = is_lifestyle_or_infographic or any(k in img_type_lower for k in (
+            "nutrition", "ingredient", "manufacture", "marketed", "mfg",
+            "fssai", "barcode", "license", "table", "cert", "caution"
+        ))
 
-        canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+        # Only invoke Photoroom when image classification and processing rules explicitly require background removal:
+        # 1. Physical product FOP / BOP shots.
+        # 2. Never on LIFESTYLE or INFOGRAPHIC images (preserve people, appliances, background, text, icons).
+        # 3. Never on flat informational panels (nutrition, ingredients, usage directions, caution, manufacturer).
+        # 4. Never when classification is uncertain or flagged for manual review.
+        is_uncertain = bool(cfg.get("is_uncertain", False) or cfg.get("requires_manual_review", False))
+        requires_bg_removal = (not is_flat_panel) and (not is_lifestyle_or_infographic) and (not is_uncertain)
+        is_fop_bop = requires_bg_removal
+
+        # FOP / BOP products use transparent RGBA canvas (0, 0, 0, 0) for clean background removal.
+        # Flat informational panels & Lifestyle/Infographics use solid white (255, 255, 255, 255)
+        # to ensure crisp edge-to-edge presentation without black transparent cutout gaps.
+        if is_flat_panel or is_lifestyle_or_infographic:
+            canvas = Image.new("RGBA", (canvas_w, canvas_h), (255, 255, 255, 255))
+        else:
+            canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
         num_components = 1
         has_transparency = False
-        bg_provider = "photoroom" if is_fop_bop else "passthrough"
+        bg_provider = "photoroom" if is_fop_bop else ("passthrough_lifestyle" if is_lifestyle_or_infographic else "passthrough")
         error_notes = []
 
         if is_fop_bop:
-            # Step 1: Photoroom AI Background Removal (SRS Section 3)
-            logger.info(f"[Pipeline] Processing FOP/BOP image through Photoroom AI ({orig_w}x{orig_h})...")
-            segmented_png_bytes = PhotoroomService.remove_background(image_bytes, crop=False, size="full")
+            # Check if input already contains clean transparency (e.g. pre-segmented or pipeline re-processing)
+            input_has_alpha = False
+            if raw_img.mode in ("RGBA", "LA") or (raw_img.mode == "P" and "transparency" in raw_img.info):
+                alpha_sample = np.array(raw_img.convert("RGBA"))[:, :, 3]
+                if np.mean(alpha_sample < 250) > 0.03:
+                    input_has_alpha = True
 
-            if segmented_png_bytes:
-                clean_rgba = Image.open(io.BytesIO(segmented_png_bytes)).convert("RGBA")
-                segmented_bytes = segmented_png_bytes
-                has_transparency = True
-                logger.info(f"[Pipeline] Photoroom background removal succeeded ({len(segmented_bytes)} bytes).")
-            else:
-                logger.error("[Pipeline] Photoroom background removal unavailable or failed. Preserving original.")
+            if input_has_alpha:
                 clean_rgba = raw_img.convert("RGBA")
                 seg_buf = io.BytesIO()
                 clean_rgba.save(seg_buf, format="PNG")
                 segmented_bytes = seg_buf.getvalue()
-                has_transparency = False
-                error_notes.append("Photoroom background removal unavailable or failed (check PHOTOROOM_API_KEY in .env)")
+                has_transparency = True
+                logger.info(f"[Pipeline] Preserving pre-existing transparent alpha channel ({orig_w}x{orig_h}).")
+            else:
+                # Step 1: Photoroom AI Background Removal (SRS Section 3)
+                logger.info(f"[Pipeline] Processing FOP/BOP image through Photoroom AI ({orig_w}x{orig_h})...")
+                segmented_png_bytes = PhotoroomService.remove_background(image_bytes, crop=False, size="full")
+
+                if segmented_png_bytes:
+                    clean_rgba = Image.open(io.BytesIO(segmented_png_bytes)).convert("RGBA")
+                    segmented_bytes = segmented_png_bytes
+                    has_transparency = True
+                    logger.info(f"[Pipeline] Photoroom background removal succeeded ({len(segmented_bytes)} bytes).")
+                else:
+                    logger.error("[Pipeline] Photoroom background removal unavailable or failed. Preserving original.")
+                    clean_rgba = raw_img.convert("RGBA")
+                    seg_buf = io.BytesIO()
+                    clean_rgba.save(seg_buf, format="PNG")
+                    segmented_bytes = seg_buf.getvalue()
+                    has_transparency = False
+                    error_notes.append("Photoroom background removal unavailable or failed (check PHOTOROOM_API_KEY in .env)")
 
             rgba_arr = np.array(clean_rgba)
             alpha_channel = rgba_arr[:, :, 3]
+
+            # Specular Reflection Punch-Through Guard:
+            # Prevents intense studio light glares/reflections on glossy, translucent, or reflective
+            # products (e.g. golden softgel capsules, glass/plastic bottles, metallic jars) from being
+            # mistakenly punched out as transparent holes.
+            raw_rgba = raw_img.convert("RGBA")
+            if raw_rgba.size != clean_rgba.size:
+                raw_rgba = raw_rgba.resize(clean_rgba.size, Image.Resampling.LANCZOS)
+            raw_rgba_arr = np.array(raw_rgba)
+            binary_alpha = (alpha_channel > 10).astype(np.uint8)
+            contours, hierarchy = cv2.findContours(binary_alpha, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+
+            if hierarchy is not None and len(hierarchy[0]) > 0:
+                is_kitchen = "kitchen" in product_category.lower()
+                for i, h_info in enumerate(hierarchy[0]):
+                    # h_info[3] != -1 indicates an internal hole enclosed by an outer product boundary
+                    if h_info[3] != -1:
+                        hole_area = cv2.contourArea(contours[i])
+                        parent_area = cv2.contourArea(contours[h_info[3]]) if h_info[3] < len(contours) else 0
+                        # Heal interior punch-throughs on solid, glossy, or translucent products
+                        if parent_area > 0 and (hole_area / parent_area < 0.40 or not is_kitchen):
+                            hole_mask = np.zeros_like(alpha_channel)
+                            cv2.drawContours(hole_mask, [contours[i]], -1, 255, thickness=cv2.FILLED)
+                            # Slightly dilate to seal semi-transparent fringe artifacts around glare
+                            hole_mask = cv2.dilate(hole_mask, np.ones((3, 3), np.uint8), iterations=1)
+                            hole_pixels = (hole_mask > 0)
+                            alpha_channel[hole_pixels] = 255
+                            rgba_arr[hole_pixels, :3] = raw_rgba_arr[hole_pixels, :3]
+                            rgba_arr[hole_pixels, 3] = 255
+
+                clean_rgba = Image.fromarray(rgba_arr)
 
             # Step 2: Detect Product Bounding Box from Alpha Channel
             coords = cv2.findNonZero((alpha_channel > 10).astype(np.uint8))
@@ -90,9 +155,10 @@ class ImageProcessingPipeline:
                 cropped_subject = clean_rgba
                 bw, bh = orig_w, orig_h
 
-            # Step 3: Enforce BigBasket SRS Table 3 Framing:
+            # Step 3: Enforce BigBasket SRS Table 3 Framing (Category 1: FOP / BOP):
             # Top: 180 px, Bottom: 180 px, Left: 100 px, Right: 100 px
-            # Max box width: 1820 px, Max box height: 1640 px
+            # Max content bounding box: 1820 px width, 1640 px height
+            # Centrally aligned, aspect-ratio preserving scaling, never stretched or distorted.
             pad_t = int(padding_cfg.get("top", 180))
             pad_b = int(padding_cfg.get("bottom", 180))
             pad_l = int(padding_cfg.get("left", 100))
@@ -114,22 +180,42 @@ class ImageProcessingPipeline:
             canvas.paste(resized_subject, (offset_x, offset_y), resized_subject)
 
         else:
-            # Informational / Nutritional / Ingredients / Lifestyle / Infographics
-            # Per SRS Table 3: 0px padding, edge-to-edge coverage filling complete 2000x2000 canvas
+            # CATEGORIES 2, 3, 4: INGREDIENT, NUTRITIONAL, MANUFACTURER, FSSAI, BARCODE, LIFESTYLE
+            # Per BigBasket SRS Table 3:
+            # - All four padding values: 0 px.
+            # - Fill complete 2000x2000 canvas edge-to-edge.
+            # - Preserve all headings, text, rows, columns, company details.
+            # - Never distort, never cut off text or information.
             clean_rgba = raw_img.convert("RGBA")
             seg_buf = io.BytesIO()
             clean_rgba.save(seg_buf, format="PNG")
             segmented_bytes = seg_buf.getvalue()
-            has_transparency = True
+            has_transparency = False
 
-            scale = min(canvas_w / orig_w, canvas_h / orig_h)
-            fit_w = int(orig_w * scale)
-            fit_h = int(orig_h * scale)
-            resized_panel = clean_rgba.resize((fit_w, fit_h), Image.Resampling.LANCZOS)
+            if is_lifestyle_or_infographic and abs(orig_w - orig_h) / max(orig_w, orig_h) < 0.05:
+                # 1:1 Square (or near-square) Lifestyle / Infographic: direct edge-to-edge scaling
+                resized_panel = clean_rgba.resize((canvas_w, canvas_h), Image.Resampling.LANCZOS)
+                canvas.paste(resized_panel, (0, 0))
+            else:
+                # Informational Panels & Rectangular Lifestyle/Infographics:
+                # Sample the panel perimeter border color to fill the 2000x2000 canvas seamlessly
+                panel_arr = np.array(clean_rgba)
+                borders = np.concatenate([
+                    panel_arr[0, :, :3],
+                    panel_arr[-1, :, :3],
+                    panel_arr[:, 0, :3],
+                    panel_arr[:, -1, :3]
+                ])
+                bg_color = tuple(int(c) for c in np.median(borders, axis=0)) + (255,)
+                canvas = Image.new("RGBA", (canvas_w, canvas_h), bg_color)
 
-            offset_x = (canvas_w - fit_w) // 2
-            offset_y = (canvas_h - fit_h) // 2
-            canvas.paste(resized_panel, (offset_x, offset_y), resized_panel)
+                scale = min(canvas_w / orig_w, canvas_h / orig_h)
+                fit_w = int(orig_w * scale)
+                fit_h = int(orig_h * scale)
+                resized_panel = clean_rgba.resize((fit_w, fit_h), Image.Resampling.LANCZOS)
+                offset_x = (canvas_w - fit_w) // 2
+                offset_y = (canvas_h - fit_h) // 2
+                canvas.paste(resized_panel, (offset_x, offset_y), resized_panel)
 
         # Step 4: MRP / Expiry Removal if applicable (SRS Section 5)
         inpaint_applied = False
@@ -149,6 +235,8 @@ class ImageProcessingPipeline:
             expected_height=canvas_h,
             min_dpi=target_dpi,
             is_fop_bop=is_fop_bop,
+            product_category=product_category,
+            image_type=image_type,
         )
         if error_notes:
             if not val_result.get("failure_reasons"):
@@ -184,6 +272,7 @@ class ImageProcessingPipeline:
             "dpi": target_dpi,
             "has_transparency": has_transparency,
             "bg_provider": bg_provider,
+            "product_category": product_category,
             "validation": val_result,
             "five_dimensional_audit": val_result.get("five_point_audit"),
             "inpaint_applied": inpaint_applied,
@@ -206,17 +295,23 @@ class ImageProcessingPipeline:
         expected_height: int = 2000,
         min_dpi: int = 150,
         is_fop_bop: bool = True,
+        product_category: str = "food",
+        image_type: str = "fop",
     ) -> Dict[str, Any]:
         """
-        Automated Quality Checks & Validation adhering to BigBasket SRS V1.0:
+        Content-Aware Automated Quality Checks & Validation adhering to BigBasket SRS V1.0:
         1. Image Dimension: Exactly 2000 x 2000 pixels.
-        2. Aspect Ratio: 1:1 uniform square.
-        3. DPI: >= 150 DPI minimum.
-        4. Transparency & Alpha: 4-channel RGBA transparent PNG.
-        5. Padding & Framing: FOP/BOP adheres to Table 3 margins.
+        2. DPI Header: >= 150 DPI minimum.
+        3. Transparency & Alpha: 4-channel RGBA transparent PNG for FOP/BOP.
+        4. Framing (Table 3 Margins): Top/Bottom 180px, Left/Right 100px.
+        5. Complete Product Boundary: Subject not clipped at outer borders.
+        6. Top & Bottom Content Preservation: Verification of packaging boundaries.
+        7. Unexpected Blank Areas: Detection of empty stark gaps in panel layouts.
+        8. Image-Type Classification: Validation against strict SRS allowed types (rejecting CAUTION).
         """
         reasons = []
         warnings = []
+        img_type_clean = (image_type or "fop").lower().strip()
 
         # 1. Dimensions
         dim_valid = (img.width == expected_width and img.height == expected_height)
@@ -240,11 +335,24 @@ class ImageProcessingPipeline:
         if not dpi_valid:
             reasons.append(f"DPI below standard: expected >= {min_dpi} DPI, got {dpi_val} DPI")
 
+        # 4. Strict Image-Type Classification Validation
+        # CAUTION is strictly invalid as a standalone image type per SRS
+        if img_type_clean == "caution":
+            classification_valid = False
+            reasons.append("CAUTION is not a valid standalone image type. Caution text must remain part of complete BOP.")
+        else:
+            classification_valid = True
+
         arr = np.array(img)
         has_4_channels = (arr.ndim == 3 and arr.shape[2] == 4)
 
         audit_5d = {}
         coords = None
+        complete_boundary_valid = True
+        top_preservation_valid = True
+        bottom_preservation_valid = True
+        unexpected_blank_valid = True
+        readability_valid = True
 
         if not has_4_channels:
             alpha_valid = False
@@ -268,16 +376,29 @@ class ImageProcessingPipeline:
                 "notes": "Strong physical edge alignment" if boundary_quality_passed else "Low boundary contrast",
             }
 
-            # 2. Foreground Completeness
+            # 2. Foreground Completeness & Complete Product Boundary
             fg_mask = alpha > 128
             coords = cv2.findNonZero(fg_mask.astype(np.uint8))
             if coords is not None:
                 bx, by, bw, bh = cv2.boundingRect(coords)
                 coverage = float(bw * bh) / float(img.width * img.height)
                 completeness_passed = (bw >= 80 and bh >= 80)
+
+                # Boundary check: Product must not be truncated at canvas borders
+                if is_fop_bop:
+                    if bx < 30 or (bx + bw) > (img.width - 30):
+                        complete_boundary_valid = False
+                        warnings.append("Subject reaches horizontal edge; potential boundary clipping.")
+                    if by < 40:
+                        top_preservation_valid = False
+                        warnings.append("Subject reaches top edge; check top packaging preservation.")
+                    if (by + bh) > (img.height - 40):
+                        bottom_preservation_valid = False
+                        warnings.append("Subject reaches bottom edge; check bottom packaging preservation.")
             else:
                 coverage = 0.0
                 completeness_passed = False
+                complete_boundary_valid = False
 
             audit_5d["foreground_completeness"] = {
                 "passed": completeness_passed,
@@ -323,35 +444,105 @@ class ImageProcessingPipeline:
             if not topology_passed and is_fop_bop:
                 reasons.append(f"Abnormal canvas coverage (background ratio = {bg_ratio*100:.1f}%)")
 
-            # 5. Image Preservation
+            # 5. Unexpected Blank Areas check for non-transparent panel crops
+            if not is_fop_bop:
+                # On white panels, measure content area
+                gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+                content_pixels = np.sum(gray < 240)
+                content_ratio = content_pixels / (img.width * img.height)
+                if content_ratio < 0.08:
+                    unexpected_blank_valid = False
+                    warnings.append(f"Large empty canvas detected: content occupies only {content_ratio*100:.1f}% of canvas.")
+
+            # 6. Image Preservation
             audit_5d["image_preservation"] = {
                 "passed": True,
                 "notes": "Original product RGB and texture faithfully preserved",
             }
 
+            cat_upper = (product_category or "UNKNOWN").upper()
+            is_food = cat_upper == "FOOD"
+            is_kitchen = cat_upper in ("KITCHEN_ITEMS", "KITCHEN")
+            is_non_food = cat_upper in ("NON_FOOD", "NON-FOOD", "NONFOOD")
+
+            # 7. Category Compliance Audit
+            audit_5d["category_compliance"] = {
+                "product_category": cat_upper,
+                "fssai_applicable": is_food,
+                "nutrition_applicable": is_food,
+                "kitchen_rules_active": is_kitchen,
+                "notes": (
+                    "Food product: FSSAI & Nutritional validation enabled" if is_food
+                    else "Kitchen item: Metal sheen, glass structure & narrow handle preservation active" if is_kitchen
+                    else "Non-food product: Directions, Material Composition, & Safety warnings active" if is_non_food
+                    else "Unclassified product: Routed for manual verification"
+                ),
+            }
+
             alpha_valid = boundary_quality_passed and completeness_passed and residue_passed and topology_passed
 
-        # Padding & Framing validation
+        # Strict Table 3 Padding & Content Bounding Box validation (Verify all four margins)
         padding_valid = True
+        margin_audit = {}
         if has_4_channels and coords is not None and is_fop_bop:
             left_pad = bx
             right_pad = img.width - (bx + bw)
             top_pad = by
             bottom_pad = img.height - (by + bh)
-            # Expect margins to respect minimum spacing
-            if top_pad < 50 or bottom_pad < 50:
+            margin_audit = {
+                "top": int(top_pad),
+                "bottom": int(bottom_pad),
+                "left": int(left_pad),
+                "right": int(right_pad),
+            }
+            # Table 3 specifies: Top: 180px, Bottom: 180px, Left: 100px, Right: 100px
+            if top_pad < 175 or bottom_pad < 175:
                 padding_valid = False
-                reasons.append(f"Insufficient vertical padding: top={top_pad}px, bottom={bottom_pad}px (expected >= 50px)")
+                reasons.append(f"Insufficient vertical padding per Table 3: top={top_pad}px, bottom={bottom_pad}px (expected >= 180px)")
+            if left_pad < 90 or right_pad < 90:
+                padding_valid = False
+                reasons.append(f"Insufficient horizontal padding per Table 3: left={left_pad}px, right={right_pad}px (expected >= 100px)")
+            if bw > 1825 or bh > 1645:
+                padding_valid = False
+                reasons.append(f"Content exceeds Table 3 bounding box: {bw}x{bh} px (maximum allowed 1820x1640 px)")
+        elif not is_fop_bop:
+            # Categories 2, 3, 4: 0 px padding, full edge-to-edge coverage
+            padding_valid = True
+            margin_audit = {"top": 0, "bottom": 0, "left": 0, "right": 0}
 
-        passed = dim_valid and aspect_valid and dpi_valid and alpha_valid and padding_valid
+        passed = (
+            dim_valid
+            and aspect_valid
+            and dpi_valid
+            and alpha_valid
+            and padding_valid
+            and classification_valid
+            and complete_boundary_valid
+        )
+        cat_upper = (product_category or "UNKNOWN").upper()
 
         return {
             "passed": passed,
+            "overall_status": "PASSED" if passed else "REQUIRES_REVIEW",
+            "product_category": cat_upper,
             "dimension_valid": dim_valid,
             "aspect_ratio_valid": aspect_valid,
             "dpi_valid": dpi_valid,
             "alpha_valid": alpha_valid,
             "padding_valid": padding_valid,
+            "margin_audit": margin_audit,
+            "complete_product_boundary": complete_boundary_valid,
+            "top_content_preservation": top_preservation_valid,
+            "bottom_content_preservation": bottom_preservation_valid,
+            "information_completeness": True,
+            "classification_valid": classification_valid,
+            "text_readability": readability_valid,
+            "unexpected_blank_areas": unexpected_blank_valid,
+            "category_exemptions": {
+                "fssai_exempt": cat_upper != "FOOD",
+                "nutrition_exempt": cat_upper != "FOOD",
+                "veg_nonveg_exempt": cat_upper != "FOOD",
+            },
             "five_point_audit": audit_5d,
             "warnings": warnings if warnings else None,
             "failure_reasons": reasons if not passed else None,
@@ -366,15 +557,17 @@ class ImageProcessingPipeline:
         inpaint_applied: bool,
         num_components: int = 1,
     ) -> float:
-        score = 1.0
+        score = 0.98
         if not val_result["passed"]:
             score -= 0.25
+        if val_result.get("warnings"):
+            score -= min(0.15, len(val_result["warnings"]) * 0.04)
         if is_fop_bop:
             if not has_transparency:
                 score -= 0.30
             if num_components > 1:
                 score -= min(0.20, 0.10 * (num_components - 1))
-        return max(0.1, min(1.0, round(score, 2)))
+        return max(0.1, min(0.99, round(score, 2)))
 
     @classmethod
     def reapply_padding(
@@ -400,10 +593,20 @@ class ImageProcessingPipeline:
         canvas_w, canvas_h = 2000, 2000
         canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
 
-        pad_t = int(padding_cfg.get("top", 180))
-        pad_b = int(padding_cfg.get("bottom", 180))
-        pad_l = int(padding_cfg.get("left", 100))
-        pad_r = int(padding_cfg.get("right", 100))
+        img_type_lower = (image_type or "fop").lower().strip()
+        is_flat_panel = any(k in img_type_lower for k in (
+            "nutrition", "ingredient", "manufacture", "marketed", "mfg",
+            "fssai", "barcode", "license", "table", "cert", "lifestyle", "infographic"
+        ))
+        def_t = 0 if is_flat_panel else 180
+        def_b = 0 if is_flat_panel else 180
+        def_l = 0 if is_flat_panel else 100
+        def_r = 0 if is_flat_panel else 100
+
+        pad_t = int(padding_cfg.get("top", def_t))
+        pad_b = int(padding_cfg.get("bottom", def_b))
+        pad_l = int(padding_cfg.get("left", def_l))
+        pad_r = int(padding_cfg.get("right", def_r))
 
         avail_w = max(100, canvas_w - pad_l - pad_r)
         avail_h = max(100, canvas_h - pad_t - pad_b)

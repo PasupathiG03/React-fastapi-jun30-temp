@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     PHOTOROOM_API_KEY: str = ""
     BG_REMOVAL_PROVIDER: str = "photoroom"  # "photoroom", "local", or "hybrid"
 
+    # Google Gemini AI Vision & Classification configuration (https://ai.google.dev/gemini-api/docs/models)
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = ""  # Configured strictly in .env (e.g. GEMINI_MODEL=gemini-3.5-flash-lite)
+
     @field_validator("DEFAULT_PASSWORD")
     @classmethod
     def _strong_default_password(cls, v: str) -> str:

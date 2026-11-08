@@ -217,19 +217,44 @@ class BatchProcessor:
             prediction = await ai_manager.analyze_image(
                 raw_bytes,
                 img.original_filename,
+                bbid=img.bbid,
                 threshold=cfg.get("confidence_threshold", 0.95),
+                batch_id=batch.id,
+                image_id=img.id,
             )
 
-            effective_type = img.image_type
-            if effective_type == "unknown" or not effective_type:
-                effective_type = prediction["predicted_category"]
+            # Authoritative visual classification from Gemini Multimodal Vision AI
+            ai_img_type = (prediction.get("predicted_category") or "").lower().strip()
+            if ai_img_type and ai_img_type != "unknown":
+                effective_type = ai_img_type
                 img.image_type = effective_type
+            else:
+                effective_type = (img.image_type or "fop").lower().strip()
 
             # 2. Pipeline Execution (u2net / photoroom, padding, inpainting, validation)
+            cfg_with_sku = dict(cfg)
+            cfg_with_sku["bbid"] = img.bbid
+            cfg_with_sku["filename"] = img.original_filename
+            batch_cat = cfg.get("product_category")
+            if not batch_cat or batch_cat == "auto":
+                cfg_with_sku["product_category"] = prediction.get("primary_category") or prediction.get("product_category") or "UNKNOWN"
+            else:
+                cfg_with_sku["product_category"] = batch_cat
+
+            # If image classification is uncertain, route it for manual review instead of automatically removing the background
+            is_uncertain = (
+                prediction.get("requires_manual_review", False)
+                or prediction.get("confidence_score", 1.0) < cfg.get("confidence_threshold", 0.95)
+                or prediction.get("primary_category") in ("UNKNOWN", None)
+                or prediction.get("predicted_category") in ("unknown", None)
+            )
+            cfg_with_sku["is_uncertain"] = is_uncertain
+            cfg_with_sku["requires_manual_review"] = is_uncertain
+
             result = ImageProcessingPipeline.process_image(
                 image_bytes=raw_bytes,
                 image_type=effective_type,
-                config=cfg,
+                config=cfg_with_sku,
                 auto_inpaint_mrp=cfg.get("auto_inpaint_mrp", True),
             )
 
@@ -244,8 +269,25 @@ class BatchProcessor:
             )
             img.final_output_path = str(final_path)
 
-            # 4. Embedded validation results & status
-            img.validation_results = result["validation"]
+            # 4. Embedded validation results, Gemini classification & status
+            val = dict(result["validation"] or {})
+            val["gemini_classification"] = {
+                "primary_category": prediction.get("primary_category"),
+                "subcategory": prediction.get("subcategory"),
+                "product_type": prediction.get("product_type"),
+                "image_type": (prediction.get("predicted_category") or img.image_type or "FOP").upper(),
+                "is_multi_product_image": prediction.get("is_multi_product_image", False),
+                "total_detected_products": prediction.get("total_detected_products", 1),
+                "detected_products": prediction.get("detected_products", []),
+                "materials": prediction.get("materials", []),
+                "components": prediction.get("components", []),
+                "visual_properties": prediction.get("visual_properties", []),
+                "matched_rules": prediction.get("matched_rules", []),
+                "reasoning": prediction.get("reasoning"),
+            }
+            val["product_category"] = prediction.get("primary_category") or val.get("product_category") or "UNKNOWN"
+            val["matched_rules"] = prediction.get("matched_rules", [])
+            img.validation_results = val
             img.status = result["status"]
             img.confidence_score = result["confidence_score"]
             img.original_width = result["original_width"]
@@ -271,16 +313,25 @@ class BatchProcessor:
             except Exception as log_err:
                 logger.warning(f"Failed to record API usage log: {log_err}")
 
-            # 5. Automatic Sub-Region Extraction for Back-of-Pack (BOP) images (Way 2)
+            # 5. Information Sections Detection for Back-of-Pack (BOP) images
             fname_lower = (img.original_filename or "").lower()
             img_type_lower = (img.image_type or "").lower().strip()
             is_bop = (
                 img_type_lower in ("bop", "back", "back of pack")
-                or (img.sequence_order is not None and img.sequence_order >= 2)
-                or any(k in fname_lower for k in ["(2)", "(10)", "back", "bop", "rear", "panel"])
+                and img_type_lower not in ("lifestyle", "infographic", "fop")
+                and not any(k in img_type_lower for k in ("lifestyle", "infographic", "fop"))
             )
             if is_bop:
-                cls._extract_and_register_bop_sub_regions(db, img, batch, raw_bytes, cfg)
+                # Detect and store packaging information sections as metadata on the parent BOP image
+                info_sections = SubRegionExtractor.detect_information_sections(raw_bytes)
+                if not img.validation_results:
+                    img.validation_results = {}
+                img.validation_results["detected_sections"] = info_sections
+                db.commit()
+
+                # Standalone information crops are only extracted if explicitly enabled in batch configuration
+                if cfg.get("extract_standalone_info_images", False) or cfg.get("extract_sub_regions", False):
+                    cls._extract_and_register_bop_sub_regions(db, img, batch, raw_bytes, cfg)
         except Exception as e:
             logger.error(f"Failed processing image {img.id}: {e}")
             img.status = "failed"
@@ -307,7 +358,7 @@ class BatchProcessor:
                     BatchImage.batch_id == batch.id,
                     BatchImage.bbid == parent_img.bbid,
                     BatchImage.id != parent_img.id,
-                    BatchImage.image_type.in_(["ingredient", "nutritional", "manufactured_by", "fssai", "barcode"]),
+                    BatchImage.image_type.in_(["ingredient", "nutritional", "manufactured_by", "fssai", "barcode", "caution"]),
                 )
                 .all()
             )
@@ -315,8 +366,12 @@ class BatchProcessor:
                 db.delete(s)
             db.flush()
 
-            # Determine product category (defaults to general)
-            product_cat = (batch.config or {}).get("category", "general")
+            # Determine product category (FOOD, NON_FOOD, or KITCHEN_ITEMS)
+            batch_cat = (batch.config or {}).get("product_category") or (batch.config or {}).get("category")
+            if not batch_cat or batch_cat == "auto":
+                product_cat = (parent_img.validation_results or {}).get("product_category") or "UNKNOWN"
+            else:
+                product_cat = batch_cat
 
             sub_items = SubRegionExtractor.detect_and_extract_sub_regions(
                 image_bytes=raw_bytes,

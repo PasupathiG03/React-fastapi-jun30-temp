@@ -29,6 +29,7 @@ export default function CreateBatch() {
   // Step 1: Basics
   const [batchName, setBatchName] = useState("");
   const [sourceType, setSourceType] = useState<"auto_images" | "google_drive">("auto_images");
+  const [productCategory, setProductCategory] = useState<"auto" | "food" | "non_food" | "kitchen_items">("auto");
 
   // Step 2: Images (Direct files or ZIP or Google Drive)
   const [imageFiles, setImageFiles] = useState<File[]>([]);
@@ -37,14 +38,15 @@ export default function CreateBatch() {
   const [driveVerified, setDriveVerified] = useState(false);
 
   // Configuration settings (BigBasket SRS defaults)
-  const [config] = useState({
+  const config = {
     canvas_width: 2000,
     canvas_height: 2000,
     dpi: 150,
+    product_category: productCategory,
     fop_bop_padding: { top: 180, bottom: 180, left: 100, right: 100 },
     confidence_threshold: 1.0,
     auto_inpaint_mrp: true,
-  });
+  };
 
   const [loading, setLoading] = useState(false);
 
@@ -206,6 +208,62 @@ export default function CreateBatch() {
                   <div className="text-[11px] text-slate-500 mt-1 leading-snug">
                     Ingest directly from a shared Google Drive folder link.
                   </div>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-2">
+                Product Category Logic
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setProductCategory("auto")}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    productCategory === "auto"
+                      ? "border-sky-500 bg-sky-500/10 ring-1 ring-sky-500/30"
+                      : "border-slate-200 dark:border-white/10 hover:border-slate-300"
+                  }`}
+                >
+                  <div className="font-semibold text-xs text-slate-900 dark:text-white">Auto-Detect</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Gemini AI detects Food, Non-Food, or Kitchen</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProductCategory("food")}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    productCategory === "food"
+                      ? "border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/30"
+                      : "border-slate-200 dark:border-white/10 hover:border-slate-300"
+                  }`}
+                >
+                  <div className="font-semibold text-xs text-emerald-600 dark:text-emerald-400">Food Products</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Enforces FSSAI, Nutrition, & Ingredients</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProductCategory("non_food")}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    productCategory === "non_food"
+                      ? "border-purple-500 bg-purple-500/10 ring-1 ring-purple-500/30"
+                      : "border-slate-200 dark:border-white/10 hover:border-slate-300"
+                  }`}
+                >
+                  <div className="font-semibold text-xs text-purple-600 dark:text-purple-400">Non-Food Products</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Directions, Material, & Safety (FSSAI exempt)</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProductCategory("kitchen_items")}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    productCategory === "kitchen_items"
+                      ? "border-amber-500 bg-amber-500/10 ring-1 ring-amber-500/30"
+                      : "border-slate-200 dark:border-white/10 hover:border-slate-300"
+                  }`}
+                >
+                  <div className="font-semibold text-xs text-amber-600 dark:text-amber-400">Kitchen Items</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Cookware, Utensils, Glass & Metal rules</div>
                 </button>
               </div>
             </div>

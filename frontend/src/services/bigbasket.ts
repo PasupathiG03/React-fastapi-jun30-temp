@@ -39,15 +39,8 @@ export interface ImageItem {
   final_output_path?: string | null;
   error_message?: string | null;
   created_at: string;
-  validation_status?: {
-    passed: boolean;
-    dimension_valid: boolean;
-    dpi_valid: boolean;
-    alpha_valid: boolean;
-    padding_valid: boolean;
-    aspect_ratio_valid: boolean;
-    failure_reasons?: string[] | null;
-  } | null;
+  validation_results?: any;
+  validation_status?: any;
 }
 
 export interface ImageListResponse {
@@ -237,6 +230,17 @@ export async function reapplyPadding(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(padding),
+  });
+}
+
+export async function updateImageCategory(
+  imageId: number,
+  productCategory: "FOOD" | "NON_FOOD" | "KITCHEN_ITEMS" | "food" | "non_food"
+): Promise<any> {
+  return request(`/api/image-studio/images/${imageId}/update-category`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ product_category: productCategory }),
   });
 }
 

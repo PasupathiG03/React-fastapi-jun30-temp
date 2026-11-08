@@ -1,5 +1,6 @@
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     Float,
@@ -96,3 +97,5 @@ class BatchImage(AuditMixin, Base):
 
     def __repr__(self) -> str:
         return f"<BatchImage id={self.id} bbid={self.bbid!r} status={self.status!r}>"
+
+

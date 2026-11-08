@@ -104,19 +104,25 @@ class SubRegionExtractor:
         # Dynamic Barcode Detection with MRP boundary awareness
         barcode_bbox = cls._detect_barcode_dynamic(arr, mrp_top=mrp_top)
 
-        # 4. Determine if Food vs Non-Food packaging
+        # 4. Determine if Food vs Non-Food/Kitchen packaging
         cat_lower = (category or "").lower().strip()
-        is_known_non_food = any(k in cat_lower for k in [
-            "hair", "shampoo", "conditioner", "soap", "beauty", "cosmetic",
-            "personal care", "detergent", "clean", "household", "laundry"
-        ])
+        if cat_lower in ("non_food", "non-food", "nonfood", "kitchen_items", "kitchen"):
+            is_known_non_food = True
+        elif cat_lower in ("food", "grocery"):
+            is_known_non_food = False
+        else:
+            is_known_non_food = False
 
         # 5. Dynamic Section Discovery (robust to glued words in packaging OCR)
         nutri_patterns = [
             r'nutrition', r'nutritional', r'per\s*100', r'energy', r'approximate\s*value', r'typical\s*value'
         ]
+        # Strictly match actual ingredient declarations (never confuse with directions or usage)
         ing_patterns = [
-            r'ingr', r'ingp', r'direc', r'dlrec', r'water', r'aqua', r'composition', r'contains', r'how\s*to\s*use', r'usage'
+            r'\bingredients?\b', r'\bcomposition\b', r'\bactive\s+ingredients?\b'
+        ]
+        directions_patterns = [
+            r'how\s*to\s*use', r'directions?', r'best\s*way\s*to\s*use', r'method\s*of\s*use'
         ]
         mfg_patterns = [
             r'mfd', r'mfg', r'manufactur', r'market', r'consumer', r'customercare', r'customer\s*care', r'packer', r'packed', r'pvt'
@@ -124,11 +130,16 @@ class SubRegionExtractor:
         fssai_patterns = [
             r'fssai', r'lic\s*(no|\.?)', r'license\s*(no|\.?)'
         ]
+        caution_patterns = [
+            r'caution', r'warning', r'first\s*aid', r'keep\s*(out|away)', r'for\s*external', r'flammable', r'irritan'
+        ]
 
         # Scan line indices
         nutri_start_idx = None
         ing_start_idx = None
+        directions_start_idx = None
         mfg_start_idx = None
+        caution_start_idx = None
         fssai_indices = []
 
         for i, l in enumerate(lines):
@@ -143,14 +154,23 @@ class SubRegionExtractor:
                 if any(re.search(pat, t) for pat in nutri_patterns):
                     nutri_start_idx = i
 
-            # Ingredients & Directions
+            # True Ingredients Heading
             if ing_start_idx is None:
                 if any(re.search(pat, t) for pat in ing_patterns):
                     ing_start_idx = i
 
+            # Directions for use (stored as metadata; not an ingredient crop)
+            if directions_start_idx is None:
+                if any(re.search(pat, t) for pat in directions_patterns):
+                    directions_start_idx = i
+
+            # Safety / Caution (stored as metadata; never extracted as standalone image per SRS)
+            if caution_start_idx is None:
+                if any(re.search(pat, t) for pat in caution_patterns):
+                    caution_start_idx = i
+
             # Manufacturer, Marketer, Packer
             if mfg_start_idx is None:
-                # Ensure it's after ingredients if ingredients were found
                 if any(re.search(pat, t) for pat in mfg_patterns) and (ing_start_idx is None or i > ing_start_idx):
                     mfg_start_idx = i
 
@@ -159,20 +179,20 @@ class SubRegionExtractor:
                 if any(re.search(pat, t) for pat in fssai_patterns):
                     fssai_indices.append(i)
 
-        # 6. Extract Dynamic Crops in Sequence
+        # 6. Extract Dynamic Crops in Sequence (Only SRS standard standalone information types)
+        # Note: CAUTION is strictly excluded per BigBasket SRS V1.0 - caution belongs to the complete BOP.
         extracted_results = []
         current_seq = 3
 
         # EXTRACTION A: Nutritional Information (Food Only)
         if nutri_start_idx is not None:
-            # End of nutritional is the start of next section or mrp_top
             next_idx = min([idx for idx in [ing_start_idx, mfg_start_idx, len(lines)] if idx is not None and idx > nutri_start_idx])
             nutri_group = [lines[k] for k in range(nutri_start_idx, next_idx) if lines[k]["y2"] < mrp_top]
             if nutri_group:
-                nx1 = max(0, min(b["x1"] for b in nutri_group) - 20)
-                ny1 = max(0, min(b["y1"] for b in nutri_group) - 15)
-                nx2 = min(orig_w, max(b["x2"] for b in nutri_group) + 20)
-                ny2 = min(orig_h, max(b["y2"] for b in nutri_group) + 15)
+                nx1 = max(0, min(b["x1"] for b in nutri_group) - 35)
+                ny1 = max(0, min(b["y1"] for b in nutri_group) - 35)
+                nx2 = min(orig_w, max(b["x2"] for b in nutri_group) + 35)
+                ny2 = min(orig_h, max(b["y2"] for b in nutri_group) + 35)
                 crop = arr[ny1:ny2, nx1:nx2]
                 if crop.shape[0] > 30 and crop.shape[1] > 40:
                     cls._append_crop_result(
@@ -188,22 +208,22 @@ class SubRegionExtractor:
                     )
                     current_seq += 1
 
-        # EXTRACTION B: Ingredients & Directions
+        # EXTRACTION B: True Ingredients List (Only when actual ingredients heading is present)
         if ing_start_idx is not None:
             end_idx = mfg_start_idx if mfg_start_idx is not None and mfg_start_idx > ing_start_idx else len(lines)
             ing_group = [lines[k] for k in range(ing_start_idx, end_idx) if lines[k]["y2"] < mrp_top]
             if ing_group:
-                ix1 = max(0, min(b["x1"] for b in ing_group) - 20)
-                iy1 = max(0, min(b["y1"] for b in ing_group) - 15)
-                ix2 = min(orig_w, max(b["x2"] for b in ing_group) + 20)
-                iy2 = min(orig_h, max(b["y2"] for b in ing_group) + 15)
+                ix1 = max(0, min(b["x1"] for b in ing_group) - 35)
+                iy1 = max(0, min(b["y1"] for b in ing_group) - 35)
+                ix2 = min(orig_w, max(b["x2"] for b in ing_group) + 35)
+                iy2 = min(orig_h, max(b["y2"] for b in ing_group) + 35)
                 crop = arr[iy1:iy2, ix1:ix2]
                 if crop.shape[0] > 30 and crop.shape[1] > 40:
                     cls._append_crop_result(
                         extracted_results,
                         crop,
                         category="ingredient",
-                        display_name="Ingredient",
+                        display_name="Ingredients",
                         bbid=bbid,
                         seq=current_seq,
                         canvas_w=canvas_width,
@@ -383,6 +403,69 @@ class SubRegionExtractor:
         })
 
     @classmethod
+    def detect_information_sections(
+        cls,
+        image_bytes: bytes,
+    ) -> Dict[str, Any]:
+        """
+        Dynamically analyzes packaging text to identify informational sections (metadata only).
+        Never crops or replaces the complete product image.
+        """
+        try:
+            raw_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            arr = np.array(raw_img)
+            ocr = get_ocr_reader()
+            raw_ocr = ocr.readtext(arr)
+
+            detected = {
+                "has_ingredients": False,
+                "has_directions": False,
+                "has_caution": False,
+                "has_manufacturer": False,
+                "has_fssai": False,
+                "has_barcode": False,
+                "has_nutrition": False,
+                "sections": [],
+            }
+
+            text_all = " ".join(t.strip().lower() for _, t, conf in raw_ocr if conf > 0.25)
+
+            if re.search(r'\bingredients?\b|\bcomposition\b', text_all):
+                detected["has_ingredients"] = True
+                detected["sections"].append("Ingredients")
+
+            if re.search(r'direction|how\s*to\s*use|best\s*way\s*to\s*use|method\s*of\s*use', text_all):
+                detected["has_directions"] = True
+                detected["sections"].append("Directions to Use")
+
+            if re.search(r'caution|warning|keep\s*(out|away)|first\s*aid', text_all):
+                detected["has_caution"] = True
+                detected["sections"].append("Caution & Safety")
+
+            if re.search(r'manufactur|mfg|marketed|packed\s*by|consumer\s*care|pvt\s*ltd', text_all):
+                detected["has_manufacturer"] = True
+                detected["sections"].append("Manufacturer Details")
+
+            if re.search(r'fssai|lic\s*no', text_all):
+                detected["has_fssai"] = True
+                detected["sections"].append("FSSAI")
+
+            if re.search(r'nutrition|energy|protein|carbohydrate|fat|per\s*100', text_all):
+                detected["has_nutrition"] = True
+                detected["sections"].append("Nutritional Information")
+
+            # Check barcode
+            barcode_box = cls._detect_barcode_dynamic(arr)
+            if barcode_box is not None:
+                detected["has_barcode"] = True
+                detected["sections"].append("Barcode")
+
+            return detected
+        except Exception as e:
+            logger.warning(f"Could not extract info sections metadata: {e}")
+            return {"sections": []}
+
+    @classmethod
     def _fit_to_standard_canvas(
         cls,
         crop_img: Image.Image,
@@ -393,15 +476,19 @@ class SubRegionExtractor:
         crop_rgba = crop_img.convert("RGBA")
         cw, ch = crop_rgba.size
 
-        # Fit aspect ratio to fill 2000x2000 canvas edge-to-edge (0px padding per SRS)
-        scale = min(target_w / cw, target_h / ch)
+        # Content-aware layout: Scale to maximize readability while preventing large stark voids
+        # Leave comfortable 60px safe margin around the canvas boundary
+        safe_w = target_w - 120
+        safe_h = target_h - 120
+
+        scale = min(safe_w / cw, safe_h / ch)
         scaled_w = max(50, int(cw * scale))
         scaled_h = max(50, int(ch * scale))
 
         scaled_img = crop_rgba.resize((scaled_w, scaled_h), Image.Resampling.LANCZOS)
 
-        # 100% Transparent PNG Canvas (RGBA with Alpha = 0)
-        canvas = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
+        # Solid clean white canvas (255, 255, 255, 255) for informational panels
+        canvas = Image.new("RGBA", (target_w, target_h), (255, 255, 255, 255))
         offset_x = (target_w - scaled_w) // 2
         offset_y = (target_h - scaled_h) // 2
         canvas.paste(scaled_img, (offset_x, offset_y), scaled_img)
