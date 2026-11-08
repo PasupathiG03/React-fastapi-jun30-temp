@@ -7,8 +7,8 @@ import {
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import {
   fetchBatches,
-  getExcelReportUrl,
-  getOutputZipUrl,
+  downloadBatchExcelFile,
+  downloadBatchZipFile,
   type BatchItem,
 } from "@/services/bigbasket";
 import { showError } from "@/lib/toast";
@@ -104,24 +104,24 @@ export default function BigBasketReports() {
                     </td>
                     <td className="py-3 px-3 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <a
-                          href={getExcelReportUrl(b.id)}
-                          download
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-colors"
+                        <button
+                          type="button"
+                          onClick={() => downloadBatchExcelFile(b.batch_code)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-colors cursor-pointer"
                           title="Download Excel processing and exception audit log"
                         >
                           <FileSpreadsheet className="w-3.5 h-3.5" />
                           Excel Report
-                        </a>
-                        <a
-                          href={getOutputZipUrl(b.id)}
-                          download
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-500/10 hover:bg-sky-100 dark:hover:bg-sky-500/20 transition-colors"
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => downloadBatchZipFile(b.batch_code)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-500/10 hover:bg-sky-100 dark:hover:bg-sky-500/20 transition-colors cursor-pointer"
                           title="Download ZIP package of approved 2000x2000 PNG images"
                         >
                           <FolderArchive className="w-3.5 h-3.5" />
                           Images ZIP
-                        </a>
+                        </button>
                       </div>
                     </td>
                   </tr>

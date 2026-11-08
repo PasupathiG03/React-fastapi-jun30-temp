@@ -248,10 +248,44 @@ export function getImageFileUrl(imageId: number, variant: "original" | "final" =
   return `${API_BASE_URL}/api/image-studio/images/${imageId}/file?variant=${variant}`;
 }
 
-export function getExcelReportUrl(batchId: number): string {
-  return `${API_BASE_URL}/api/image-studio/reports/batch/${batchId}/excel`;
+export function getExcelReportUrl(batchRef: string | number): string {
+  return `${API_BASE_URL}/api/image-studio/reports/batch/${batchRef}/excel`;
 }
 
-export function getOutputZipUrl(batchId: number): string {
-  return `${API_BASE_URL}/api/image-studio/reports/batch/${batchId}/zip`;
+export function getOutputZipUrl(batchRef: string | number): string {
+  return `${API_BASE_URL}/api/image-studio/reports/batch/${batchRef}/zip`;
+}
+
+export async function downloadBatchZipFile(batchRef: string | number, filename?: string): Promise<void> {
+  const url = getOutputZipUrl(batchRef);
+  const response = await fetch(url, { credentials: "include" });
+  if (!response.ok) {
+    throw new Error(`Failed to download ZIP: ${response.statusText}`);
+  }
+  const blob = await response.blob();
+  const blobUrl = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = filename || `${batchRef}_output_images.zip`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(blobUrl);
+}
+
+export async function downloadBatchExcelFile(batchRef: string | number, filename?: string): Promise<void> {
+  const url = getExcelReportUrl(batchRef);
+  const response = await fetch(url, { credentials: "include" });
+  if (!response.ok) {
+    throw new Error(`Failed to download Excel report: ${response.statusText}`);
+  }
+  const blob = await response.blob();
+  const blobUrl = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = filename || `${batchRef}_processing_report.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(blobUrl);
 }

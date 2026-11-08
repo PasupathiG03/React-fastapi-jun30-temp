@@ -42,14 +42,25 @@ def get_dashboard_summary(
     }
 
 
-@router.get("/batch/{batch_id}/excel")
-def download_excel_report(
-    batch_id: int,
+@router.get("/batch/{batch_ref}/excel")
+async def download_excel_report(
+    batch_ref: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    batch = db.query(ImageBatch).filter(ImageBatch.id == batch_id).first()
-    if not batch or not batch.excel_report_path:
+    if batch_ref.isdigit():
+        batch = db.query(ImageBatch).filter(ImageBatch.id == int(batch_ref)).first()
+    else:
+        batch = db.query(ImageBatch).filter(ImageBatch.batch_code == batch_ref).first()
+
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found.")
+
+    # Refresh export package dynamically to ensure current status and zero stale logs
+    from app.services.bigbasket.batch_processor import BatchProcessor
+    await BatchProcessor.generate_export_package(batch.id, db)
+
+    if not batch.excel_report_path:
         raise HTTPException(status_code=404, detail="Excel report not yet generated for this batch.")
 
     p = Path(batch.excel_report_path)
@@ -63,14 +74,25 @@ def download_excel_report(
     )
 
 
-@router.get("/batch/{batch_id}/zip")
-def download_output_zip(
-    batch_id: int,
+@router.get("/batch/{batch_ref}/zip")
+async def download_output_zip(
+    batch_ref: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    batch = db.query(ImageBatch).filter(ImageBatch.id == batch_id).first()
-    if not batch or not batch.zip_export_path:
+    if batch_ref.isdigit():
+        batch = db.query(ImageBatch).filter(ImageBatch.id == int(batch_ref)).first()
+    else:
+        batch = db.query(ImageBatch).filter(ImageBatch.batch_code == batch_ref).first()
+
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found.")
+
+    # Refresh export package dynamically to ensure 100% current approved outputs and zero duplicate/stale files
+    from app.services.bigbasket.batch_processor import BatchProcessor
+    await BatchProcessor.generate_export_package(batch.id, db)
+
+    if not batch.zip_export_path:
         raise HTTPException(status_code=404, detail="Output ZIP archive not yet generated for this batch.")
 
     p = Path(batch.zip_export_path)

@@ -45,8 +45,8 @@ import {
   uploadBatchImagesZip,
   fetchDashboardSummary,
   getImageFileUrl,
-  getOutputZipUrl,
-  getExcelReportUrl,
+  downloadBatchZipFile,
+  downloadBatchExcelFile,
   retryImageProcessing,
   retryBatchFailed,
   type BatchItem,
@@ -846,22 +846,22 @@ function BatchTableRow({
             {/* Quick Export Downloads if completed */}
             {batch.status === "completed" && (
               <>
-                <a
-                  href={getOutputZipUrl(batch.id)}
-                  download
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-500/10 transition-colors"
+                <button
+                  type="button"
+                  onClick={() => downloadBatchZipFile(batch.batch_code)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-500/10 transition-colors cursor-pointer"
                   title="Download standardized images ZIP"
                 >
                   <Download className="w-4 h-4" />
-                </a>
-                <a
-                  href={getExcelReportUrl(batch.id)}
-                  download
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors"
+                </button>
+                <button
+                  type="button"
+                  onClick={() => downloadBatchExcelFile(batch.batch_code)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors cursor-pointer"
                   title="Download audit report Excel"
                 >
                   <FileSpreadsheet className="w-4 h-4" />
-                </a>
+                </button>
               </>
             )}
 

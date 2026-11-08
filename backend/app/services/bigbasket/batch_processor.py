@@ -163,8 +163,7 @@ class BatchProcessor:
             cls._log_event(db, batch_id, "completed", f"Batch {batch.batch_code} completed all {batch.processed_images} items.")
             db.commit()
 
-            # Auto-generate export reports (saved directly to batch.zip_export_path and batch.excel_report_path)
-            await cls.generate_export_package(batch_id, db)
+            # Note: ZIP and Excel export packages are generated on-demand only when user clicks Export/Download in reports.py
 
             await BigBasketEventBroadcaster.publish_event({
                 "type": "batch_status",
@@ -259,6 +258,15 @@ class BatchProcessor:
             )
 
             # 3. Save versions & final output directly into Model 2 (BatchImage)
+            # Remove any stale final output file if sequence or BBID changed
+            if img.final_output_path:
+                try:
+                    old_final = Path(img.final_output_path)
+                    if old_final.exists() and old_final.name != f"{img.bbid}_{img.sequence_order}.png":
+                        old_final.unlink()
+                except Exception:
+                    pass
+
             seg_path = BigBasketStorage.save_version_file(
                 batch, img.id, "segmented", result["segmented_image_bytes"]
             )
@@ -451,13 +459,15 @@ class BatchProcessor:
 
         # 1. Build ZIP package of approved outputs
         exported_count = 0
+        seen_arcnames = set()
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             for img in images:
                 if img.status in ("auto_approved", "manually_approved") and img.final_output_path:
                     p = Path(img.final_output_path)
-                    if p.exists():
+                    if p.exists() and p.name not in seen_arcnames:
                         # Standard BigBasket naming: {BBID}_{sequence}.png
                         zf.write(p, arcname=p.name)
+                        seen_arcnames.add(p.name)
                         exported_count += 1
 
         # 2. Build Excel Exception & Summary Report

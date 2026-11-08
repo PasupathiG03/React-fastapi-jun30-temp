@@ -88,6 +88,7 @@ class BigBasketStorage:
         existing = cls._find_existing_dir(UPLOAD_DIR, code)
         if existing:
             (existing / "original").mkdir(exist_ok=True)
+            (existing / "cache").mkdir(exist_ok=True)
             (existing / "processed").mkdir(exist_ok=True)
             return existing
 
@@ -95,6 +96,7 @@ class BigBasketStorage:
         b_dir = UPLOAD_DIR / date_str / folder_name
         b_dir.mkdir(parents=True, exist_ok=True)
         (b_dir / "original").mkdir(exist_ok=True)
+        (b_dir / "cache").mkdir(exist_ok=True)
         (b_dir / "processed").mkdir(exist_ok=True)
         return b_dir
 
@@ -136,8 +138,8 @@ class BigBasketStorage:
     ) -> str:
         b_dir = cls.get_batch_dir(batch_or_code)
         filename = f"img_{image_id}_{version_type}.{ext}"
-        # Save segmented and intermediate versions directly in processed/ to eliminate extra 'versions' subfolder
-        target_path = b_dir / "processed" / filename
+        # Save segmented and intermediate versions in dedicated cache/ folder to keep processed/ clean
+        target_path = b_dir / "cache" / filename
         with open(target_path, "wb") as f:
             f.write(content)
         return str(target_path)
