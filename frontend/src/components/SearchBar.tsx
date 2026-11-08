@@ -4,27 +4,11 @@ import { CornerDownLeft, Search, X } from "lucide-react";
 import { fetchMenus, type MenuItem } from "@/services/menu";
 import { useLive } from "@/context/LiveContext";
 import { useMyStages } from "@/hooks/useMyStages";
-
-interface SearchEntry {
-  path: string;
-  label: string;
-  group: string;
-}
+import { BUILTIN_DEV_SCREENS, type ScreenEntry as SearchEntry } from "@/lib/routes";
 
 interface Props {
   isDeveloper: boolean;
 }
-
-// Mirrors the Developer's hard-coded sidebar screens (see Sidebar.tsx), which aren't guaranteed to be in /api/menus.
-const DEV_SCREENS: SearchEntry[] = [
-  { path: "/dashboard", label: "Dashboard", group: "Main Menu" },
-  { path: "/developer-management/router-setup", label: "Router Setup", group: "Developer Management" },
-  { path: "/access-control/role-management", label: "Role Management", group: "Access Control" },
-  { path: "/access-control/user-management", label: "User Management", group: "Access Control" },
-  { path: "/access-control/menu-access", label: "Menu Access", group: "Access Control" },
-  { path: "/access-control/workflow-management", label: "Workflow Management", group: "Access Control" },
-  { path: "/support", label: "Support", group: "Support" },
-];
 
 /**
  * Global screen search for the top bar. The index is built from what this user can actually open
@@ -54,7 +38,7 @@ export default function SearchBar({ isDeveloper }: Props) {
 
   const entries = useMemo<SearchEntry[]>(() => {
     const byPath = new Map<string, SearchEntry>();
-    if (isDeveloper) DEV_SCREENS.forEach((e) => byPath.set(e.path, e));
+    if (isDeveloper) BUILTIN_DEV_SCREENS.forEach((e) => byPath.set(e.path, e));
     menus
       .filter((m) => m.url && m.is_active)
       .forEach((m) => {

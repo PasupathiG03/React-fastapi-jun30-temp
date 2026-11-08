@@ -965,7 +965,7 @@ function BatchTableRow({
                         const targetImg =
                           images.find((img) => img.status.includes("approved") || img.status === "needs_review") ||
                           images[0];
-                        navigate(`/image-studio/review-studio?imageId=${targetImg.id}`, { state: { imageId: targetImg.id } });
+                        navigate("/image-studio/review-studio", { state: { imageId: targetImg.id } });
                       }}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 shadow-2xs transition-colors cursor-pointer"
                     >
@@ -1004,7 +1004,7 @@ function BatchTableRow({
                           key={img.id}
                           className="hover:bg-sky-500/5 dark:hover:bg-white/[0.02] transition-colors cursor-pointer group"
                           onClick={() =>
-                            navigate(`/image-studio/review-studio?imageId=${img.id}`, { state: { imageId: img.id } })
+                            navigate("/image-studio/review-studio", { state: { imageId: img.id } })
                           }
                           title="Click to inspect in Review Studio"
                         >
@@ -1175,7 +1175,7 @@ function BatchTableRow({
                                 </button>
                               )}
                               <Link
-                                to={`/image-studio/review-studio?imageId=${img.id}`}
+                                to="/image-studio/review-studio"
                                 state={{ imageId: img.id }}
                                 className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-sky-600 dark:hover:text-sky-400 transition-colors"
                               >

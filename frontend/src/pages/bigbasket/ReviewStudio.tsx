@@ -33,7 +33,7 @@ import { showError, showSuccess } from "@/lib/toast";
 
 export default function ReviewStudio() {
   const { imageId: paramId } = useParams();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const location = useLocation();
 
   const [activeImageId, setActiveImageId] = useState<number | null>(() => {
@@ -42,6 +42,13 @@ export default function ReviewStudio() {
     const target = qId || sId;
     return target ? Number(target) : null;
   });
+
+  // Clean address bar so internal imageId query parameters are never exposed in the URL
+  useEffect(() => {
+    if (window.location.search) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   // Sync activeImageId whenever URL query parameters or location state changes
   useEffect(() => {
@@ -345,7 +352,6 @@ export default function ReviewStudio() {
                   type="button"
                   onClick={() => {
                     setActiveImageId(sibling.id);
-                    setSearchParams({ imageId: String(sibling.id) });
                   }}
                   className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border text-left transition-all shrink-0 cursor-pointer ${
                     isSelected
@@ -390,7 +396,6 @@ export default function ReviewStudio() {
                 if (curIdx > 0) {
                   const prevId = batchSiblings[curIdx - 1].id;
                   setActiveImageId(prevId);
-                  setSearchParams({ imageId: String(prevId) });
                 }
               }}
               className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-40 text-xs font-semibold flex items-center gap-1 transition-all"
@@ -408,7 +413,6 @@ export default function ReviewStudio() {
                 if (curIdx >= 0 && curIdx < batchSiblings.length - 1) {
                   const nextId = batchSiblings[curIdx + 1].id;
                   setActiveImageId(nextId);
-                  setSearchParams({ imageId: String(nextId) });
                 }
               }}
               className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-40 text-xs font-semibold flex items-center gap-1 transition-all"
@@ -713,7 +717,7 @@ export default function ReviewStudio() {
               <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">
                 <span className="text-slate-600 dark:text-slate-400">Image-Type Classification:</span>
                 <span className={`font-semibold ${image?.image_type?.toLowerCase() !== "caution" && image?.validation_status?.classification_valid !== false ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}`}>
-                  {image?.image_type?.toLowerCase() === "caution" ? "FAILED (Invalid Type)" : "PASSED (SRS Compliant)"}
+                  {image?.image_type?.toLowerCase() === "caution" ? "FAILED (Invalid Type)" : "PASSED"}
                 </span>
               </div>
               <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-white/5">

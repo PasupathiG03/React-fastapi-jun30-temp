@@ -18,4 +18,3 @@ api_router.include_router(tickets.router, prefix="/api/tickets", tags=["Support 
 api_router.include_router(api_dashboard.router, prefix="/api/api-dashboard", tags=["API Dashboard"])
 api_router.include_router(gemini_monitoring.router, prefix="/api/gemini-monitoring", tags=["Gemini AI Monitoring"])
 api_router.include_router(bigbasket_router, prefix="/api/image-studio", tags=["Image Studio Automation"])
-api_router.include_router(bigbasket_router, prefix="/api/bigbasket", tags=["Image Studio Automation"])

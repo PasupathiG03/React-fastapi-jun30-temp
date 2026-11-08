@@ -31,52 +31,39 @@ import { API_BASE_URL } from "@/lib/constants";
 import { useReportPageLoading } from "@/context/PageLoadingContext";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { hasFullAccess } from "@/lib/access";
+import { APP_ROUTES } from "@/lib/routes";
 
-// Mirrors backend/app/core/builtin_screens.py's built-in access-control screens. A group made up only of
-// these (whatever it is, or isn't, grouped under in the database) is shown as the fixed "Access Control"
-// section, so this never depends on how that process happens to be named or whether it has been migrated.
-const ADMIN_SCREEN_URLS = new Set([
-  "/access-control/user-management",
-  "/access-control/role-management",
-  "/access-control/menu-access",
-  "/access-control/workflow-management",
+// Built-in access-control screens: fixed "Access Control" section.
+const ADMIN_SCREEN_URLS = new Set<string>([
+  APP_ROUTES.USER_MANAGEMENT,
+  APP_ROUTES.ROLE_MANAGEMENT,
+  APP_ROUTES.MENU_ACCESS,
+  APP_ROUTES.WORKFLOW_MANAGEMENT,
 ]);
 
-// Image Studio process screens: separated into their own dedicated process section in the sidebar.
-const IMAGE_STUDIO_SCREEN_URLS = new Set([
-  "/image-studio",
-  "/image-studio/dashboard",
-  "/image-studio/create-batch",
-  "/image-studio/batch-processing",
-  "/image-studio/manual-review",
-  "/image-studio/review-studio",
-  "/image-studio/reports",
-  "/bigbasket/dashboard",
-  "/bigbasket/create-batch",
-  "/bigbasket/batch-processing",
-  "/bigbasket/manual-review",
-  "/bigbasket/review-studio",
-  "/bigbasket/reports",
+// Image Studio process screens: dedicated process section in the sidebar.
+const IMAGE_STUDIO_SCREEN_URLS = new Set<string>([
+  APP_ROUTES.IMAGE_STUDIO,
+  APP_ROUTES.IMAGE_STUDIO_DASHBOARD,
+  APP_ROUTES.IMAGE_STUDIO_CREATE_BATCH,
+  APP_ROUTES.IMAGE_STUDIO_BATCH_PROCESSING,
+  APP_ROUTES.IMAGE_STUDIO_MANUAL_REVIEW,
+  APP_ROUTES.IMAGE_STUDIO_REVIEW_STUDIO,
+  APP_ROUTES.IMAGE_STUDIO_REPORTS,
 ]);
 
-// A Developer's core navigation (also mirrors backend/app/core/builtin_screens.py) is hard-coded here, not
-// read from /api/menus like everything else. A Developer must never lose Router Setup or Access Control --
-// the very screens needed to fix the menus table -- just because that table is empty, misconfigured, or
-// a process got renamed/deactivated by mistake. Any screen or process a Developer adds beyond these still
-// comes from the database and shows alongside them (see visibleMenus below, which excludes these URLs so
-// the database's own copies, once ensure_default_menus recreates them, don't render twice).
-const DEV_DASHBOARD = { href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard };
-const DEV_ROUTER_SETUP = { href: "/developer-management/router-setup", label: "Router Setup", Icon: Layers };
-// Same icon as the database's Support screen (builtin_screens.py), so Developers and other roles see the same one.
-const DEV_SUPPORT = { href: "/support", label: "Support", Icon: ICON_MAP.Ticket };
+// Core Developer navigation centralized from APP_ROUTES
+const DEV_DASHBOARD = { href: APP_ROUTES.DASHBOARD, label: "Dashboard", Icon: LayoutDashboard };
+const DEV_ROUTER_SETUP = { href: APP_ROUTES.ROUTER_SETUP, label: "Router Setup", Icon: Layers };
+const DEV_SUPPORT = { href: APP_ROUTES.SUPPORT, label: "Support", Icon: ICON_MAP.Ticket };
 const DEV_ACCESS_CONTROL: FlyoutItem[] = [
-  { href: "/access-control/role-management", label: "Role Management", Icon: Shield },
-  { href: "/access-control/user-management", label: "User Management", Icon: Users },
-  { href: "/access-control/menu-access", label: "Menu Access", Icon: ShieldCheck },
-  { href: "/access-control/workflow-management", label: "Workflow Management", Icon: Network },
+  { href: APP_ROUTES.ROLE_MANAGEMENT, label: "Role Management", Icon: Shield },
+  { href: APP_ROUTES.USER_MANAGEMENT, label: "User Management", Icon: Users },
+  { href: APP_ROUTES.MENU_ACCESS, label: "Menu Access", Icon: ShieldCheck },
+  { href: APP_ROUTES.WORKFLOW_MANAGEMENT, label: "Workflow Management", Icon: Network },
 ];
-const DEV_IMAGE_STUDIO = { href: "/image-studio", label: "Image Studio", Icon: Sparkles };
-const BUILT_IN_URLS = new Set([DEV_DASHBOARD.href, DEV_ROUTER_SETUP.href, DEV_SUPPORT.href, DEV_IMAGE_STUDIO.href, ...DEV_ACCESS_CONTROL.map((i) => i.href)]);
+const DEV_IMAGE_STUDIO = { href: APP_ROUTES.IMAGE_STUDIO, label: "Image Studio", Icon: Sparkles };
+const BUILT_IN_URLS = new Set<string>([DEV_DASHBOARD.href, DEV_ROUTER_SETUP.href, DEV_SUPPORT.href, DEV_IMAGE_STUDIO.href, ...DEV_ACCESS_CONTROL.map((i) => i.href)]);
 
 export function getProcessIcon(name: string): React.ElementType {
   const n = name.trim().toLowerCase();

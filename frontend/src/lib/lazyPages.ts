@@ -1,4 +1,5 @@
 import { lazyWithPreload, type PreloadableComponent } from "@/lib/lazyWithPreload";
+import { APP_ROUTES } from "@/lib/routes";
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 // ADDING A NEW MENU / SCREEN
@@ -26,46 +27,36 @@ export interface PageRoute {
 }
 
 /** Both addresses that open the dashboard gate. Use this instead of repeating the two paths. */
-export const DASHBOARD_PATHS = ["/", "/dashboard"];
+export const DASHBOARD_PATHS = ["/", APP_ROUTES.DASHBOARD];
 
 /** Every screen inside the app shell (sidebar + top bar). One entry per menu URL. */
 export const PAGE_ROUTES: PageRoute[] = [
   ...DASHBOARD_PATHS.map((path) => ({ path, page: DashboardGate, alsoPreload: [Dashboard] })),
 
   // Access Control
-  { path: "/access-control/user-management", page: lazyPage(() => import("@/pages/UserManagement")) },
-  { path: "/access-control/role-management", page: lazyPage(() => import("@/pages/RoleManagement")) },
-  { path: "/access-control/menu-access", page: lazyPage(() => import("@/pages/MenuAccess")) },
-  { path: "/access-control/workflow-management", page: lazyPage(() => import("@/pages/WorkflowManagement")) },
+  { path: APP_ROUTES.USER_MANAGEMENT, page: lazyPage(() => import("@/pages/UserManagement")) },
+  { path: APP_ROUTES.ROLE_MANAGEMENT, page: lazyPage(() => import("@/pages/RoleManagement")) },
+  { path: APP_ROUTES.MENU_ACCESS, page: lazyPage(() => import("@/pages/MenuAccess")) },
+  { path: APP_ROUTES.WORKFLOW_MANAGEMENT, page: lazyPage(() => import("@/pages/WorkflowManagement")) },
 
   // Image Studio Consolidated Workspace
-  { path: "/image-studio", page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
-  { path: "/image-studio/dashboard", page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
-  { path: "/image-studio/create-batch", page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
-  { path: "/image-studio/batch-processing", page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
-  { path: "/image-studio/manual-review", page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
-  { path: "/image-studio/review-studio", page: lazyPage(() => import("@/pages/bigbasket/ReviewStudio")) },
-  { path: "/image-studio/review-studio/:imageId", page: lazyPage(() => import("@/pages/bigbasket/ReviewStudio")) },
-  { path: "/image-studio/reports", page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
-
-  // Backward compatibility aliases
-  { path: "/bigbasket/dashboard", page: lazyPage(() => import("@/pages/bigbasket/BigBasketDashboard")) },
-  { path: "/bigbasket/create-batch", page: lazyPage(() => import("@/pages/bigbasket/CreateBatch")) },
-  { path: "/bigbasket/batch-processing", page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
-  { path: "/bigbasket/manual-review", page: lazyPage(() => import("@/pages/bigbasket/ManualReviewQueue")) },
-  { path: "/bigbasket/review-studio", page: lazyPage(() => import("@/pages/bigbasket/ReviewStudio")) },
-  { path: "/bigbasket/review-studio/:imageId", page: lazyPage(() => import("@/pages/bigbasket/ReviewStudio")) },
-  { path: "/bigbasket/reports", page: lazyPage(() => import("@/pages/bigbasket/BigBasketReports")) },
+  { path: APP_ROUTES.IMAGE_STUDIO, page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
+  { path: APP_ROUTES.IMAGE_STUDIO_DASHBOARD, page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
+  { path: APP_ROUTES.IMAGE_STUDIO_CREATE_BATCH, page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
+  { path: APP_ROUTES.IMAGE_STUDIO_BATCH_PROCESSING, page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
+  { path: APP_ROUTES.IMAGE_STUDIO_MANUAL_REVIEW, page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
+  { path: APP_ROUTES.IMAGE_STUDIO_REVIEW_STUDIO, page: lazyPage(() => import("@/pages/bigbasket/ReviewStudio")) },
+  { path: APP_ROUTES.IMAGE_STUDIO_REPORTS, page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
 
   // Developer Management
-  { path: "/developer-management/router-setup", page: lazyPage(() => import("@/pages/MenuManagement")) },
+  { path: APP_ROUTES.ROUTER_SETUP, page: lazyPage(() => import("@/pages/MenuManagement")) },
 
   // API Monitoring & Quota Dashboard
-  { path: "/api-dashboard", page: lazyPage(() => import("@/pages/ApiDashboard")) },
-  { path: "/api-monitoring/gemini", page: lazyPage(() => import("@/pages/GeminiApiMonitoring")) },
+  { path: APP_ROUTES.API_DASHBOARD, page: lazyPage(() => import("@/pages/ApiDashboard")) },
+  { path: APP_ROUTES.API_MONITORING_GEMINI, page: lazyPage(() => import("@/pages/GeminiApiMonitoring")) },
 
   // Support
-  { path: "/support", page: lazyPage(() => import("@/pages/Support")) },
+  { path: APP_ROUTES.SUPPORT, page: lazyPage(() => import("@/pages/Support")) },
 
   // Workflow stages opened from the sidebar (empty page for now: work items were removed)
   { path: "/workflows/:workflowSlug/:stageSlug", page: lazyPage(() => import("@/pages/StageWorkspace")) },
