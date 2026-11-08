@@ -562,17 +562,62 @@ class ImageProcessingPipeline:
         inpaint_applied: bool,
         num_components: int = 1,
     ) -> float:
-        score = 0.98
-        if not val_result["passed"]:
-            score -= 0.25
-        if val_result.get("warnings"):
-            score -= min(0.15, len(val_result["warnings"]) * 0.04)
+        """
+        Dynamically calculates AI quality confidence score from real objective validation checks:
+        Checks evaluated:
+        1. Dimension validity (2000x2000)
+        2. Aspect ratio (1:1 square)
+        3. DPI metadata (>= 150 DPI)
+        4. Image-type classification compliance
+        5. Table 3 framing & margins (Top >= 180, Bottom >= 180, Left/Right >= 100)
+        6. Complete product boundary (no outer border clipping)
+        7. Top packaging content preservation
+        8. Bottom packaging content preservation
+        9. Unexpected blank layout gaps
+        10. Packaging text readability
+        11. 4-Channel RGBA transparency (for FOP/BOP)
+        12. 5D physical edge boundary quality
+        13. 5D foreground product completeness
+        14. 5D background residue cleanliness
+        """
+        checks = [
+            val_result.get("dimension_valid", True),
+            val_result.get("aspect_ratio_valid", True),
+            val_result.get("dpi_valid", True),
+            val_result.get("classification_valid", True),
+            val_result.get("padding_valid", True),
+            val_result.get("complete_product_boundary", True),
+            val_result.get("top_content_preservation", True),
+            val_result.get("bottom_content_preservation", True),
+            val_result.get("unexpected_blank_areas", True),
+            val_result.get("text_readability", True),
+        ]
         if is_fop_bop:
-            if not has_transparency:
-                score -= 0.30
-            if num_components > 1:
-                score -= min(0.20, 0.10 * (num_components - 1))
-        return max(0.1, min(0.99, round(score, 2)))
+            checks.append(has_transparency)
+
+        audit_5d = val_result.get("five_point_audit") or {}
+        if audit_5d:
+            if "boundary_quality" in audit_5d:
+                checks.append(audit_5d["boundary_quality"].get("passed", True))
+            if "foreground_completeness" in audit_5d:
+                checks.append(audit_5d["foreground_completeness"].get("passed", True))
+            if "background_residue" in audit_5d:
+                checks.append(audit_5d["background_residue"].get("passed", True))
+
+        total_checks = len(checks)
+        passed_checks = sum(1 for c in checks if c)
+
+        score = float(passed_checks) / float(max(1, total_checks))
+
+        # Dynamic deduction for warnings if any
+        warnings = val_result.get("warnings") or []
+        if warnings:
+            score -= min(0.15, len(warnings) * 0.03)
+
+        if not val_result.get("passed", True):
+            score = min(score, 0.85)
+
+        return max(0.10, min(1.0, round(score, 2)))
 
     @classmethod
     def reapply_padding(

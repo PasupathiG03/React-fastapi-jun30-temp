@@ -809,50 +809,59 @@ export default function ReviewStudio() {
                 </div>
               )}
 
-              {/* Multi-Product Cookware Kit / Set Breakdown */}
-              {image?.validation_status?.gemini_classification?.detected_products?.length > 0 && (
-                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
-                      <Package className="w-3.5 h-3.5" />
-                      Cookware Kit ({image.validation_status.gemini_classification.total_detected_products || image.validation_status.gemini_classification.detected_products.length} Items Detected)
-                    </span>
-                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 uppercase">
-                      Multi-Object
-                    </span>
-                  </div>
-                  <div className="space-y-1.5">
-                    {image.validation_status.gemini_classification.detected_products.map((item: any, pIdx: number) => (
-                      <div
-                        key={pIdx}
-                        className="p-2 rounded-lg bg-white/70 dark:bg-slate-900/60 border border-slate-200/50 dark:border-white/5 text-[11px] space-y-0.5"
-                      >
-                        <div className="flex items-center justify-between font-semibold text-slate-800 dark:text-slate-200">
-                          <span className="flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                            {item.product_type?.replace(/_/g, " ")}
-                          </span>
-                          <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 font-bold">
-                            Qty: {item.quantity || 1}
-                          </span>
+              {/* Dynamic Detected Products Breakdown */}
+              {image?.validation_status?.gemini_classification?.detected_products?.length > 0 && (() => {
+                const detCount = image.validation_status.gemini_classification.total_detected_products || image.validation_status.gemini_classification.detected_products.length;
+                const isMulti = detCount > 1 || image.validation_status.gemini_classification.is_multi_product_image;
+                const subCat = image.validation_status.gemini_classification.subcategory || image.validation_status.gemini_classification.product_type || "Product";
+                const label = isMulti ? `${subCat} Set (${detCount} Items Detected)` : `${subCat} (${detCount} Item Detected)`;
+
+                return (
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                        <Package className="w-3.5 h-3.5" />
+                        {label}
+                      </span>
+                      {isMulti && (
+                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 uppercase">
+                          Multi-Object
+                        </span>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      {image.validation_status.gemini_classification.detected_products.map((item: any, pIdx: number) => (
+                        <div
+                          key={pIdx}
+                          className="p-2 rounded-lg bg-white/70 dark:bg-slate-900/60 border border-slate-200/50 dark:border-white/5 text-[11px] space-y-0.5"
+                        >
+                          <div className="flex items-center justify-between font-semibold text-slate-800 dark:text-slate-200">
+                            <span className="flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                              {item.product_type?.replace(/_/g, " ")}
+                            </span>
+                            <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 font-bold">
+                              Qty: {item.quantity || 1}
+                            </span>
+                          </div>
+                          {item.components && item.components.length > 0 && (
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                              <span className="font-medium text-slate-600 dark:text-slate-300">Parts: </span>
+                              {item.components.join(", ")}
+                            </div>
+                          )}
+                          {item.materials && item.materials.length > 0 && (
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                              <span className="font-medium text-slate-600 dark:text-slate-300">Materials: </span>
+                              {item.materials.join(", ")}
+                            </div>
+                          )}
                         </div>
-                        {item.components && item.components.length > 0 && (
-                          <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                            <span className="font-medium text-slate-600 dark:text-slate-300">Parts: </span>
-                            {item.components.join(", ")}
-                          </div>
-                        )}
-                        {item.materials && item.materials.length > 0 && (
-                          <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                            <span className="font-medium text-slate-600 dark:text-slate-300">Materials: </span>
-                            {item.materials.join(", ")}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
               {image?.validation_status?.gemini_classification?.materials?.length > 0 && (
                 <div className="py-1 border-b border-slate-100 dark:border-white/5 space-y-1">
                   <span className="text-slate-600 dark:text-slate-400">Materials:</span>

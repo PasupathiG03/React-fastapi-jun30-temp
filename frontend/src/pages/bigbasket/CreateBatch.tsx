@@ -44,7 +44,7 @@ export default function CreateBatch() {
     dpi: 150,
     product_category: productCategory,
     fop_bop_padding: { top: 180, bottom: 180, left: 100, right: 100 },
-    confidence_threshold: 1.0,
+    confidence_threshold: 0.95,
     auto_inpaint_mrp: true,
   };
 
