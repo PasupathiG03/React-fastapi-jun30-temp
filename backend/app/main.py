@@ -8,6 +8,7 @@ from app.core.events import broadcaster
 from app.core.logger import logger
 from app.core.builtin_screens import ensure_default_menus
 from app.api.router import api_router
+from app.services.bigbasket.sub_region_extractor import get_ocr_status, warm_up_ocr
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -64,7 +65,10 @@ app.include_router(api_router)
 async def on_startup():
     logger.info("Starting %s", settings.PROJECT_NAME)
     ensure_default_menus()
-    broadcaster.start(asyncio.get_running_loop())
+    loop = asyncio.get_running_loop()
+    broadcaster.start(loop)
+    # Load the RapidOCR models in the background so startup is not blocked; /health shows "initializing" until done.
+    loop.run_in_executor(None, warm_up_ocr)
 
 
 @app.on_event("shutdown")
@@ -74,4 +78,5 @@ async def on_shutdown():
 
 @app.get("/health", tags=["Health"])
 def health():
-    return {"status": "ok"}
+    ocr = get_ocr_status()
+    return {"status": "ok" if ocr["status"] != "unavailable" else "degraded", "ocr": ocr}

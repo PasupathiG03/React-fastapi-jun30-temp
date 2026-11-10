@@ -17,3 +17,6 @@ pillow>=12.3.0
 opencv-python-headless>=5.0.0.93
 onnxruntime>=1.23.2
 rembg>=2.0.69
+
+# OCR: RapidOCR is the single OCR engine (PP-OCR models on onnxruntime, CPU; models ship with the package).
+rapidocr==3.10.0

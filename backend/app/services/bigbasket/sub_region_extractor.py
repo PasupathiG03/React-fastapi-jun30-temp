@@ -1,5 +1,6 @@
 import io
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -9,40 +10,82 @@ from PIL import Image
 
 from app.core.logger import logger
 
-# Global singleton OCR reader loaded once into memory
-_OCR_READER = None
+# RapidOCR (PaddleOCR PP-OCR models on ONNX Runtime, CPU) is the single OCR engine. There is no
+# fallback engine: if it cannot run, OCR fails loudly (OcrError) instead of silently returning no text.
+OCR_ENGINE = "rapidocr"
+
+_OCR_ENGINE = None
+_OCR_INIT_ERROR: Optional[str] = None
+_OCR_LOCK = threading.Lock()
+
+
+class OcrError(RuntimeError):
+    """OCR could not run. Callers must treat this as 'unknown', never as 'no text found'."""
 
 
 def get_ocr_reader():
-    global _OCR_READER
-    if _OCR_READER is None:
-        try:
-            from rapidocr_onnxruntime import RapidOCR
-            engine = RapidOCR()
+    """Returns the shared RapidOCR engine, creating it on first use.
 
-            class RapidOCRWrapper:
-                def readtext(self, img_arr):
-                    res, _ = engine(img_arr)
-                    if not res:
-                        return []
-                    return [[r[0], r[1], float(r[2])] for r in res]
-
-            _OCR_READER = RapidOCRWrapper()
-            logger.info("Initialized high-speed RapidOCR ONNX engine.")
-        except Exception as e:
+    A failed initialisation is logged once and remembered, so it is not retried (and slowly re-failed)
+    for every image; restart the backend after fixing the install. Raises OcrError when unavailable.
+    """
+    global _OCR_ENGINE, _OCR_INIT_ERROR
+    if _OCR_ENGINE is not None:
+        return _OCR_ENGINE
+    with _OCR_LOCK:
+        if _OCR_ENGINE is None and _OCR_INIT_ERROR is None:
             try:
-                import easyocr
-                _OCR_READER = easyocr.Reader(["en"], gpu=False)
-                logger.info("Initialized EasyOCR engine.")
-            except Exception as e2:
-                logger.warning(f"No OCR engine available: {e}, {e2}")
+                from rapidocr import RapidOCR
+                _OCR_ENGINE = RapidOCR()
+                logger.info("Initialized RapidOCR engine (ONNX Runtime, CPU).")
+            except Exception as e:
+                _OCR_INIT_ERROR = f"{type(e).__name__}: {e}"
+                logger.error(
+                    "RapidOCR initialisation failed; OCR is UNAVAILABLE and BOP images that need OCR will be "
+                    "marked needs_review. Install backend requirements (rapidocr) and restart. Cause: %s",
+                    _OCR_INIT_ERROR,
+                )
+        if _OCR_ENGINE is None:
+            raise OcrError(f"OCR unavailable ({OCR_ENGINE}): {_OCR_INIT_ERROR}")
+    return _OCR_ENGINE
 
-                class DummyOCR:
-                    def readtext(self, img_arr):
-                        return []
 
-                _OCR_READER = DummyOCR()
-    return _OCR_READER
+def read_text(img_arr: np.ndarray) -> List[List[Any]]:
+    """Runs OCR and returns [[ [[x, y] x4 (tl, tr, br, bl)], text, confidence ], ...] with plain Python types.
+
+    An image with no text returns [] (RapidOCR reports that as boxes=None); an engine failure raises OcrError.
+    """
+    engine = get_ocr_reader()
+    try:
+        result = engine(img_arr)
+    except Exception as e:
+        logger.error("RapidOCR text detection failed: %s: %s", type(e).__name__, e)
+        raise OcrError(f"OCR failed during text detection: {type(e).__name__}: {e}") from e
+    if result.boxes is None or result.txts is None or result.scores is None:
+        return []
+    return [
+        [[[float(x), float(y)] for x, y in box], str(text), float(score)]
+        for box, text, score in zip(result.boxes, result.txts, result.scores)
+    ]
+
+
+def get_ocr_status() -> Dict[str, Any]:
+    """OCR health for the /health endpoint. Never includes error details (the endpoint is public)."""
+    if _OCR_ENGINE is not None:
+        status = "ready"
+    elif _OCR_INIT_ERROR is not None:
+        status = "unavailable"
+    else:
+        status = "initializing"
+    return {"engine": OCR_ENGINE, "status": status, "available": status == "ready"}
+
+
+def warm_up_ocr() -> None:
+    """Loads the engine ahead of the first image so /health reflects reality. Failures are logged, not raised."""
+    try:
+        get_ocr_reader()
+    except OcrError:
+        pass
 
 
 class SubRegionExtractor:
@@ -67,9 +110,8 @@ class SubRegionExtractor:
         orig_w, orig_h = raw_img.size
         arr = np.array(raw_img)
 
-        # 1. Dynamic Text Localization using OCR
-        ocr = get_ocr_reader()
-        raw_ocr_results = ocr.readtext(arr)
+        # 1. Dynamic Text Localization using OCR (raises OcrError if OCR cannot run)
+        raw_ocr_results = read_text(arr)
         logger.info(f"Dynamic OCR detected {len(raw_ocr_results)} text lines for BBID {bbid}")
 
         # Clean and sort text lines by vertical position y1
@@ -96,10 +138,31 @@ class SubRegionExtractor:
         for l in lines:
             t = l["text"].lower()
             # Catch price stamps like "MRP # ₹ 988", "₹ 1.52/ml", "Rs. 250", "₹ 99", "MRP 150"
-            if re.search(r'(mrp|₹|\brs\.?)\s*#?\s*\d+', t) or (("mrp" in t) and ("?" in t or "₹" in t)) or re.search(r'/\s*ml', t):
+            if (
+                re.search(r'(mrp|₹|\brs\.?)\s*#?\s*\d+', t)
+                or (("mrp" in t) and ("?" in t or "₹" in t))
+                or re.search(r'/\s*ml', t)
+                or re.search(r'unit\s*price', t)
+            ):
                 price_boxes.append(l)
 
         mrp_top = min([b["y1"] for b in price_boxes]) if price_boxes else orig_h
+
+        # The MRP box is a column, not a full-width strip: on many packs it sits beside the manufacturer
+        # address. Only lines from the MRP top downward that overlap the price column horizontally
+        # (MRP, unit price, batch no., MFG/EXP dates) belong to it; text beside it is kept.
+        if price_boxes:
+            price_x1 = min(b["x1"] for b in price_boxes) - 20
+            price_x2 = max(b["x2"] for b in price_boxes) + 20
+        else:
+            price_x1 = price_x2 = None
+
+        def in_price_box(line: Dict[str, Any]) -> bool:
+            if price_x1 is None:
+                return False
+            if line in price_boxes:
+                return True
+            return line["y2"] >= mrp_top and line["x2"] > price_x1 and line["x1"] < price_x2
 
         # Dynamic Barcode Detection with MRP boundary awareness
         barcode_bbox = cls._detect_barcode_dynamic(arr, mrp_top=mrp_top)
@@ -125,7 +188,9 @@ class SubRegionExtractor:
             r'how\s*to\s*use', r'directions?', r'best\s*way\s*to\s*use', r'method\s*of\s*use'
         ]
         mfg_patterns = [
-            r'mfd', r'mfg', r'manufactur', r'market', r'consumer', r'customercare', r'customer\s*care', r'packer', r'packed', r'pvt'
+            r'mfd', r'mfg', r'manufactur', r'market', r'consumer', r'customercare', r'customer\s*care', r'packer', r'packed', r'pvt',
+            r'quality\s*product\s*(of|from|by)', r'\bproduct\s+(of|from)\b', r'\bmade\s+by\b', r'\bimported\s+by\b',
+            r'\bdistributed\s+by\b',
         ]
         fssai_patterns = [
             r'fssai', r'lic\s*(no|\.?)', r'license\s*(no|\.?)'
@@ -146,7 +211,7 @@ class SubRegionExtractor:
             t = l["text"].lower()
 
             # Skip lines in the MRP price box
-            if l["y2"] >= mrp_top and l in price_boxes:
+            if in_price_box(l):
                 continue
 
             # Nutritional table (Food only)
@@ -187,7 +252,7 @@ class SubRegionExtractor:
         # EXTRACTION A: Nutritional Information (Food Only)
         if nutri_start_idx is not None:
             next_idx = min([idx for idx in [ing_start_idx, mfg_start_idx, len(lines)] if idx is not None and idx > nutri_start_idx])
-            nutri_group = [lines[k] for k in range(nutri_start_idx, next_idx) if lines[k]["y2"] < mrp_top]
+            nutri_group = [lines[k] for k in range(nutri_start_idx, next_idx) if not in_price_box(lines[k])]
             if nutri_group:
                 nx1 = max(0, min(b["x1"] for b in nutri_group) - 35)
                 ny1 = max(0, min(b["y1"] for b in nutri_group) - 35)
@@ -197,7 +262,7 @@ class SubRegionExtractor:
                 if crop.shape[0] > 30 and crop.shape[1] > 40:
                     cls._append_crop_result(
                         extracted_results,
-                        crop,
+                        crop, src_arr=arr, box=(nx1, ny1, nx2, ny2), avoid_lines=lines,
                         category="nutritional",
                         display_name="Nutritional",
                         bbid=bbid,
@@ -211,7 +276,7 @@ class SubRegionExtractor:
         # EXTRACTION B: True Ingredients List (Only when actual ingredients heading is present)
         if ing_start_idx is not None:
             end_idx = mfg_start_idx if mfg_start_idx is not None and mfg_start_idx > ing_start_idx else len(lines)
-            ing_group = [lines[k] for k in range(ing_start_idx, end_idx) if lines[k]["y2"] < mrp_top]
+            ing_group = [lines[k] for k in range(ing_start_idx, end_idx) if not in_price_box(lines[k])]
             if ing_group:
                 ix1 = max(0, min(b["x1"] for b in ing_group) - 35)
                 iy1 = max(0, min(b["y1"] for b in ing_group) - 35)
@@ -221,7 +286,7 @@ class SubRegionExtractor:
                 if crop.shape[0] > 30 and crop.shape[1] > 40:
                     cls._append_crop_result(
                         extracted_results,
-                        crop,
+                        crop, src_arr=arr, box=(ix1, iy1, ix2, iy2), avoid_lines=lines,
                         category="ingredient",
                         display_name="Ingredients",
                         bbid=bbid,
@@ -234,7 +299,7 @@ class SubRegionExtractor:
 
         # EXTRACTION C: Marketed / Manufactured By
         if mfg_start_idx is not None:
-            mfg_group = [l for l in lines[mfg_start_idx:] if l["y2"] < mrp_top and l not in price_boxes]
+            mfg_group = [l for l in lines[mfg_start_idx:] if not in_price_box(l)]
             if mfg_group:
                 mx1 = max(0, min(b["x1"] for b in mfg_group) - 20)
                 my1 = max(0, min(b["y1"] for b in mfg_group) - 15)
@@ -244,7 +309,7 @@ class SubRegionExtractor:
                 if crop.shape[0] > 30 and crop.shape[1] > 40:
                     cls._append_crop_result(
                         extracted_results,
-                        crop,
+                        crop, src_arr=arr, box=(mx1, my1, mx2, my2), avoid_lines=lines,
                         category="manufactured_by",
                         display_name="Marketed/Manufactured By",
                         bbid=bbid,
@@ -257,7 +322,7 @@ class SubRegionExtractor:
 
         # EXTRACTION D: FSSAI (Food Only)
         if fssai_indices:
-            fssai_group = [lines[k] for k in fssai_indices if lines[k]["y2"] < mrp_top]
+            fssai_group = [lines[k] for k in fssai_indices if not in_price_box(lines[k])]
             if fssai_group:
                 fx1 = max(0, min(b["x1"] for b in fssai_group) - 25)
                 fy1 = max(0, min(b["y1"] for b in fssai_group) - 20)
@@ -267,7 +332,7 @@ class SubRegionExtractor:
                 if crop.shape[0] > 20 and crop.shape[1] > 30:
                     cls._append_crop_result(
                         extracted_results,
-                        crop,
+                        crop, src_arr=arr, box=(fx1, fy1, fx2, fy2), avoid_lines=lines,
                         category="fssai",
                         display_name="FSSAI",
                         bbid=bbid,
@@ -288,7 +353,7 @@ class SubRegionExtractor:
             if crop.shape[0] >= 30 and crop.shape[1] >= 20:
                 cls._append_crop_result(
                     extracted_results,
-                    crop,
+                    crop, src_arr=arr, box=(bx1, by1, bx2, by2), avoid_lines=lines,
                     category="barcode",
                     display_name="Barcode",
                     bbid=bbid,
@@ -378,11 +443,24 @@ class SubRegionExtractor:
         canvas_w: int,
         canvas_h: int,
         dpi: int,
+        src_arr: Optional[np.ndarray] = None,
+        box: Optional[Tuple[int, int, int, int]] = None,
+        avoid_lines: Optional[List[Dict[str, Any]]] = None,
     ):
         crop_img = Image.fromarray(crop_arr)
 
+        # Edge-to-edge output (0 px padding): grow the crop to the canvas aspect ratio using the real
+        # packaging around it, so the canvas is filled by the pack itself instead of added colour.
+        canvas_src = crop_img
+        if src_arr is not None and box is not None:
+            img_h, img_w = src_arr.shape[:2]
+            ex1, ey1, ex2, ey2 = cls._expand_box_to_aspect(
+                box, img_w, img_h, canvas_w / canvas_h, avoid_lines or []
+            )
+            canvas_src = Image.fromarray(src_arr[ey1:ey2, ex1:ex2])
+
         canvas_bytes = cls._fit_to_standard_canvas(
-            crop_img,
+            canvas_src,
             target_w=canvas_w,
             target_h=canvas_h,
             dpi=dpi,
@@ -410,14 +488,19 @@ class SubRegionExtractor:
         """
         Dynamically analyzes packaging text to identify informational sections (metadata only).
         Never crops or replaces the complete product image.
+        Returns ocr_available=False (with ocr_error) when OCR could not run: callers must not
+        read an empty section list as "nothing on the pack".
         """
         try:
             raw_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
             arr = np.array(raw_img)
-            ocr = get_ocr_reader()
-            raw_ocr = ocr.readtext(arr)
+            try:
+                raw_ocr = read_text(arr)
+            except OcrError as ocr_err:
+                return {"ocr_available": False, "ocr_error": str(ocr_err), "sections": []}
 
             detected = {
+                "ocr_available": True,
                 "has_ingredients": False,
                 "has_directions": False,
                 "has_caution": False,
@@ -465,6 +548,54 @@ class SubRegionExtractor:
             logger.warning(f"Could not extract info sections metadata: {e}")
             return {"sections": []}
 
+    @staticmethod
+    def _expand_box_to_aspect(
+        box: Tuple[int, int, int, int],
+        img_w: int,
+        img_h: int,
+        target_aspect: float,
+        avoid_lines: List[Dict[str, Any]],
+        gap: int = 6,
+    ) -> Tuple[int, int, int, int]:
+        """Grows a crop box on its short axis toward target_aspect (w / h) using surrounding packaging.
+
+        It only grows into free space: never past the image edge and never into another OCR text line
+        (other sections, the MRP box), so no foreign text is half-cut into the panel. Growth is split
+        evenly between both sides where possible. May return a box that is still short of the aspect
+        when the pack has no more free space; the canvas fit fills the rest with the panel's edge colour.
+        """
+        x1, y1, x2, y2 = (int(v) for v in box)
+        w, h = x2 - x1, y2 - y1
+        if w <= 0 or h <= 0:
+            return x1, y1, x2, y2
+
+        def inside(l: Dict[str, Any]) -> bool:
+            return l["x1"] >= x1 and l["y1"] >= y1 and l["x2"] <= x2 and l["y2"] <= y2
+
+        foreign = [l for l in avoid_lines if not inside(l)]
+
+        def split(need: int, room_a: int, room_b: int) -> Tuple[int, int]:
+            a = min(room_a, need // 2)
+            b = min(room_b, need - a)
+            a = min(room_a, need - b)
+            return a, b
+
+        if w / h > target_aspect:  # too wide: grow vertically
+            need = round(w / target_aspect) - h
+            cols = [l for l in foreign if l["x2"] > x1 and l["x1"] < x2]
+            top_stop = max([0] + [l["y2"] + gap for l in cols if l["y1"] < y1])
+            bottom_stop = min([img_h] + [l["y1"] - gap for l in cols if l["y2"] > y2])
+            up, down = split(need, max(0, y1 - top_stop), max(0, bottom_stop - y2))
+            y1, y2 = y1 - up, y2 + down
+        elif w / h < target_aspect:  # too tall: grow horizontally
+            need = round(h * target_aspect) - w
+            rows = [l for l in foreign if l["y2"] > y1 and l["y1"] < y2]
+            left_stop = max([0] + [l["x2"] + gap for l in rows if l["x1"] < x1])
+            right_stop = min([img_w] + [l["x1"] - gap for l in rows if l["x2"] > x2])
+            left, right = split(need, max(0, x1 - left_stop), max(0, right_stop - x2))
+            x1, x2 = x1 - left, x2 + right
+        return x1, y1, x2, y2
+
     @classmethod
     def _fit_to_standard_canvas(
         cls,
@@ -476,19 +607,20 @@ class SubRegionExtractor:
         crop_rgba = crop_img.convert("RGBA")
         cw, ch = crop_rgba.size
 
-        # Content-aware layout: Scale to maximize readability while preventing large stark voids
-        # Leave comfortable 60px safe margin around the canvas boundary
-        safe_w = target_w - 120
-        safe_h = target_h - 120
-
-        scale = min(safe_w / cw, safe_h / ch)
-        scaled_w = max(50, int(cw * scale))
-        scaled_h = max(50, int(ch * scale))
+        # Table 3: information panels use 0 px padding and fill the canvas edge-to-edge. Scale without
+        # distortion so the panel touches the canvas on its long side.
+        scale = min(target_w / cw, target_h / ch)
+        scaled_w = min(target_w, max(1, round(cw * scale)))
+        scaled_h = min(target_h, max(1, round(ch * scale)))
 
         scaled_img = crop_rgba.resize((scaled_w, scaled_h), Image.Resampling.LANCZOS)
 
-        # Solid clean white canvas (255, 255, 255, 255) for informational panels
-        canvas = Image.new("RGBA", (target_w, target_h), (255, 255, 255, 255))
+        # If the panel still isn't the canvas shape (the pack had no free space around it), fill the
+        # remainder with the panel's own edge colour so it reads as one continuous panel, never white.
+        panel = np.array(crop_rgba)
+        border = np.concatenate([panel[0, :, :3], panel[-1, :, :3], panel[:, 0, :3], panel[:, -1, :3]])
+        fill = tuple(int(c) for c in np.median(border, axis=0)) + (255,)
+        canvas = Image.new("RGBA", (target_w, target_h), fill)
         offset_x = (target_w - scaled_w) // 2
         offset_y = (target_h - scaled_h) // 2
         canvas.paste(scaled_img, (offset_x, offset_y), scaled_img)

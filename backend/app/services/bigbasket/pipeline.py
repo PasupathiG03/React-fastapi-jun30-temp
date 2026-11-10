@@ -65,6 +65,9 @@ class ImageProcessingPipeline:
         is_uncertain = bool(cfg.get("is_uncertain", False) or cfg.get("requires_manual_review", False))
         requires_bg_removal = (not is_flat_panel) and (not is_lifestyle_or_infographic) and (not is_uncertain)
         is_fop_bop = requires_bg_removal
+        # A FOP/BOP product shot is still judged by FOP/BOP standards (transparent background, Table 3 padding)
+        # even when background removal was skipped, so a skipped removal can never pass QC.
+        is_product_shot = not is_flat_panel
 
         # FOP / BOP products use transparent RGBA canvas (0, 0, 0, 0) for clean background removal.
         # Flat informational panels & Lifestyle/Infographics use solid white (255, 255, 255, 255)
@@ -239,10 +242,18 @@ class ImageProcessingPipeline:
             expected_width=canvas_w,
             expected_height=canvas_h,
             min_dpi=target_dpi,
-            is_fop_bop=is_fop_bop,
+            is_fop_bop=is_product_shot,
             product_category=product_category,
             image_type=image_type,
         )
+        if is_product_shot and not is_fop_bop:
+            error_notes.append(
+                "Background removal skipped: image classification is uncertain; manual review required."
+            )
+        if is_product_shot and not has_transparency:
+            # The padding around the product is transparent even when the photo's own background was never
+            # removed, so the pixel checks alone can pass. The Background Transparency check must still fail.
+            val_result["alpha_valid"] = False
         if error_notes:
             if not val_result.get("failure_reasons"):
                 val_result["failure_reasons"] = []
@@ -253,7 +264,7 @@ class ImageProcessingPipeline:
         confidence = cls._compute_confidence(
             has_transparency=has_transparency,
             val_result=val_result,
-            is_fop_bop=is_fop_bop,
+            is_fop_bop=is_product_shot,
             inpaint_applied=inpaint_applied,
             num_components=num_components,
         )

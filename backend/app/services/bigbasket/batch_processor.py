@@ -18,7 +18,7 @@ from app.services.bigbasket.ai_provider import HybridAiManager
 from app.services.bigbasket.events import BigBasketEventBroadcaster
 from app.services.bigbasket.pipeline import ImageProcessingPipeline
 from app.services.bigbasket.storage import BigBasketStorage
-from app.services.bigbasket.sub_region_extractor import SubRegionExtractor
+from app.services.bigbasket.sub_region_extractor import OcrError, SubRegionExtractor
 
 
 class BatchProcessor:
@@ -240,10 +240,12 @@ class BatchProcessor:
             else:
                 cfg_with_sku["product_category"] = batch_cat
 
-            # If image classification is uncertain, route it for manual review instead of automatically removing the background
+            # If image classification is uncertain, route it for manual review instead of automatically removing the background.
+            # Uses its own threshold, not "confidence_threshold": that one is the QC auto-approval score (often 1.0), and
+            # comparing Gemini's 0.99 against 1.0 would randomly skip background removal on clearly-classified images.
             is_uncertain = (
                 prediction.get("requires_manual_review", False)
-                or prediction.get("confidence_score", 1.0) < cfg.get("confidence_threshold", 0.95)
+                or prediction.get("confidence_score", 1.0) < cfg.get("classification_confidence_threshold", 0.90)
                 or prediction.get("primary_category") in ("UNKNOWN", None)
                 or prediction.get("predicted_category") in ("unknown", None)
             )
@@ -335,15 +337,34 @@ class BatchProcessor:
                 if not img.validation_results:
                     img.validation_results = {}
                 img.validation_results["detected_sections"] = info_sections
+                ocr_ok = info_sections.get("ocr_available", True)
+                if not ocr_ok:
+                    cls._mark_ocr_unavailable(img, info_sections.get("ocr_error"))
                 db.commit()
 
-                # Standalone information crops are only extracted if explicitly enabled in batch configuration
-                if cfg.get("extract_standalone_info_images", False) or cfg.get("extract_sub_regions", False):
+                # Standalone information crops (Ingredients, Nutritional, Marketed/Manufactured By, FSSAI) are extracted
+                # by default; a batch can opt out with extract_sub_regions=false.
+                if ocr_ok and (cfg.get("extract_standalone_info_images", False) or cfg.get("extract_sub_regions", True)):
                     cls._extract_and_register_bop_sub_regions(db, img, batch, raw_bytes, cfg)
         except Exception as e:
             logger.error(f"Failed processing image {img.id}: {e}")
             img.status = "failed"
             img.error_message = str(e)
+
+    @staticmethod
+    def _mark_ocr_unavailable(img: BatchImage, error: Optional[str]) -> None:
+        """OCR failure means the pack text is unknown, not absent: route the image to a human."""
+        reason = "OCR unavailable: packaging text could not be read; manual review required."
+        val = dict(img.validation_results or {})  # new dict so SQLAlchemy sees the JSON change
+        reasons = list(val.get("failure_reasons") or [])
+        if reason not in reasons:
+            reasons.append(reason)
+        val["failure_reasons"] = reasons
+        val["passed"] = False
+        val["ocr_status"] = {"available": False, "error": error}
+        img.validation_results = val
+        if img.status in ("auto_approved", None):
+            img.status = "needs_review"
 
     @classmethod
     def _extract_and_register_bop_sub_regions(
@@ -442,6 +463,11 @@ class BatchProcessor:
                     "sub_region_extracted",
                     f"Auto-extracted {sub['display_name']} ({sub['filename']}) from BOP for BBID {parent_img.bbid}."
                 )
+        except OcrError as e:
+            logger.error(f"OCR unavailable during sub-region extraction for BOP image {parent_img.id}: {e}")
+            db.rollback()
+            cls._mark_ocr_unavailable(parent_img, str(e))
+            db.commit()
         except Exception as e:
             logger.error(f"Failed sub-region extraction for BOP image {parent_img.id}: {e}")
 

@@ -61,6 +61,8 @@ def create_batch(
         "dpi": 150,
         "fop_bop_padding": {"top": 180, "bottom": 180, "left": 100, "right": 100},
         "confidence_threshold": 0.95,
+        "classification_confidence_threshold": 0.90,
+        "extract_sub_regions": True,
         "auto_inpaint_mrp": True,
         "max_workers": 4,
         "chunk_size": 10,

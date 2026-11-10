@@ -22,7 +22,12 @@ class BatchProcessConfig(BaseModel):
     dpi: int = 150
     fop_bop_padding: PaddingConfig = Field(default_factory=PaddingConfig)
     product_category: str = "auto"  # "auto", "food", "non_food"
-    confidence_threshold: float = 0.95
+    confidence_threshold: float = 0.95  # QC auto-approval score required for "auto_approved"
+    # Gemini classification confidence below this marks the image uncertain: background removal is skipped
+    # and the image goes to manual review.
+    classification_confidence_threshold: float = 0.90
+    # Auto-extract Ingredients / Nutritional / Marketed-Manufactured By / FSSAI crops from BOP images.
+    extract_sub_regions: bool = True
     auto_inpaint_mrp: bool = True
     max_workers: int = 4
     chunk_size: int = 10

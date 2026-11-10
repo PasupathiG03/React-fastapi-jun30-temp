@@ -16,6 +16,25 @@ fi
 
 source "$VENV"
 
+# Install/update Python packages from requirements.txt, but only when the file has changed since the
+# last successful install (its hash is stored in the venv), so normal launches don't wait on pip.
+REQ_FILE="$BASE_DIR/requirements.txt"
+REQ_STAMP="$BASE_DIR/env/.requirements.sha256"
+if [ -f "$REQ_FILE" ]; then
+  REQ_HASH=$(sha256sum "$REQ_FILE" | awk '{print $1}')
+  if [ ! -f "$REQ_STAMP" ] || [ "$(cat "$REQ_STAMP")" != "$REQ_HASH" ]; then
+    echo "[+] requirements.txt changed - installing Python packages..."
+    if python -m pip install -r "$REQ_FILE"; then
+      echo "$REQ_HASH" > "$REQ_STAMP"
+    else
+      echo "[!] pip install -r requirements.txt failed. Fix the error above and run again."
+      exit 1
+    fi
+  else
+    echo "[=] Python packages are up to date with requirements.txt."
+  fi
+fi
+
 kill_port() {
   local PORT=$1
   if command -v lsof >/dev/null 2>&1; then
