@@ -151,14 +151,9 @@ normalized strictly from 0 to 1000: [ymin, xmin, ymax, xmax].
    - Scope: Storage advice ("Store in a cool, dry & hygienic place", "Refrigerate after opening").
 
 10. DYNAMIC STANDALONE CROPPING QUALIFICATION & CATALOG ORDERING:
-   - "is_standalone_crop": Set to true ONLY for dedicated e-commerce catalog specification and regulatory assets:
-     * "ingredient": is_standalone_crop = true, catalog_sequence = 1
-     * "nutritional": is_standalone_crop = true, catalog_sequence = 2
-     * "manufactured_by": is_standalone_crop = true, catalog_sequence = 3
-     * "fssai": is_standalone_crop = true, catalog_sequence = 4
-     * "barcode": is_standalone_crop = true, catalog_sequence = 5
-   - Set "is_standalone_crop": false for general body copy that belongs on the main Back-of-Pack view:
-     * "directions": is_standalone_crop = false, catalog_sequence = null
-     * "caution": is_standalone_crop = false, catalog_sequence = null
-     * "storage": is_standalone_crop = false, catalog_sequence = null
+   - "is_standalone_crop": Set to true dynamically for dedicated e-commerce catalog specification and regulatory assets
+     (ingredients, nutritional table, manufacturer details, statutory licensing, barcode).
+   - "catalog_sequence": Assign a natural contiguous sequence starting from 1 for the standalone crops detected on this specific package.
+   - Set "is_standalone_crop": false and catalog_sequence = null for general body copy that belongs on the main Back-of-Pack view
+     (directions, caution, storage).
 """

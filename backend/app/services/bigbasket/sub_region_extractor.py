@@ -127,17 +127,18 @@ class SubRegionExtractor:
             if gemini_regions:
                 logger.info(f"Gemini Vision AI localized {len(gemini_regions)} packaging sub-regions for BBID {bbid}")
                 extracted_results = []
-                # 100% Dynamic: Standalone crop qualification & sequence order determined dynamically by Gemini Vision AI
-                # (Zero hardcoded crop sets or order mappings)
+                # 100% Dynamic: Standalone crop qualification & catalog sequence order are determined
+                # strictly by Gemini Vision AI's structured output schema (Zero hardcoded lists or heuristics)
                 crop_targets = [r for r in gemini_regions if r.get("is_standalone_crop")]
                 sorted_regions = sorted(
                     crop_targets,
                     key=lambda r: r.get("catalog_sequence") if r.get("catalog_sequence") is not None else 99
                 )
 
+                current_seq = 1
                 for reg in sorted_regions:
-                    cat = reg.get("region_type")
-                    disp = reg.get("display_name") or cat.title()
+                    cat = (reg.get("region_type") or "").lower().strip()
+                    disp = reg.get("display_name") or cat.replace("_", " ").title()
                     box = reg.get("box_2d")
                     if not box or len(box) != 4:
                         continue
@@ -163,13 +164,14 @@ class SubRegionExtractor:
 
                     crop = arr[fy1:fy2, fx1:fx2]
                     if crop.shape[0] > 20 and crop.shape[1] > 30:
+                        assigned_seq = reg.get("catalog_sequence") or current_seq
                         cls._append_crop_result(
                             extracted_results,
                             crop,
                             category=cat,
                             display_name=disp,
                             bbid=bbid,
-                            seq=current_seq,
+                            seq=assigned_seq,
                             canvas_w=canvas_width,
                             canvas_h=canvas_height,
                             dpi=dpi,
@@ -267,32 +269,35 @@ class SubRegionExtractor:
                 r"^\W*composition[:\s]",
             ],
             "nutritional": [
-                r"^\W*nutrition(al)?\b",
-                r"^\W*(typical|approximate|average)\s+values?\b",
+                r"^\W*nutrition(al)?(\s+information|\s+facts|\s+values?)?[:\s]",
+                r"^\W*(typical|approximate|average)\s+values?[:\s]",
             ],
             "manufactured_by": [
-                r"^\W*(marketed|manufactured|mfd\.?|mfg\.?|packed|packer|imported|distributed|made)\s*(&|and|by|for)?(\s+|$|:)",
-                r"^\W*manufacturer\b",
+                r"^\W*(marketed|manufactured|mfd\.?|mfg\.?|packed|packer|imported|distributed)\s+(by|for|at)[:\s]",
+                r"^\W*manufacturer[:\s]",
                 r"^\W*a\s+quality\s+product\s+(of|from|by)\b",
-                r"^\W*product\s+of\b",
+                r"^\W*(marketed|manufactured)\s*(&|and)\s*(distributed|packed)\s+(by|for)[:\s]",
             ],
             "contact": [
                 r"^\W*for\s+(feedback|queries|complaints|consumer|customer|any)\b",
                 r"^\W*(customer|consumer)\s*care\b",
-                r"^\W*contact\b",
+                r"^\W*contact\s+(us|details)?[:\s]",
             ],
-            "storage": [r"^\W*storage\b", r"^\W*store\s+(in|at|the|it|below)\b"],
-            "directions": [r"^\W*(directions?|how\s+to\s+use|best\s+way\s+to\s+use|method\s+of\s+use|usage)\b"],
-            "caution": [r"^\W*(caution|warning|precautions?)\b"],
-            "net_quantity": [r"^\W*net\s*(quantity|qty|wt|weight|content|vol)\b"],
-            "dates": [r"^\W*(date\s+of|mfg\.?\s*date|exp(iry)?\.?\s*date|best\s+before|use\s+by|batch|b\.\s*no|lot\s+no)\b"],
-            "price": [r"^\W*(mrp|usp|unit\s+sale|price)\b"],
-            "other": [r"^\W*for\s+manufactured\b"],
-            "fssai": [r"^\W*(fssai|lic\.?\s*no)\b"],
+            "storage": [r"^\W*storage\s*(instructions?|condition|guidelines?)?[:\s]", r"^\W*store\s+(in|at|below)\b"],
+            "directions": [r"^\W*(directions?|how\s+to\s+use|best\s+way\s+to\s+use|method\s+of\s+use|usage\s+instructions?)[:\s]"],
+            "caution": [r"^\W*(caution|warning|precautions?|safety\s*information)[:\s]"],
+            "net_quantity": [r"^\W*net\s*(quantity|qty|wt|weight|content|vol)[:\s]"],
+            "dates": [r"^\W*(date\s+of|mfg\.?\s*date|exp(iry)?\.?\s*date|best\s+before|use\s+by|batch|b\.\s*no|lot\s+no)[:\s]"],
+            "price": [r"^\W*(mrp|usp|unit\s+sale|price)[:\s]"],
+            "fssai": [r"^\W*(fssai|lic\.?\s*no)[:\s]"],
         }
 
         def heading_type(line: Dict[str, Any]) -> Optional[str]:
-            t = line["text"].lower()
+            raw_t = line["text"].strip()
+            # Bullet point items (•, *, -, o) and numbered list items are descriptive text, NEVER section headings
+            if re.match(r"^[\u2022\u25cf\u25cb\*\-\u2013\u2014\d+\.]\s*", raw_t):
+                return None
+            t = raw_t.lower()
             for kind, pats in heading_patterns.items():
                 if any(re.search(p, t) for p in pats):
                     return kind

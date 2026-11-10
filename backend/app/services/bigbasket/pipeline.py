@@ -306,6 +306,7 @@ class ImageProcessingPipeline:
             "final_height": canvas.height,
             "dpi": target_dpi,
             "has_transparency": has_transparency,
+            "photoroom_called": photoroom_called,
             "bg_provider": bg_provider,
             "product_category": product_category,
             "validation": val_result,

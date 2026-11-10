@@ -229,7 +229,7 @@ class BatchProcessor:
                 effective_type = ai_img_type
                 img.image_type = effective_type
             else:
-                effective_type = (img.image_type or "fop").lower().strip()
+                effective_type = (img.image_type or "unknown").lower().strip()
 
             # 2. Pipeline Execution (u2net / photoroom, padding, inpainting, validation)
             cfg_with_sku = dict(cfg)
@@ -306,23 +306,24 @@ class BatchProcessor:
             img.file_size_bytes = len(result["final_image_bytes"])
             img.error_message = None
 
-            # Log internal API request audit record
-            try:
-                user_id = img.created_by_id or batch.created_by_id or (getattr(batch, "updated_by_id", None)) or 2
-                is_success = result["status"] in ("auto_approved", "needs_review", "manually_approved")
-                db.add(ApiUsageLog(
-                    user_id=user_id,
-                    batch_id=batch.id,
-                    image_id=img.id,
-                    service_name="Classic background remover",
-                    provider="photoroom",
-                    status="success" if is_success else "failed",
-                    response_code=200 if is_success else 500,
-                    latency_ms=int((time.perf_counter() - t0) * 1000),
-                    credits=1,
-                ))
-            except Exception as log_err:
-                logger.warning(f"Failed to record API usage log: {log_err}")
+            # Log internal API request audit record ONLY when Photoroom API was actually called and credits consumed
+            if result.get("photoroom_called", False):
+                try:
+                    user_id = img.created_by_id or batch.created_by_id or (getattr(batch, "updated_by_id", None)) or 2
+                    is_success = result["status"] in ("auto_approved", "needs_review", "manually_approved")
+                    db.add(ApiUsageLog(
+                        user_id=user_id,
+                        batch_id=batch.id,
+                        image_id=img.id,
+                        service_name="Classic background remover",
+                        provider="photoroom",
+                        status="success" if is_success else "failed",
+                        response_code=200 if is_success else 500,
+                        latency_ms=int((time.perf_counter() - t0) * 1000),
+                        credits=1,
+                    ))
+                except Exception as log_err:
+                    logger.warning(f"Failed to record API usage log: {log_err}")
 
             # 5. Information Sections Detection for Back-of-Pack (BOP) images
             fname_lower = (img.original_filename or "").lower()

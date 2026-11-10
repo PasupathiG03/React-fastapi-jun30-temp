@@ -2,6 +2,7 @@ import base64
 import hashlib
 import json
 import logging
+import random
 import time
 from typing import Any, Dict, List, Literal, Optional
 import requests
@@ -324,7 +325,7 @@ class GeminiClassificationService:
             }
         }
 
-        max_attempts = 2
+        max_attempts = int(getattr(settings, "GEMINI_MAX_ATTEMPTS", 3) or os.getenv("GEMINI_MAX_ATTEMPTS", 3))
         for attempt in range(1, max_attempts + 1):
             try:
                 t0 = time.perf_counter()
@@ -382,8 +383,12 @@ class GeminiClassificationService:
                     raise ValueError("Empty or malformed Gemini response candidate parts")
 
                 elif resp.status_code in (429, 503) and attempt < max_attempts:
-                    logger.warning(f"Gemini {resp.status_code} spike (attempt {attempt}). Retrying in 1.2s...")
-                    time.sleep(1.2)
+                    backoff = min(10.0, (1.8 ** attempt) + random.uniform(0.5, 1.5))
+                    logger.warning(
+                        f"Gemini {resp.status_code} temporary capacity spike (attempt {attempt}/{max_attempts}). "
+                        f"Google servers under high demand. Retrying in {backoff:.1f}s..."
+                    )
+                    time.sleep(backoff)
                     continue
 
                 elif resp.status_code == 429:
@@ -417,8 +422,9 @@ class GeminiClassificationService:
 
             except (requests.RequestException, json.JSONDecodeError, ValidationError, ValueError) as err:
                 if attempt < max_attempts:
-                    logger.warning(f"Gemini request exception (attempt {attempt}): {err}. Retrying in 1.2s...")
-                    time.sleep(1.2)
+                    backoff = min(10.0, (1.8 ** attempt) + random.uniform(0.5, 1.5))
+                    logger.warning(f"Gemini request exception (attempt {attempt}/{max_attempts}): {err}. Retrying in {backoff:.1f}s...")
+                    time.sleep(backoff)
                     continue
                 err_msg = f"Gemini classification failed: {str(err)[:400]}"
                 logger.error(err_msg)
@@ -533,7 +539,7 @@ class GeminiClassificationService:
 
         endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
 
-        max_attempts = 3
+        max_attempts = int(getattr(settings, "GEMINI_MAX_ATTEMPTS", 3) or os.getenv("GEMINI_MAX_ATTEMPTS", 3))
         for attempt in range(1, max_attempts + 1):
             try:
                 t0 = time.perf_counter()
@@ -587,14 +593,19 @@ class GeminiClassificationService:
                             )
                             return regions
                 elif resp.status_code in (429, 503) and attempt < max_attempts:
-                    logger.warning(f"Gemini {resp.status_code} spike (attempt {attempt}). Retrying in 1.5s...")
-                    time.sleep(1.5)
+                    backoff = min(10.0, (1.8 ** attempt) + random.uniform(0.5, 1.5))
+                    logger.warning(
+                        f"Gemini {resp.status_code} temporary capacity spike (attempt {attempt}/{max_attempts}). "
+                        f"Google servers under high demand. Retrying in {backoff:.1f}s..."
+                    )
+                    time.sleep(backoff)
                     continue
                 else:
                     logger.warning(f"Gemini sub-regions API responded with status {resp.status_code}: {resp.text[:200]}")
             except Exception as e:
                 if attempt < max_attempts:
-                    time.sleep(1.5)
+                    backoff = min(10.0, (1.8 ** attempt) + random.uniform(0.5, 1.5))
+                    time.sleep(backoff)
                     continue
                 logger.warning(f"Gemini packaging sub-region detection error: {e}")
 

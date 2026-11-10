@@ -193,18 +193,11 @@ export default function ReviewStudio() {
       const data = await fetchImageDetails(id);
       setImage(data);
       if (data?.batch_id) {
-        // Only fetch batch siblings if not loaded yet or if batch changed
-        setBatchSiblings((prev) => {
-          if (prev.length > 0 && prev[0]?.batch_id === data.batch_id) {
-            return prev;
-          }
-          fetchBatchImages(data.batch_id, 1, 100)
-            .then((siblings) => {
-              setBatchSiblings(siblings.items || []);
-            })
-            .catch(() => { });
-          return prev;
-        });
+        fetchBatchImages(data.batch_id, 1, 100)
+          .then((siblings) => {
+            setBatchSiblings(siblings.items || []);
+          })
+          .catch(() => { });
       }
     } catch (e: any) {
       showError(e.message || "Failed to load image details");
