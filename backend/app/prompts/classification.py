@@ -24,10 +24,15 @@ def build_gemini_classification_prompt(filename: str = "", bbid: str = "", addit
     lines.append(
         "Determine primary_category (FOOD, NON_FOOD, or KITCHEN_ITEMS), subcategory, product_type, "
         "materials, structural components, visual properties, and catalog image_type.\n"
-        "STRICT IMAGE TYPE DIRECTIVES:\n"
-        "- If the image depicts an upright, front, top, or hero view of a standalone product without human models and without marketing text, classify as 'FOP'. NEVER 'LIFESTYLE'.\n"
-        "- If the image depicts the rear face, back side, bottom base, or an inverted/upside-down view (e.g. stool upside down showing legs and underside ribs), classify as 'BOP'. NEVER 'FOP'.\n"
-        "- Only classify as 'LIFESTYLE' if human models or people are actively interacting with the product or in a composite promotional scene.\n"
+        "STRICT DYNAMIC VISUAL CLASSIFICATION DIRECTIVES:\n"
+        "- 'FOP' (Front of Pack): The primary front, 3/4 hero view, or front packaging face of the standalone product. "
+        "Even if photographed on a household surface (table, shelf, floor) or with un-clipped background, if the main subject "
+        "is the front face of the product without active human interaction, it is 'FOP' (to allow automated AI background removal). "
+        "NEVER classify as 'LIFESTYLE' unless human models are actively holding/demonstrating it.\n"
+        "- 'BOP' (Back of Pack): The rear face, back panel, regulatory panel, or underside of the product showing "
+        "directions, barcode, manufacturer details, or ingredients.\n"
+        "- 'LIFESTYLE': ONLY when visible human models, people, or active demonstration scenes are present.\n"
+        "- 'INFOGRAPHIC': Graphic marketing banners with multiple promotional text callouts, benefit icons, or multi-pack layouts.\n"
         "Respond in validated JSON format conforming to the requested schema."
     )
 

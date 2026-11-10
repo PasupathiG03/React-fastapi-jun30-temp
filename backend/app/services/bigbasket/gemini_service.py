@@ -10,8 +10,11 @@ from pydantic import BaseModel, Field, ValidationError
 from app.core.config import settings
 from app.prompts import (
     GEMINI_CLASSIFICATION_SCHEMA,
+    PACKAGING_SUBREGIONS_SCHEMA,
     SYSTEM_PROMPT,
+    SUBREGION_SYSTEM_PROMPT,
     build_gemini_classification_prompt,
+    build_gemini_subregions_prompt,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,6 +57,24 @@ class GeminiProductClassification(BaseModel):
     reasoning: Optional[str] = None
 
 
+class DetectedPackagingRegion(BaseModel):
+    """Specific sub-region detected on retail packaging by Gemini Multimodal Vision AI."""
+    region_type: Literal[
+        "ingredient", "nutritional", "manufactured_by", "fssai", "barcode",
+        "directions", "caution", "storage"
+    ]
+    display_name: str
+    box_2d: List[int] = Field(description="[ymin, xmin, ymax, xmax] normalized 0 to 1000")
+    confidence: float = Field(default=0.95, ge=0.0, le=1.0)
+    is_standalone_crop: bool = Field(default=False, description="True if this region should be extracted as a standalone asset")
+    catalog_sequence: Optional[int] = Field(default=None, description="Dynamic sequence ordering for standalone catalog images")
+    text_summary: Optional[str] = None
+
+
+class GeminiPackagingRegionsResponse(BaseModel):
+    detected_regions: List[DetectedPackagingRegion] = Field(default_factory=list)
+
+
 class GeminiClassificationService:
     """
     Google Gemini AI Multimodal Image Classification Client.
@@ -63,6 +84,7 @@ class GeminiClassificationService:
     """
 
     _CACHE: Dict[str, GeminiProductClassification] = {}
+    _SUBREGIONS_CACHE: Dict[str, List[Dict[str, Any]]] = {}
     _MAX_CACHE_ITEMS = 2000
 
     # Official Google AI Studio Pricing for gemini-3.5-flash-lite / gemini-2.5-flash
@@ -429,3 +451,151 @@ class GeminiClassificationService:
         if len(cls._CACHE) >= cls._MAX_CACHE_ITEMS:
             cls._CACHE.clear()
         cls._CACHE[img_hash] = res
+
+
+    @classmethod
+    def detect_packaging_sub_regions(
+        cls,
+        image_bytes: bytes,
+        bbid: str = "",
+        filename: str = "",
+        category: str = "FOOD",
+        batch_id: Optional[int] = None,
+        image_id: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Uses Gemini Multimodal Vision AI to semantically locate the exact normalized bounding boxes [ymin, xmin, ymax, xmax]
+        for standard retail packaging sub-regions (Ingredients, Nutritional Table, Manufacturer/Marketer, FSSAI, Barcode).
+        Never relies on brittle OCR string matches or hardcoded heuristics.
+        Returns a list of dicts: [{"region_type": ..., "display_name": ..., "box_2d": [...], "confidence": ..., "text_summary": ...}].
+        """
+        img_hash = cls.get_image_hash(image_bytes)
+        if img_hash in cls._SUBREGIONS_CACHE:
+            logger.info(f"Gemini Sub-Regions Cache Hit for hash {img_hash[:10]} (BBID: {bbid})")
+            return cls._SUBREGIONS_CACHE[img_hash]
+
+        import os
+        model_name = (getattr(settings, "GEMINI_MODEL", "") or os.getenv("GEMINI_MODEL", "")).strip()
+        api_key = getattr(settings, "GEMINI_API_KEY", "") or ""
+
+        if not model_name or not api_key:
+            logger.warning("Gemini model or API key not configured; skipping AI sub-region localization.")
+            return []
+
+        # Prepare optimized downscaled payload (<1280px) for fast and reliable inference
+        send_bytes = image_bytes
+        mime_type = "image/png" if image_bytes[:8] == b"\x89PNG\r\n\x1a\n" else "image/jpeg"
+        try:
+            import io
+            from PIL import Image
+            im = Image.open(io.BytesIO(image_bytes))
+            if max(im.size) > 1280:
+                im.thumbnail((1280, 1280), Image.Resampling.LANCZOS)
+                buf = io.BytesIO()
+                im.convert("RGB").save(buf, format="JPEG", quality=90)
+                send_bytes = buf.getvalue()
+                mime_type = "image/jpeg"
+        except Exception as opt_err:
+            logger.warning(f"Could not downscale image for Gemini sub-regions: {opt_err}")
+
+        b64_data = base64.b64encode(send_bytes).decode("utf-8")
+
+        user_prompt = build_gemini_subregions_prompt(
+            bbid=bbid,
+            filename=filename,
+            category=category,
+        )
+
+        payload = {
+            "system_instruction": {
+                "parts": [{"text": SUBREGION_SYSTEM_PROMPT}]
+            },
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {"text": user_prompt},
+                        {
+                            "inline_data": {
+                                "mime_type": mime_type,
+                                "data": b64_data
+                            }
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "response_mime_type": "application/json",
+                "response_schema": PACKAGING_SUBREGIONS_SCHEMA,
+                "temperature": 0.1,
+            }
+        }
+
+        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                t0 = time.perf_counter()
+                resp = requests.post(
+                    endpoint,
+                    headers={"Content-Type": "application/json"},
+                    json=payload,
+                    timeout=35.0
+                )
+                latency = (time.perf_counter() - t0) * 1000
+
+                if resp.status_code == 200:
+                    raw_json = resp.json()
+                    usage_meta = raw_json.get("usageMetadata", {})
+                    prompt_tok = usage_meta.get("promptTokenCount", 300)
+                    candidates_tok = usage_meta.get("candidatesTokenCount", 120)
+                    thoughts_tok = usage_meta.get("thoughtsTokenCount", 0)
+                    total_tok = usage_meta.get("totalTokenCount", prompt_tok + candidates_tok + thoughts_tok)
+                    cost_usd = cls.calculate_cost(prompt_tok, candidates_tok, thoughts_tok)
+
+                    candidates = raw_json.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts and "text" in parts[0]:
+                            parsed = json.loads(parts[0]["text"])
+                            regions = parsed.get("detected_regions", [])
+                            logger.info(
+                                f"Gemini AI localized {len(regions)} packaging sub-regions for {filename} (BBID {bbid}) in {latency:.1f}ms | "
+                                f"Tokens: {total_tok} | Cost: ${cost_usd:.6f}"
+                            )
+                            # Cache in memory
+                            if len(cls._SUBREGIONS_CACHE) >= cls._MAX_CACHE_ITEMS:
+                                cls._SUBREGIONS_CACHE.clear()
+                            cls._SUBREGIONS_CACHE[img_hash] = regions
+
+                            cls._log_usage(
+                                status="SUCCESS",
+                                status_code=200,
+                                model_name=model_name,
+                                prompt_tokens=prompt_tok,
+                                candidates_tokens=candidates_tok,
+                                thoughts_tokens=thoughts_tok,
+                                total_tokens=total_tok,
+                                estimated_cost_usd=cost_usd,
+                                latency_ms=latency,
+                                bbid=bbid,
+                                filename=filename,
+                                batch_id=batch_id,
+                                image_id=image_id,
+                                metadata_payload={"action": "packaging_sub_regions", "region_count": len(regions)}
+                            )
+                            return regions
+                elif resp.status_code in (429, 503) and attempt < max_attempts:
+                    logger.warning(f"Gemini {resp.status_code} spike (attempt {attempt}). Retrying in 1.5s...")
+                    time.sleep(1.5)
+                    continue
+                else:
+                    logger.warning(f"Gemini sub-regions API responded with status {resp.status_code}: {resp.text[:200]}")
+            except Exception as e:
+                if attempt < max_attempts:
+                    time.sleep(1.5)
+                    continue
+                logger.warning(f"Gemini packaging sub-region detection error: {e}")
+
+        return []

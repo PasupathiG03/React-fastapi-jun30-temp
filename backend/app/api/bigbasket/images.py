@@ -85,6 +85,14 @@ def stream_image_file(
     if not img:
         raise HTTPException(status_code=404, detail="Image not found")
 
+    # An auto-extracted crop (Ingredients, Nutritional, FSSAI...) has no upload of its own: its "original" is the
+    # uploaded back-of-pack image it was cut from, shown exactly as uploaded, never the cut-out strip.
+    parent_id = (img.validation_results or {}).get("auto_extracted_from")
+    if variant == "original" and parent_id:
+        parent = db.query(BatchImage).filter(BatchImage.id == parent_id).first()
+        if parent and parent.original_file_path and Path(parent.original_file_path).exists():
+            img = parent
+
     target_path = None
     if variant == "final" and img.final_output_path:
         target_path = Path(img.final_output_path)

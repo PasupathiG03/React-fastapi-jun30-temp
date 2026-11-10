@@ -100,3 +100,65 @@ You must classify image_type into exactly ONE of the following:
 9. "FSSAI" (FSSAI Regulatory License Block):
    - Scope: Dedicated crop framing the FSSAI logo and 14-digit license number.
 """
+
+
+PACKAGING_SUBREGION_RULES = """
+=== PACKAGING SUB-REGION EXTRACTION RULES & CRITERIA ===
+
+When decomposing a Back-of-Pack (BOP) or packaging information panel, you must detect exact 2D bounding boxes
+normalized strictly from 0 to 1000: [ymin, xmin, ymax, xmax].
+
+1. COORDINATE SYSTEM & BOUNDARY REQUIREMENTS:
+   - Coordinates must be integers: 0 <= ymin < ymax <= 1000, 0 <= xmin < xmax <= 1000.
+   - Zero Clipping: Bounding boxes must comfortably encompass character ascenders (d, b, h, k, t),
+     descenders (g, j, p, q, y), punctuation, enclosing table borders, and logo graphics.
+   - Clean Isolation: Do not include unrelated adjacent sections or the variable MRP/batch code stamp.
+
+2. "ingredient" SUB-REGION CRITERIA:
+   - Starting Anchor: Begins at the section header ("Ingredients:", "Key Ingredients:", "Composition:").
+   - Extent: Encompasses the entire comma-separated ingredient list, percentage breakdown, and allergen
+     declaration (e.g., "Contains Peanut, Milk", "May contain traces of tree nuts").
+
+3. "nutritional" SUB-REGION CRITERIA:
+   - Scope: The complete Nutritional Information / Facts panel.
+   - Extent: Must include the table header ("Nutritional Information", "Typical Values", "Approximate Values"),
+     serving size/servings per pack, column headers ("Per 100g", "Per Serve", "% Contribution to RDA"),
+     all rows (Energy, Protein, Carbohydrates, Total Sugars, Added Sugars, Fats, Saturated Fat, Trans Fat, Sodium),
+     and any footnote disclaimers ("*Per Serve contribution to RDA calculated on basis of 2000 kcal...").
+
+4. "manufactured_by" SUB-REGION CRITERIA:
+   - Scope: Complete entity details including "Marketed By:", "Manufactured By:", "Packed By:", or "Imported By:".
+   - Extent: Encompasses company registered name, factory/unit addresses, pin codes, country of origin,
+     and Consumer Care / Feedback contact information (helpline number, email, website).
+
+5. "fssai" SUB-REGION CRITERIA:
+   - Scope: The official statutory food safety license block.
+   - Extent: MUST frame BOTH the FSSAI emblem (the distinctive swirl/leaf icon above the word "fssai")
+     AND the full 14-digit license number ("Lic. No. XXXXXXXXXXXXXX").
+
+6. "barcode" SUB-REGION CRITERIA:
+   - Scope: The retail machine-readable 1D barcode (EAN-13, UPC, Code 128).
+   - Extent: MUST encompass the full vertical zebra bars, the human-readable digits printed beneath,
+     and the clean white quiet zone margins on the left and right.
+
+7. "directions" SUB-REGION CRITERIA:
+   - Scope: Preparation, reconstitution, cooking recipe, or step-by-step usage instructions ("How to Use:", "Directions:").
+
+8. "caution" SUB-REGION CRITERIA:
+   - Scope: Statutory warnings, safety notices ("Not for medicinal use", "Keep out of reach of children", "Caution:").
+
+9. "storage" SUB-REGION CRITERIA:
+   - Scope: Storage advice ("Store in a cool, dry & hygienic place", "Refrigerate after opening").
+
+10. DYNAMIC STANDALONE CROPPING QUALIFICATION & CATALOG ORDERING:
+   - "is_standalone_crop": Set to true ONLY for dedicated e-commerce catalog specification and regulatory assets:
+     * "ingredient": is_standalone_crop = true, catalog_sequence = 1
+     * "nutritional": is_standalone_crop = true, catalog_sequence = 2
+     * "manufactured_by": is_standalone_crop = true, catalog_sequence = 3
+     * "fssai": is_standalone_crop = true, catalog_sequence = 4
+     * "barcode": is_standalone_crop = true, catalog_sequence = 5
+   - Set "is_standalone_crop": false for general body copy that belongs on the main Back-of-Pack view:
+     * "directions": is_standalone_crop = false, catalog_sequence = null
+     * "caution": is_standalone_crop = false, catalog_sequence = null
+     * "storage": is_standalone_crop = false, catalog_sequence = null
+"""

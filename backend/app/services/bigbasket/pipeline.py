@@ -50,38 +50,35 @@ class ImageProcessingPipeline:
         raw_img = Image.open(io.BytesIO(image_bytes))
         orig_w, orig_h = raw_img.size
 
-        img_type_lower = (image_type or "fop").lower().strip()
+        img_type_lower = (image_type or "").lower().strip()
+        # STRICT WHITELIST: Only genuine front or back product pack shots can EVER invoke Photoroom
+        is_fop_bop = img_type_lower in ("fop", "bop", "front", "back", "front of pack", "back of pack")
         is_lifestyle_or_infographic = any(k in img_type_lower for k in ("lifestyle", "infographic"))
-        is_flat_panel = is_lifestyle_or_infographic or any(k in img_type_lower for k in (
+        is_flat_panel = (not is_fop_bop) or is_lifestyle_or_infographic or any(k in img_type_lower for k in (
             "nutrition", "ingredient", "manufacture", "marketed", "mfg",
-            "fssai", "barcode", "license", "table", "cert", "caution"
+            "fssai", "barcode", "license", "table", "cert", "caution", "direction", "storage"
         ))
 
-        # Only invoke Photoroom when image classification and processing rules explicitly require background removal:
-        # 1. Physical product FOP / BOP shots.
+        # Only invoke Photoroom when image classification explicitly confirms FOP or BOP product shot:
+        # 1. STRICT WHITELIST: is_fop_bop must be True.
         # 2. Never on LIFESTYLE or INFOGRAPHIC images (preserve people, appliances, background, text, icons).
-        # 3. Never on flat informational panels (nutrition, ingredients, usage directions, caution, manufacturer).
+        # 3. Never on flat informational panels (nutrition, ingredients, usage directions, caution, manufacturer, barcode).
         # 4. Never when classification is uncertain or flagged for manual review.
         is_uncertain = bool(cfg.get("is_uncertain", False) or cfg.get("requires_manual_review", False))
-        requires_bg_removal = (not is_flat_panel) and (not is_lifestyle_or_infographic) and (not is_uncertain)
-        is_fop_bop = requires_bg_removal
+        requires_bg_removal = is_fop_bop and (not is_uncertain) and (not is_lifestyle_or_infographic)
         # A FOP/BOP product shot is still judged by FOP/BOP standards (transparent background, Table 3 padding)
         # even when background removal was skipped, so a skipped removal can never pass QC.
-        is_product_shot = not is_flat_panel
+        is_product_shot = is_fop_bop
 
-        # FOP / BOP products use transparent RGBA canvas (0, 0, 0, 0) for clean background removal.
-        # Flat informational panels & Lifestyle/Infographics use solid white (255, 255, 255, 255)
-        # to ensure crisp edge-to-edge presentation without black transparent cutout gaps.
-        if is_flat_panel or is_lifestyle_or_infographic:
-            canvas = Image.new("RGBA", (canvas_w, canvas_h), (255, 255, 255, 255))
-        else:
-            canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+        # All catalog assets use transparent RGBA canvas (0, 0, 0, 0) per BigBasket SRS Table 3
+        canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
         num_components = 1
         has_transparency = False
-        bg_provider = "photoroom" if is_fop_bop else ("passthrough_lifestyle" if is_lifestyle_or_infographic else "passthrough")
+        photoroom_called = False
+        bg_provider = "photoroom" if requires_bg_removal else ("passthrough_lifestyle" if is_lifestyle_or_infographic else "passthrough")
         error_notes = []
 
-        if is_fop_bop:
+        if requires_bg_removal:
             # Check if input already contains clean transparency (e.g. pre-segmented or pipeline re-processing)
             input_has_alpha = False
             if raw_img.mode in ("RGBA", "LA") or (raw_img.mode == "P" and "transparency" in raw_img.info):
@@ -95,11 +92,12 @@ class ImageProcessingPipeline:
                 clean_rgba.save(seg_buf, format="PNG")
                 segmented_bytes = seg_buf.getvalue()
                 has_transparency = True
-                logger.info(f"[Pipeline] Preserving pre-existing transparent alpha channel ({orig_w}x{orig_h}).")
+                logger.info(f"[Pipeline] Preserving pre-existing transparent alpha channel ({orig_w}x{orig_h}). Photoroom call skipped (0 credits used).")
             else:
                 # Step 1: Photoroom AI Background Removal (SRS Section 3)
                 logger.info(f"[Pipeline] Processing FOP/BOP image through Photoroom AI ({orig_w}x{orig_h})...")
                 segmented_png_bytes = PhotoroomService.remove_background(image_bytes, crop=False, size="full")
+                photoroom_called = True
 
                 if segmented_png_bytes:
                     clean_rgba = Image.open(io.BytesIO(segmented_png_bytes)).convert("RGBA")
@@ -202,28 +200,49 @@ class ImageProcessingPipeline:
 
             if is_lifestyle_or_infographic and abs(orig_w - orig_h) / max(orig_w, orig_h) < 0.05:
                 # 1:1 Square (or near-square) Lifestyle / Infographic: direct edge-to-edge scaling
+                canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
                 resized_panel = clean_rgba.resize((canvas_w, canvas_h), Image.Resampling.LANCZOS)
                 canvas.paste(resized_panel, (0, 0))
+                has_transparency = False
             else:
-                # Informational Panels & Rectangular Lifestyle/Infographics:
-                # Sample the panel perimeter border color to fill the 2000x2000 canvas seamlessly
+                # Informational Panels (Nutritional, Ingredients, Barcode, Regulatory) & Rectangular Infographics:
+                # 1. Detect content bounding box to trim off unnecessary empty white or solid border margins (SRS Section 2 & 4)
                 panel_arr = np.array(clean_rgba)
-                borders = np.concatenate([
-                    panel_arr[0, :, :3],
-                    panel_arr[-1, :, :3],
-                    panel_arr[:, 0, :3],
-                    panel_arr[:, -1, :3]
-                ])
-                bg_color = tuple(int(c) for c in np.median(borders, axis=0)) + (255,)
-                canvas = Image.new("RGBA", (canvas_w, canvas_h), bg_color)
+                gray = cv2.cvtColor(panel_arr[:, :, :3], cv2.COLOR_RGB2GRAY)
+                corner_val = int(np.median([gray[0, 0], gray[0, -1], gray[-1, 0], gray[-1, -1]]))
+                if corner_val > 230:
+                    diff = 255 - gray
+                else:
+                    diff = cv2.absdiff(gray, corner_val)
 
-                scale = min(canvas_w / orig_w, canvas_h / orig_h)
+                _, mask = cv2.threshold(diff, 15, 255, cv2.THRESH_BINARY)
+                if panel_arr.shape[2] == 4:
+                    mask = cv2.bitwise_and(mask, (panel_arr[:, :, 3] > 20).astype(np.uint8) * 255)
+                coords = cv2.findNonZero(mask)
+
+                if coords is not None:
+                    bx, by, bw, bh = cv2.boundingRect(coords)
+                    # If content does not occupy the full raw image, crop tightly to remove white/empty borders
+                    if bw < orig_w * 0.96 or bh < orig_h * 0.96:
+                        pad = 4
+                        x1 = max(0, bx - pad)
+                        y1 = max(0, by - pad)
+                        x2 = min(orig_w, bx + bw + pad)
+                        y2 = min(orig_h, by + bh + pad)
+                        clean_rgba = clean_rgba.crop((x1, y1, x2, y2))
+                        orig_w, orig_h = clean_rgba.size
+
+                # 2. Scale edge-to-edge on transparent 2000x2000 canvas per BigBasket SRS Table 3
+                canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+                target_w = min(canvas_w - 20, 1980)
+                scale = min(target_w / orig_w, (canvas_h - 20) / orig_h)
                 fit_w = int(orig_w * scale)
                 fit_h = int(orig_h * scale)
                 resized_panel = clean_rgba.resize((fit_w, fit_h), Image.Resampling.LANCZOS)
                 offset_x = (canvas_w - fit_w) // 2
                 offset_y = (canvas_h - fit_h) // 2
                 canvas.paste(resized_panel, (offset_x, offset_y), resized_panel)
+                has_transparency = True
 
         # Step 4: MRP / Expiry Removal if applicable (SRS Section 5)
         inpaint_applied = False
@@ -328,6 +347,12 @@ class ImageProcessingPipeline:
         reasons = []
         warnings = []
         img_type_clean = (image_type or "fop").lower().strip()
+        is_flat_panel = any(k in img_type_clean for k in (
+            "nutrition", "ingredient", "manufacture", "marketed", "mfg",
+            "fssai", "barcode", "license", "table", "cert", "caution", "lifestyle", "infographic"
+        ))
+        if is_flat_panel:
+            is_fop_bop = False
 
         # 1. Dimensions
         dim_valid = (img.width == expected_width and img.height == expected_height)
@@ -443,6 +468,48 @@ class ImageProcessingPipeline:
             if not residue_passed and is_fop_bop:
                 reasons.append(f"Background residue in corners: max alpha = {max_corner_alpha}")
 
+            # 3b. Stray Fragments: leftover bits of the original background (e.g. part of a lamp or wall
+            # fixture beside the product) that background removal left floating as small islands detached
+            # from the product. The corner check above cannot see these.
+            # Legitimate separate pieces (other items in a kit, a capsule or garnish drawn beside a pack) are
+            # bigger and solid: measured debris was <= 0.04% of the product's area and 4-72% fully opaque,
+            # a decorative capsule was 0.43% and 91% opaque. So: tiny (< 0.2%) islands are debris, and
+            # small (< 1%) ones only when mostly semi-transparent.
+            stray_count = 0
+            stray_boxes = []
+            if is_fop_bop:
+                n_cc, cc_labels, cc_stats, _ = cv2.connectedComponentsWithStats(
+                    (alpha > 128).astype(np.uint8), connectivity=8
+                )
+                if n_cc > 2:
+                    areas = cc_stats[1:, cv2.CC_STAT_AREA]
+                    main_area = int(areas.max())
+                    for k in range(1, n_cc):
+                        area = int(cc_stats[k, cv2.CC_STAT_AREA])
+                        if area < 20 or area >= 0.01 * main_area:
+                            continue
+                        is_debris = area < 0.002 * main_area
+                        if not is_debris:
+                            cx, cy, cw_, ch_ = (int(v) for v in cc_stats[k, :4])
+                            comp_alpha = alpha[cy:cy + ch_, cx:cx + cw_][cc_labels[cy:cy + ch_, cx:cx + cw_] == k]
+                            is_debris = float(np.mean(comp_alpha >= 250)) < 0.6
+                        if is_debris:
+                            stray_count += 1
+                            if len(stray_boxes) < 10:
+                                stray_boxes.append([int(v) for v in cc_stats[k, :4]])
+            stray_passed = stray_count == 0
+            audit_5d["stray_fragments"] = {
+                "passed": stray_passed,
+                "count": stray_count,
+                "boxes": stray_boxes,
+                "notes": "No detached background fragments" if stray_passed
+                else f"{stray_count} small detached fragment(s) beside the product: likely background left behind",
+            }
+            if not stray_passed:
+                reasons.append(
+                    f"Background not fully removed: {stray_count} small detached fragment(s) left beside the product."
+                )
+
             # 4. Transparency Topology
             binary_mask = (alpha > 128).astype(np.uint8)
             contours, hierarchy = cv2.findContours(binary_mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
@@ -495,7 +562,9 @@ class ImageProcessingPipeline:
                 ),
             }
 
-            alpha_valid = boundary_quality_passed and completeness_passed and residue_passed and topology_passed
+            alpha_valid = (
+                boundary_quality_passed and completeness_passed and residue_passed and topology_passed and stray_passed
+            )
 
         # Strict Table 3 Padding & Content Bounding Box validation (Verify all four margins)
         padding_valid = True
@@ -522,9 +591,33 @@ class ImageProcessingPipeline:
                 padding_valid = False
                 reasons.append(f"Content exceeds Table 3 bounding box: {bw}x{bh} px (maximum allowed 1820x1640 px)")
         elif not is_fop_bop:
-            # Categories 2, 3, 4: 0 px padding, full edge-to-edge coverage
-            padding_valid = True
-            margin_audit = {"top": 0, "bottom": 0, "left": 0, "right": 0}
+            # Categories 2, 3, 4: Full edge-to-edge coverage per BigBasket Table 3
+            if has_4_channels:
+                alpha = arr[:, :, 3]
+                rgb = arr[:, :, :3]
+                gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+                content_mask = (alpha > 30) & (gray < 250)
+                c_coords = cv2.findNonZero(content_mask.astype(np.uint8))
+                if c_coords is not None:
+                    cbx, cby, cbw, cbh = cv2.boundingRect(c_coords)
+                    # Verify content fills the canvas edge-to-edge without excessive uncropped margins
+                    side_margins = cbx + (img.width - (cbx + cbw))
+                    if cbw < 1750 and side_margins > 300:
+                        padding_valid = False
+                        reasons.append(
+                            f"Uncropped whitespace: informational content does not fill the canvas edge-to-edge "
+                            f"(width {cbw}px, expected >= 1800px per Table 3)"
+                        )
+                    margin_audit = {
+                        "top": int(cby),
+                        "bottom": int(img.height - (cby + cbh)),
+                        "left": int(cbx),
+                        "right": int(img.width - (cbx + cbw)),
+                    }
+                else:
+                    margin_audit = {"top": 0, "bottom": 0, "left": 0, "right": 0}
+            else:
+                margin_audit = {"top": 0, "bottom": 0, "left": 0, "right": 0}
 
         passed = (
             dim_valid
@@ -614,6 +707,8 @@ class ImageProcessingPipeline:
                 checks.append(audit_5d["foreground_completeness"].get("passed", True))
             if "background_residue" in audit_5d:
                 checks.append(audit_5d["background_residue"].get("passed", True))
+            if "stray_fragments" in audit_5d:
+                checks.append(audit_5d["stray_fragments"].get("passed", True))
 
         total_checks = len(checks)
         passed_checks = sum(1 for c in checks if c)

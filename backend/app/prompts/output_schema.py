@@ -165,3 +165,117 @@ EXAMPLE_OUTPUT = {
     "reasoning": "Multi-piece nonstick cookware set consisting of 1 cooking pot with glass lid, 2 saucepans with glass lids, and 2 frying pans with ergonomic handles."
 }
 
+
+PACKAGING_SUBREGIONS_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "detected_regions": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "region_type": {
+                        "type": "STRING",
+                        "enum": [
+                            "ingredient", "nutritional", "manufactured_by", "fssai", "barcode",
+                            "directions", "caution", "storage"
+                        ],
+                        "description": "Standard retail packaging sub-region classification."
+                    },
+                    "display_name": {
+                        "type": "STRING",
+                        "description": "Human-readable label (e.g. 'Nutritional Information', 'FSSAI License', 'Ingredients')."
+                    },
+                    "box_2d": {
+                        "type": "ARRAY",
+                        "items": {"type": "INTEGER"},
+                        "description": "[ymin, xmin, ymax, xmax] normalized strictly from 0 to 1000."
+                    },
+                    "confidence": {
+                        "type": "NUMBER",
+                        "description": "Confidence score between 0.0 and 1.0."
+                    },
+                    "is_standalone_crop": {
+                        "type": "BOOLEAN",
+                        "description": (
+                            "Dynamic determination if this sub-region qualifies under e-commerce catalog standards "
+                            "as a standalone cropped asset (True for ingredient, nutritional, manufactured_by, "
+                            "fssai, and barcode; False for directions, caution, storage, recycling)."
+                        )
+                    },
+                    "catalog_sequence": {
+                        "type": "INTEGER",
+                        "description": "Dynamic recommended catalog sequence order for standalone crops (1 for ingredient, 2 for nutritional, 3 for manufactured_by, 4 for fssai, 5 for barcode; null if not standalone)."
+                    },
+                    "text_summary": {
+                        "type": "STRING",
+                        "description": "Brief summary or opening words of the detected section."
+                    }
+                },
+                "required": ["region_type", "display_name", "box_2d", "confidence", "is_standalone_crop"]
+            }
+        }
+    },
+    "required": ["detected_regions"]
+}
+
+
+EXAMPLE_SUBREGIONS_OUTPUT = {
+    "detected_regions": [
+        {
+            "region_type": "ingredient",
+            "display_name": "Ingredients",
+            "box_2d": [326, 333, 353, 664],
+            "confidence": 0.98,
+            "is_standalone_crop": True,
+            "catalog_sequence": 1,
+            "text_summary": "Ingredients: Jaggery, Peanuts, Butter, Cardamom."
+        },
+        {
+            "region_type": "nutritional",
+            "display_name": "Nutritional Information",
+            "box_2d": [557, 339, 738, 522],
+            "confidence": 0.99,
+            "is_standalone_crop": True,
+            "catalog_sequence": 2,
+            "text_summary": "Nutritional Facts table with Energy 517 kcal, Protein 19.8g."
+        },
+        {
+            "region_type": "manufactured_by",
+            "display_name": "Marketed & Manufactured By",
+            "box_2d": [397, 319, 531, 632],
+            "confidence": 0.96,
+            "is_standalone_crop": True,
+            "catalog_sequence": 3,
+            "text_summary": "Marketed By: GO DESi Mandi Pvt Ltd, Bengaluru."
+        },
+        {
+            "region_type": "fssai",
+            "display_name": "FSSAI License",
+            "box_2d": [673, 548, 702, 651],
+            "confidence": 0.99,
+            "is_standalone_crop": True,
+            "catalog_sequence": 4,
+            "text_summary": "FSSAI Logo and Lic. No. 11221332000766"
+        },
+        {
+            "region_type": "barcode",
+            "display_name": "Barcode",
+            "box_2d": [624, 547, 664, 650],
+            "confidence": 0.99,
+            "is_standalone_crop": True,
+            "catalog_sequence": 5,
+            "text_summary": "EAN-13: 8906108896502"
+        },
+        {
+            "region_type": "directions",
+            "display_name": "Directions to Use",
+            "box_2d": [450, 200, 520, 600],
+            "confidence": 0.95,
+            "is_standalone_crop": False,
+            "catalog_sequence": None,
+            "text_summary": "How to wash clothes in washing machine."
+        }
+    ]
+}
+

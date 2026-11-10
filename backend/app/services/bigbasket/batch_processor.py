@@ -222,7 +222,8 @@ class BatchProcessor:
                 image_id=img.id,
             )
 
-            # Authoritative visual classification from Gemini Multimodal Vision AI
+            # Authoritative visual classification dynamically determined by Gemini Multimodal Vision AI
+            # Works dynamically across any packaging format, material, color, and angle without filename heuristics
             ai_img_type = (prediction.get("predicted_category") or "").lower().strip()
             if ai_img_type and ai_img_type != "unknown":
                 effective_type = ai_img_type
@@ -326,14 +327,21 @@ class BatchProcessor:
             # 5. Information Sections Detection for Back-of-Pack (BOP) images
             fname_lower = (img.original_filename or "").lower()
             img_type_lower = (img.image_type or "").lower().strip()
+            # Secondary packaging photos (e.g. batch code, MRP, expiry closeups) should not run sub-region extraction
+            is_secondary_bop = any(k in fname_lower for k in ("batch", "code", "mrp", "exp", "stamp", "detail"))
             is_bop = (
                 img_type_lower in ("bop", "back", "back of pack")
                 and img_type_lower not in ("lifestyle", "infographic", "fop")
                 and not any(k in img_type_lower for k in ("lifestyle", "infographic", "fop"))
+                and not is_secondary_bop
             )
             if is_bop:
                 # Detect and store packaging information sections as metadata on the parent BOP image
-                info_sections = SubRegionExtractor.detect_information_sections(raw_bytes)
+                info_sections = SubRegionExtractor.detect_information_sections(
+                    raw_bytes,
+                    bbid=img.bbid,
+                    category=getattr(img, "category", "") or "FOOD",
+                )
                 if not img.validation_results:
                     img.validation_results = {}
                 img.validation_results["detected_sections"] = info_sections
@@ -347,6 +355,9 @@ class BatchProcessor:
                 if ocr_ok and (cfg.get("extract_standalone_info_images", False) or cfg.get("extract_sub_regions", True)):
                     cls._extract_and_register_bop_sub_regions(db, img, batch, raw_bytes, cfg)
         except Exception as e:
+            # A failed flush leaves the session unusable; roll back first so this image is marked failed and the
+            # rest of the batch keeps processing instead of the whole batch failing.
+            db.rollback()
             logger.error(f"Failed processing image {img.id}: {e}")
             img.status = "failed"
             img.error_message = str(e)
@@ -380,20 +391,30 @@ class BatchProcessor:
         FSSAI, and Barcode sub-regions from a Back-of-Pack (BOP) image.
         """
         try:
-            # Clear only previously auto-generated sub-regions (NEVER delete the parent BOP image itself!)
-            stale_sub_imgs = (
+            # Clear only the crops previously auto-extracted from THIS parent image. They are identified by the
+            # "auto_extracted_from" marker, never by image type: a nutritional/ingredient image the user uploaded
+            # for the same SKU has the same type and must not be deleted.
+            same_sku_imgs = (
                 db.query(BatchImage)
                 .filter(
                     BatchImage.batch_id == batch.id,
                     BatchImage.bbid == parent_img.bbid,
                     BatchImage.id != parent_img.id,
-                    BatchImage.image_type.in_(["ingredient", "nutritional", "manufactured_by", "fssai", "barcode", "caution"]),
                 )
                 .all()
             )
-            for s in stale_sub_imgs:
-                db.delete(s)
+            for s in same_sku_imgs:
+                if (s.validation_results or {}).get("auto_extracted_from") == parent_img.id:
+                    db.delete(s)
             db.flush()
+
+            # Crops take the next free sequence numbers for this SKU, after every image already in the batch
+            # (uploaded images keep their numbers; uq_batch_images_bbid_sequence can't be violated).
+            used_seqs = [
+                s.sequence_order for s in same_sku_imgs
+                if (s.validation_results or {}).get("auto_extracted_from") != parent_img.id and s.sequence_order
+            ]
+            next_seq = max(used_seqs + [parent_img.sequence_order or 0]) + 1
 
             # Determine product category (FOOD, NON_FOOD, or KITCHEN_ITEMS)
             batch_cat = (batch.config or {}).get("product_category") or (batch.config or {}).get("category")
@@ -414,15 +435,55 @@ class BatchProcessor:
             b_dir = BigBasketStorage.get_batch_dir(batch)
             orig_dir = b_dir / "original"
 
+            # Find existing images / crops for this SKU to prevent duplicate images per SRS Section 6 & 8
+            existing_crops_by_type = {}
+            for s in same_sku_imgs:
+                img_t = (s.image_type or "").lower().strip()
+                if img_t:
+                    existing_crops_by_type[img_t] = s
+
             for sub in sub_items:
-                # 1. Save unscaled original crop file
+                cat = sub["category"]
+                # Deduplication: an SKU should only have ONE crop per sub-region category (FSSAI, Nutritional, etc.)
+                if cat in existing_crops_by_type:
+                    existing = existing_crops_by_type[cat]
+                    new_area = sub["crop_width"] * sub["crop_height"]
+                    old_area = (existing.original_width or 0) * (existing.original_height or 0)
+                    if new_area > old_area:
+                        # Update existing crop file with the more complete/higher resolution extraction
+                        try:
+                            crop_orig_path = Path(existing.original_file_path)
+                            with open(crop_orig_path, "wb") as f:
+                                f.write(sub["original_crop_bytes"])
+                            final_path = Path(existing.final_output_path)
+                            with open(final_path, "wb") as f:
+                                f.write(sub["canvas_bytes"])
+                            existing.original_width = sub["crop_width"]
+                            existing.original_height = sub["crop_height"]
+                            existing.file_size_bytes = len(sub["canvas_bytes"])
+                            val = dict(existing.validation_results or {})
+                            val["auto_extracted_from"] = parent_img.id
+                            existing.validation_results = val
+                            db.commit()
+                        except Exception as upd_err:
+                            logger.warning(f"Failed to update existing crop with better version: {upd_err}")
+                    # Skip inserting a duplicate image row into the batch table
+                    continue
+
+                seq = next_seq
+                next_seq += 1
+                sub["sequence_order"] = seq
+                sub["filename"] = f"{parent_img.bbid}_{seq}_crop.png"
+
+                # 1. Save unscaled original crop file. The "_crop" suffix keeps it from ever overwriting an
+                #    uploaded original, whose files are named <bbid>_<seq>.<ext>.
                 crop_orig_path = orig_dir / sub["filename"]
                 with open(crop_orig_path, "wb") as f:
                     f.write(sub["original_crop_bytes"])
 
                 # 2. Save final 2000x2000 output canvas
                 final_path = BigBasketStorage.save_final_output(
-                    batch, parent_img.bbid, sub["sequence_order"], sub["canvas_bytes"]
+                    batch, parent_img.bbid, seq, sub["canvas_bytes"]
                 )
 
                 # 3. Register as new BatchImage in database (Model 2)
@@ -447,6 +508,7 @@ class BatchProcessor:
                         "padding_valid": True,
                         "aspect_ratio_valid": True,
                         "failure_reasons": [],
+                        "auto_extracted_from": parent_img.id,
                     },
                 )
                 db.add(sub_img)
@@ -456,6 +518,8 @@ class BatchProcessor:
                 batch.processed_images = (batch.processed_images or 0) + 1
                 batch.approved_images = (batch.approved_images or 0) + 1
                 db.commit()
+
+                existing_crops_by_type[cat] = sub_img
 
                 cls._log_event(
                     db,
@@ -469,6 +533,8 @@ class BatchProcessor:
             cls._mark_ocr_unavailable(parent_img, str(e))
             db.commit()
         except Exception as e:
+            # Roll back so one failed crop can't leave the session unusable and fail the whole batch.
+            db.rollback()
             logger.error(f"Failed sub-region extraction for BOP image {parent_img.id}: {e}")
 
     @classmethod

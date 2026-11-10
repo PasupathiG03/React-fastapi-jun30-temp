@@ -110,6 +110,81 @@ class SubRegionExtractor:
         orig_w, orig_h = raw_img.size
         arr = np.array(raw_img)
 
+        # -----------------------------------------------------------------------------------
+        # TIER 1: Gemini Multimodal Vision AI Semantic Sub-Region Localization
+        # -----------------------------------------------------------------------------------
+        # Locates packaging sub-regions visually (Ingredients, Nutritional Table, Manufacturer,
+        # FSSAI emblem + license, Barcode) across any arbitrary packaging layout without relying
+        # on fragile keyword matching or hardcoded pixel coordinates.
+        try:
+            from app.services.bigbasket.gemini_service import GeminiClassificationService
+            gemini_regions = GeminiClassificationService.detect_packaging_sub_regions(
+                image_bytes=image_bytes,
+                bbid=bbid,
+                filename=f"{bbid}.png",
+                category=category,
+            )
+            if gemini_regions:
+                logger.info(f"Gemini Vision AI localized {len(gemini_regions)} packaging sub-regions for BBID {bbid}")
+                extracted_results = []
+                # 100% Dynamic: Standalone crop qualification & sequence order determined dynamically by Gemini Vision AI
+                # (Zero hardcoded crop sets or order mappings)
+                crop_targets = [r for r in gemini_regions if r.get("is_standalone_crop")]
+                sorted_regions = sorted(
+                    crop_targets,
+                    key=lambda r: r.get("catalog_sequence") if r.get("catalog_sequence") is not None else 99
+                )
+
+                for reg in sorted_regions:
+                    cat = reg.get("region_type")
+                    disp = reg.get("display_name") or cat.title()
+                    box = reg.get("box_2d")
+                    if not box or len(box) != 4:
+                        continue
+                    ymin, xmin, ymax, xmax = box
+                    py1 = int(round(ymin * orig_h / 1000.0))
+                    px1 = int(round(xmin * orig_w / 1000.0))
+                    py2 = int(round(ymax * orig_h / 1000.0))
+                    px2 = int(round(xmax * orig_w / 1000.0))
+
+                    # Safety padding to ensure no text strokes or logo edges are clipped
+                    pad_x = 12
+                    pad_y = 10
+                    if cat == "fssai":
+                        pad_y = 15
+                    elif cat == "barcode":
+                        pad_x = 20
+                        pad_y = 10
+
+                    fx1 = max(0, px1 - pad_x)
+                    fy1 = max(0, py1 - pad_y)
+                    fx2 = min(orig_w, px2 + pad_x)
+                    fy2 = min(orig_h, py2 + pad_y)
+
+                    crop = arr[fy1:fy2, fx1:fx2]
+                    if crop.shape[0] > 20 and crop.shape[1] > 30:
+                        cls._append_crop_result(
+                            extracted_results,
+                            crop,
+                            category=cat,
+                            display_name=disp,
+                            bbid=bbid,
+                            seq=current_seq,
+                            canvas_w=canvas_width,
+                            canvas_h=canvas_height,
+                            dpi=dpi,
+                        )
+                        current_seq += 1
+
+                if extracted_results:
+                    return extracted_results
+        except Exception as ai_err:
+            logger.warning(f"Gemini sub-region localization failed or unavailable ({ai_err}). Falling back to local OCR engine.")
+
+        # -----------------------------------------------------------------------------------
+        # TIER 2: Local Dynamic OCR & Computer-Vision Fallback
+        # -----------------------------------------------------------------------------------
+
         # 1. Dynamic Text Localization using OCR (raises OcrError if OCR cannot run)
         raw_ocr_results = read_text(arr)
         logger.info(f"Dynamic OCR detected {len(raw_ocr_results)} text lines for BBID {bbid}")
@@ -165,7 +240,7 @@ class SubRegionExtractor:
             return line["y2"] >= mrp_top and line["x2"] > price_x1 and line["x1"] < price_x2
 
         # Dynamic Barcode Detection with MRP boundary awareness
-        barcode_bbox = cls._detect_barcode_dynamic(arr, mrp_top=mrp_top)
+        barcode_bbox = cls._detect_barcode_dynamic(arr, mrp_top=mrp_top, text_lines=lines, bbid=bbid)
 
         # 4. Determine if Food vs Non-Food/Kitchen packaging
         cat_lower = (category or "").lower().strip()
@@ -176,172 +251,158 @@ class SubRegionExtractor:
         else:
             is_known_non_food = False
 
-        # 5. Dynamic Section Discovery (robust to glued words in packaging OCR)
-        nutri_patterns = [
-            r'nutrition', r'nutritional', r'per\s*100', r'energy', r'approximate\s*value', r'typical\s*value'
-        ]
-        # Strictly match actual ingredient declarations (never confuse with directions or usage)
-        ing_patterns = [
-            r'\bingredients?\b', r'\bcomposition\b', r'\bactive\s+ingredients?\b'
-        ]
-        directions_patterns = [
-            r'how\s*to\s*use', r'directions?', r'best\s*way\s*to\s*use', r'method\s*of\s*use'
-        ]
-        mfg_patterns = [
-            r'mfd', r'mfg', r'manufactur', r'market', r'consumer', r'customercare', r'customer\s*care', r'packer', r'packed', r'pvt',
-            r'quality\s*product\s*(of|from|by)', r'\bproduct\s+(of|from)\b', r'\bmade\s+by\b', r'\bimported\s+by\b',
-            r'\bdistributed\s+by\b',
-        ]
-        fssai_patterns = [
-            r'fssai', r'lic\s*(no|\.?)', r'license\s*(no|\.?)'
-        ]
-        caution_patterns = [
-            r'caution', r'warning', r'first\s*aid', r'keep\s*(out|away)', r'for\s*external', r'flammable', r'irritan'
-        ]
+        # 5. Section discovery by text blocks.
+        # A section starts at a heading at the start of a line ("Ingredients:", "Nutritional Information",
+        # "Marketed By"...) and takes the lines below it in the same column. It ends at the next heading of any
+        # kind (Storage, For feedback, Net Quantity, Directions...) or at a gap clearly larger than the normal
+        # line spacing. This keeps each crop to its own block instead of running to the next section or the
+        # end of the pack.
+        text_lines = [l for l in lines if not in_price_box(l)]
+        heights = sorted(l["y2"] - l["y1"] for l in text_lines) or [20]
+        line_h = max(8, heights[len(heights) // 2])
 
-        # Scan line indices
-        nutri_start_idx = None
-        ing_start_idx = None
-        directions_start_idx = None
-        mfg_start_idx = None
-        caution_start_idx = None
-        fssai_indices = []
+        heading_patterns = {
+            "ingredient": [
+                r"^\W*(active\s+)?ingredients?[:\s]",
+                r"^\W*composition[:\s]",
+            ],
+            "nutritional": [
+                r"^\W*nutrition(al)?\b",
+                r"^\W*(typical|approximate|average)\s+values?\b",
+            ],
+            "manufactured_by": [
+                r"^\W*(marketed|manufactured|mfd\.?|mfg\.?|packed|packer|imported|distributed|made)\s*(&|and|by|for)?(\s+|$|:)",
+                r"^\W*manufacturer\b",
+                r"^\W*a\s+quality\s+product\s+(of|from|by)\b",
+                r"^\W*product\s+of\b",
+            ],
+            "contact": [
+                r"^\W*for\s+(feedback|queries|complaints|consumer|customer|any)\b",
+                r"^\W*(customer|consumer)\s*care\b",
+                r"^\W*contact\b",
+            ],
+            "storage": [r"^\W*storage\b", r"^\W*store\s+(in|at|the|it|below)\b"],
+            "directions": [r"^\W*(directions?|how\s+to\s+use|best\s+way\s+to\s+use|method\s+of\s+use|usage)\b"],
+            "caution": [r"^\W*(caution|warning|precautions?)\b"],
+            "net_quantity": [r"^\W*net\s*(quantity|qty|wt|weight|content|vol)\b"],
+            "dates": [r"^\W*(date\s+of|mfg\.?\s*date|exp(iry)?\.?\s*date|best\s+before|use\s+by|batch|b\.\s*no|lot\s+no)\b"],
+            "price": [r"^\W*(mrp|usp|unit\s+sale|price)\b"],
+            "other": [r"^\W*for\s+manufactured\b"],
+            "fssai": [r"^\W*(fssai|lic\.?\s*no)\b"],
+        }
 
-        for i, l in enumerate(lines):
-            t = l["text"].lower()
+        def heading_type(line: Dict[str, Any]) -> Optional[str]:
+            t = line["text"].lower()
+            for kind, pats in heading_patterns.items():
+                if any(re.search(p, t) for p in pats):
+                    return kind
+            return None
 
-            # Skip lines in the MRP price box
-            if in_price_box(l):
-                continue
+        kinds = [heading_type(l) for l in text_lines]
+        print("DEBUG price_boxes:", [b["text"] for b in price_boxes], "mrp_top:", mrp_top)
+        print("DEBUG category passed:", category, "is_known_non_food:", is_known_non_food)
+        print("DEBUG kinds count:", {k: kinds.count(k) for k in set(kinds)})
 
-            # Nutritional table (Food only)
-            if not is_known_non_food and nutri_start_idx is None:
-                if any(re.search(pat, t) for pat in nutri_patterns):
-                    nutri_start_idx = i
+        def grow_block(start: int, kind: str) -> List[Dict[str, Any]]:
+            """Heading line + following same-column lines until another heading or a large gap."""
+            block = [text_lines[start]]
+            bx1, bx2 = text_lines[start]["x1"], text_lines[start]["x2"]
+            bottom = text_lines[start]["y2"]
+            for k in range(start + 1, len(text_lines)):
+                l = text_lines[k]
+                in_column = l["x2"] > bx1 - line_h and l["x1"] < bx2 + line_h
+                if not in_column:
+                    continue  # text in another column beside this block
+                if l["y1"] - bottom > 1.2 * line_h:
+                    break  # paragraph gap: the block has ended
+                other = kinds[k]
+                if other is not None and not (other == kind == "manufactured_by"):
+                    break  # the next section starts here
+                block.append(l)
+                bx1, bx2 = min(bx1, l["x1"]), max(bx2, l["x2"])
+                bottom = max(bottom, l["y2"])
+            return block
 
-            # True Ingredients Heading
-            if ing_start_idx is None:
-                if any(re.search(pat, t) for pat in ing_patterns):
-                    ing_start_idx = i
+        def first_heading(kind: str) -> Optional[int]:
+            return next((i for i, k in enumerate(kinds) if k == kind), None)
 
-            # Directions for use (stored as metadata; not an ingredient crop)
-            if directions_start_idx is None:
-                if any(re.search(pat, t) for pat in directions_patterns):
-                    directions_start_idx = i
+        sections: List[Tuple[str, str, List[Dict[str, Any]]]] = []
 
-            # Safety / Caution (stored as metadata; never extracted as standalone image per SRS)
-            if caution_start_idx is None:
-                if any(re.search(pat, t) for pat in caution_patterns):
-                    caution_start_idx = i
+        ing_idx = first_heading("ingredient")
+        if ing_idx is not None:
+            sections.append(("ingredient", "Ingredients", grow_block(ing_idx, "ingredient")))
 
-            # Manufacturer, Marketer, Packer
-            if mfg_start_idx is None:
-                if any(re.search(pat, t) for pat in mfg_patterns) and (ing_start_idx is None or i > ing_start_idx):
-                    mfg_start_idx = i
+        if not is_known_non_food:
+            nutri_idx = first_heading("nutritional")
+            if nutri_idx is not None:
+                sections.append(("nutritional", "Nutritional", grow_block(nutri_idx, "nutritional")))
 
-            # FSSAI Regulatory (Food only)
-            if not is_known_non_food:
-                if any(re.search(pat, t) for pat in fssai_patterns):
-                    fssai_indices.append(i)
+        mfg_idx = first_heading("manufactured_by")
+        if mfg_idx is None:
+            # No heading: fall back to the company-name line (Pvt Ltd / Limited / LLP) and its address block.
+            mfg_idx = next(
+                (i for i, l in enumerate(text_lines) if re.search(r"(pvt|private|ltd|limited|llp)", l["text"].lower())),
+                None,
+            )
+        if mfg_idx is not None:
+            sections.append(("manufactured_by", "Marketed/Manufactured By", grow_block(mfg_idx, "manufactured_by")))
 
-        # 6. Extract Dynamic Crops in Sequence (Only SRS standard standalone information types)
-        # Note: CAUTION is strictly excluded per BigBasket SRS V1.0 - caution belongs to the complete BOP.
+        if not is_known_non_food:
+            # The licence number (14 digits) identifies the real FSSAI mark; sentences that merely mention
+            # "FSSAI Lic. No." elsewhere on the pack have no number and are ignored.
+            lic_idx = next(
+                (i for i, l in enumerate(text_lines) if re.search(r"(?<!\d)\d{14}(?!\d)", l["text"].replace(" ", ""))),
+                None,
+            )
+            if lic_idx is not None:
+                lic = text_lines[lic_idx]
+                fssai_group = [lic]
+                for l in text_lines:
+                    near_above = 0 <= lic["y1"] - l["y2"] <= 2 * line_h or (l["y1"] < lic["y1"] and l["y2"] > lic["y1"])
+                    overlaps = l["x2"] > lic["x1"] - line_h and l["x1"] < lic["x2"] + line_h
+                    if l is not lic and near_above and overlaps and "fssai" in l["text"].lower():
+                        fssai_group.append(l)
+                sections.append(("fssai", "FSSAI", fssai_group))
+
+
+        print(f"DEBUG: sections found = {[s[0] for s in sections]}")
+
+        # 6. Cut the crops. CAUTION is never extracted (it stays part of the complete BOP per the SRS).
         extracted_results = []
         current_seq = 3
+        pad = max(8, line_h // 2)
+        for category, display_name, group in sections:
+            if not group:
+                continue
+            gx1 = max(0, min(b["x1"] for b in group) - pad)
+            gy1 = max(0, min(b["y1"] for b in group) - pad)
+            gx2 = min(orig_w, max(b["x2"] for b in group) + pad)
+            gy2 = min(orig_h, max(b["y2"] for b in group) + pad)
 
-        # EXTRACTION A: Nutritional Information (Food Only)
-        if nutri_start_idx is not None:
-            next_idx = min([idx for idx in [ing_start_idx, mfg_start_idx, len(lines)] if idx is not None and idx > nutri_start_idx])
-            nutri_group = [lines[k] for k in range(nutri_start_idx, next_idx) if not in_price_box(lines[k])]
-            if nutri_group:
-                nx1 = max(0, min(b["x1"] for b in nutri_group) - 35)
-                ny1 = max(0, min(b["y1"] for b in nutri_group) - 35)
-                nx2 = min(orig_w, max(b["x2"] for b in nutri_group) + 35)
-                ny2 = min(orig_h, max(b["y2"] for b in nutri_group) + 35)
-                crop = arr[ny1:ny2, nx1:nx2]
-                if crop.shape[0] > 30 and crop.shape[1] > 40:
-                    cls._append_crop_result(
-                        extracted_results,
-                        crop, src_arr=arr, box=(nx1, ny1, nx2, ny2), avoid_lines=lines,
-                        category="nutritional",
-                        display_name="Nutritional",
-                        bbid=bbid,
-                        seq=current_seq,
-                        canvas_w=canvas_width,
-                        canvas_h=canvas_height,
-                        dpi=dpi,
-                    )
-                    current_seq += 1
+            if category == "fssai":
+                # Ensure the artistic FSSAI logo emblem above the license line is NEVER cut off
+                has_logo_text = any("fssai" in b.get("text", "").lower() for b in group)
+                if not has_logo_text:
+                    # If OCR missed the stylized word 'fssai', the emblem is situated ~1.6x line height above the license line
+                    gy1 = max(0, min(b["y1"] for b in group) - int(1.8 * line_h) - pad)
+                else:
+                    # Safety margin above 'fssai' so the top orange arc / leaf is never clipped
+                    gy1 = max(0, gy1 - max(4, int(0.4 * line_h)))
 
-        # EXTRACTION B: True Ingredients List (Only when actual ingredients heading is present)
-        if ing_start_idx is not None:
-            end_idx = mfg_start_idx if mfg_start_idx is not None and mfg_start_idx > ing_start_idx else len(lines)
-            ing_group = [lines[k] for k in range(ing_start_idx, end_idx) if not in_price_box(lines[k])]
-            if ing_group:
-                ix1 = max(0, min(b["x1"] for b in ing_group) - 35)
-                iy1 = max(0, min(b["y1"] for b in ing_group) - 35)
-                ix2 = min(orig_w, max(b["x2"] for b in ing_group) + 35)
-                iy2 = min(orig_h, max(b["y2"] for b in ing_group) + 35)
-                crop = arr[iy1:iy2, ix1:ix2]
-                if crop.shape[0] > 30 and crop.shape[1] > 40:
-                    cls._append_crop_result(
-                        extracted_results,
-                        crop, src_arr=arr, box=(ix1, iy1, ix2, iy2), avoid_lines=lines,
-                        category="ingredient",
-                        display_name="Ingredients",
-                        bbid=bbid,
-                        seq=current_seq,
-                        canvas_w=canvas_width,
-                        canvas_h=canvas_height,
-                        dpi=dpi,
-                    )
-                    current_seq += 1
-
-        # EXTRACTION C: Marketed / Manufactured By
-        if mfg_start_idx is not None:
-            mfg_group = [l for l in lines[mfg_start_idx:] if not in_price_box(l)]
-            if mfg_group:
-                mx1 = max(0, min(b["x1"] for b in mfg_group) - 20)
-                my1 = max(0, min(b["y1"] for b in mfg_group) - 15)
-                mx2 = min(orig_w, max(b["x2"] for b in mfg_group) + 20)
-                my2 = min(orig_h, max(b["y2"] for b in mfg_group) + 15)
-                crop = arr[my1:my2, mx1:mx2]
-                if crop.shape[0] > 30 and crop.shape[1] > 40:
-                    cls._append_crop_result(
-                        extracted_results,
-                        crop, src_arr=arr, box=(mx1, my1, mx2, my2), avoid_lines=lines,
-                        category="manufactured_by",
-                        display_name="Marketed/Manufactured By",
-                        bbid=bbid,
-                        seq=current_seq,
-                        canvas_w=canvas_width,
-                        canvas_h=canvas_height,
-                        dpi=dpi,
-                    )
-                    current_seq += 1
-
-        # EXTRACTION D: FSSAI (Food Only)
-        if fssai_indices:
-            fssai_group = [lines[k] for k in fssai_indices if not in_price_box(lines[k])]
-            if fssai_group:
-                fx1 = max(0, min(b["x1"] for b in fssai_group) - 25)
-                fy1 = max(0, min(b["y1"] for b in fssai_group) - 20)
-                fx2 = min(orig_w, max(b["x2"] for b in fssai_group) + 25)
-                fy2 = min(orig_h, max(b["y2"] for b in fssai_group) + 20)
-                crop = arr[fy1:fy2, fx1:fx2]
-                if crop.shape[0] > 20 and crop.shape[1] > 30:
-                    cls._append_crop_result(
-                        extracted_results,
-                        crop, src_arr=arr, box=(fx1, fy1, fx2, fy2), avoid_lines=lines,
-                        category="fssai",
-                        display_name="FSSAI",
-                        bbid=bbid,
-                        seq=current_seq,
-                        canvas_w=canvas_width,
-                        canvas_h=canvas_height,
-                        dpi=dpi,
-                    )
-                    current_seq += 1
+            crop = arr[gy1:gy2, gx1:gx2]
+            if crop.shape[0] > 20 and crop.shape[1] > 30:
+                cls._append_crop_result(
+                    extracted_results,
+                    crop,
+                    category=category,
+                    display_name=display_name,
+                    bbid=bbid,
+                    seq=current_seq,
+                    canvas_w=canvas_width,
+                    canvas_h=canvas_height,
+                    dpi=dpi,
+                )
+                current_seq += 1
 
         # EXTRACTION E: Barcode (Dynamic Barcode Detector)
         if barcode_bbox is not None:
@@ -353,7 +414,7 @@ class SubRegionExtractor:
             if crop.shape[0] >= 30 and crop.shape[1] >= 20:
                 cls._append_crop_result(
                     extracted_results,
-                    crop, src_arr=arr, box=(bx1, by1, bx2, by2), avoid_lines=lines,
+                    crop,
                     category="barcode",
                     display_name="Barcode",
                     bbid=bbid,
@@ -371,6 +432,8 @@ class SubRegionExtractor:
         cls,
         arr: np.ndarray,
         mrp_top: Optional[int] = None,
+        text_lines: Optional[List[Dict[str, Any]]] = None,
+        bbid: Optional[str] = None,
     ) -> Optional[Tuple[int, int, int, int]]:
         """
         Dynamically locates the complete pixel coordinates of an EAN/UPC barcode on ANY packaging,
@@ -429,6 +492,42 @@ class SubRegionExtractor:
                 return (fx1, fy1, fx2, fy2)
         except Exception as e:
             logger.warning(f"Barcode detection error: {e}")
+
+        # Dynamic OCR Fallback: Locate zebra bars using packaging barcode digits
+        try:
+            if text_lines:
+                cand_digits = []
+                bbid_clean = re.sub(r"\D", "", bbid or "")
+                for l in text_lines:
+                    raw_t = l.get("text", "").strip()
+                    # Barcode digits are standalone numbers printed below or beside zebra stripes
+                    if not re.match(r"^[\d\s]+$", raw_t):
+                        continue
+                    clean = re.sub(r"\D", "", raw_t)
+                    if len(clean) in (6, 7, 8, 12, 13):
+                        if bbid_clean and (clean in bbid_clean or bbid_clean in clean):
+                            cand_digits.append(l)
+                        elif len(clean) in (12, 13):
+                            cand_digits.append(l)
+
+                if cand_digits:
+                    bx1 = min(b["x1"] for b in cand_digits)
+                    bx2 = max(b["x2"] for b in cand_digits)
+                    by2 = max(b["y2"] for b in cand_digits)
+                    line_heights = [b["y2"] - b["y1"] for b in cand_digits]
+                    avg_lh = max(15, int(np.mean(line_heights)))
+                    by1 = max(0, min(b["y1"] for b in cand_digits) - int(3.8 * avg_lh))
+                    h_img, w_img = arr.shape[:2]
+                    fx1 = max(0, bx1 - 25)
+                    fx2 = min(w_img, bx2 + 25)
+                    fy1 = max(0, by1 - 10)
+                    fy2 = min(h_img, by2 + 10)
+                    if mrp_top and fy2 > mrp_top:
+                        fy2 = mrp_top - 5
+                    return (fx1, fy1, fx2, fy2)
+        except Exception as e:
+            logger.warning(f"OCR Barcode fallback error: {e}")
+
         return None
 
     @classmethod
@@ -443,24 +542,11 @@ class SubRegionExtractor:
         canvas_w: int,
         canvas_h: int,
         dpi: int,
-        src_arr: Optional[np.ndarray] = None,
-        box: Optional[Tuple[int, int, int, int]] = None,
-        avoid_lines: Optional[List[Dict[str, Any]]] = None,
     ):
         crop_img = Image.fromarray(crop_arr)
 
-        # Edge-to-edge output (0 px padding): grow the crop to the canvas aspect ratio using the real
-        # packaging around it, so the canvas is filled by the pack itself instead of added colour.
-        canvas_src = crop_img
-        if src_arr is not None and box is not None:
-            img_h, img_w = src_arr.shape[:2]
-            ex1, ey1, ex2, ey2 = cls._expand_box_to_aspect(
-                box, img_w, img_h, canvas_w / canvas_h, avoid_lines or []
-            )
-            canvas_src = Image.fromarray(src_arr[ey1:ey2, ex1:ex2])
-
         canvas_bytes = cls._fit_to_standard_canvas(
-            canvas_src,
+            crop_img,
             target_w=canvas_w,
             target_h=canvas_h,
             dpi=dpi,
@@ -484,13 +570,46 @@ class SubRegionExtractor:
     def detect_information_sections(
         cls,
         image_bytes: bytes,
+        bbid: str = "",
+        category: str = "FOOD",
     ) -> Dict[str, Any]:
         """
-        Dynamically analyzes packaging text to identify informational sections (metadata only).
+        Dynamically analyzes packaging to identify informational sections (metadata only).
         Never crops or replaces the complete product image.
-        Returns ocr_available=False (with ocr_error) when OCR could not run: callers must not
-        read an empty section list as "nothing on the pack".
+        Uses Gemini Multimodal Vision AI dynamically with zero hardcoded regex.
+        Falls back to local OCR engine if Gemini is offline.
         """
+        try:
+            # TIER 1: Dynamic Gemini Multimodal AI Discovery (Zero Regex)
+            from app.services.bigbasket.gemini_service import GeminiClassificationService
+            gemini_regions = GeminiClassificationService.detect_packaging_sub_regions(
+                image_bytes=image_bytes,
+                bbid=bbid,
+                category=category,
+            )
+            if gemini_regions:
+                detected_types = {r.get("region_type") for r in gemini_regions if isinstance(r, dict)}
+                sections_list = [
+                    r.get("display_name") or str(r.get("region_type", "")).replace("_", " ").title()
+                    for r in gemini_regions if isinstance(r, dict)
+                ]
+                return {
+                    "ocr_available": True,
+                    "ai_detected": True,
+                    "has_ingredients": "ingredient" in detected_types,
+                    "has_directions": "directions" in detected_types,
+                    "has_caution": "caution" in detected_types,
+                    "has_manufacturer": "manufactured_by" in detected_types,
+                    "has_fssai": "fssai" in detected_types,
+                    "has_barcode": "barcode" in detected_types,
+                    "has_nutrition": "nutritional" in detected_types,
+                    "has_storage": "storage" in detected_types,
+                    "sections": sections_list,
+                }
+        except Exception as ai_err:
+            logger.warning(f"Gemini dynamic section detection fallback to OCR: {ai_err}")
+
+        # TIER 2: Local OCR fallback (Only used when Gemini is offline)
         try:
             raw_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
             arr = np.array(raw_img)
@@ -501,6 +620,7 @@ class SubRegionExtractor:
 
             detected = {
                 "ocr_available": True,
+                "ai_detected": False,
                 "has_ingredients": False,
                 "has_directions": False,
                 "has_caution": False,
@@ -508,6 +628,7 @@ class SubRegionExtractor:
                 "has_fssai": False,
                 "has_barcode": False,
                 "has_nutrition": False,
+                "has_storage": False,
                 "sections": [],
             }
 
@@ -548,54 +669,6 @@ class SubRegionExtractor:
             logger.warning(f"Could not extract info sections metadata: {e}")
             return {"sections": []}
 
-    @staticmethod
-    def _expand_box_to_aspect(
-        box: Tuple[int, int, int, int],
-        img_w: int,
-        img_h: int,
-        target_aspect: float,
-        avoid_lines: List[Dict[str, Any]],
-        gap: int = 6,
-    ) -> Tuple[int, int, int, int]:
-        """Grows a crop box on its short axis toward target_aspect (w / h) using surrounding packaging.
-
-        It only grows into free space: never past the image edge and never into another OCR text line
-        (other sections, the MRP box), so no foreign text is half-cut into the panel. Growth is split
-        evenly between both sides where possible. May return a box that is still short of the aspect
-        when the pack has no more free space; the canvas fit fills the rest with the panel's edge colour.
-        """
-        x1, y1, x2, y2 = (int(v) for v in box)
-        w, h = x2 - x1, y2 - y1
-        if w <= 0 or h <= 0:
-            return x1, y1, x2, y2
-
-        def inside(l: Dict[str, Any]) -> bool:
-            return l["x1"] >= x1 and l["y1"] >= y1 and l["x2"] <= x2 and l["y2"] <= y2
-
-        foreign = [l for l in avoid_lines if not inside(l)]
-
-        def split(need: int, room_a: int, room_b: int) -> Tuple[int, int]:
-            a = min(room_a, need // 2)
-            b = min(room_b, need - a)
-            a = min(room_a, need - b)
-            return a, b
-
-        if w / h > target_aspect:  # too wide: grow vertically
-            need = round(w / target_aspect) - h
-            cols = [l for l in foreign if l["x2"] > x1 and l["x1"] < x2]
-            top_stop = max([0] + [l["y2"] + gap for l in cols if l["y1"] < y1])
-            bottom_stop = min([img_h] + [l["y1"] - gap for l in cols if l["y2"] > y2])
-            up, down = split(need, max(0, y1 - top_stop), max(0, bottom_stop - y2))
-            y1, y2 = y1 - up, y2 + down
-        elif w / h < target_aspect:  # too tall: grow horizontally
-            need = round(h * target_aspect) - w
-            rows = [l for l in foreign if l["y2"] > y1 and l["y1"] < y2]
-            left_stop = max([0] + [l["x2"] + gap for l in rows if l["x1"] < x1])
-            right_stop = min([img_w] + [l["x1"] - gap for l in rows if l["x2"] > x2])
-            left, right = split(need, max(0, x1 - left_stop), max(0, right_stop - x2))
-            x1, x2 = x1 - left, x2 + right
-        return x1, y1, x2, y2
-
     @classmethod
     def _fit_to_standard_canvas(
         cls,
@@ -609,18 +682,17 @@ class SubRegionExtractor:
 
         # Table 3: information panels use 0 px padding and fill the canvas edge-to-edge. Scale without
         # distortion so the panel touches the canvas on its long side.
-        scale = min(target_w / cw, target_h / ch)
+        # SRS Table 3: Informational panels fit edge-to-edge (1980 px width, 0 px padding)
+        target_span_w = min(1980, target_w)
+        target_span_h = min(1980, target_h)
+        scale = min(target_span_w / cw, target_span_h / ch)
         scaled_w = min(target_w, max(1, round(cw * scale)))
         scaled_h = min(target_h, max(1, round(ch * scale)))
 
         scaled_img = crop_rgba.resize((scaled_w, scaled_h), Image.Resampling.LANCZOS)
 
-        # If the panel still isn't the canvas shape (the pack had no free space around it), fill the
-        # remainder with the panel's own edge colour so it reads as one continuous panel, never white.
-        panel = np.array(crop_rgba)
-        border = np.concatenate([panel[0, :, :3], panel[-1, :, :3], panel[:, 0, :3], panel[:, -1, :3]])
-        fill = tuple(int(c) for c in np.median(border, axis=0)) + (255,)
-        canvas = Image.new("RGBA", (target_w, target_h), fill)
+        # The rest of the canvas is transparent, never a colour (matches the manual reference outputs).
+        canvas = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
         offset_x = (target_w - scaled_w) // 2
         offset_y = (target_h - scaled_h) // 2
         canvas.paste(scaled_img, (offset_x, offset_y), scaled_img)

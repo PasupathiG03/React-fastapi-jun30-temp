@@ -1469,7 +1469,7 @@ function CreateBatchModal({
           {/* BigBasket SRS Specifications Strip */}
           <div className="p-3 rounded-xl bg-sky-500/5 dark:bg-white/[0.02] border border-sky-500/15 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
             <span className="font-semibold text-slate-700 dark:text-slate-300">Automation Preset:</span>
-            <span>2000×2000px · 150 DPI · SRS Padded (180/100) · Auto MRP Inpainting</span>
+            <span>2000×2000px · 150 DPI · SRS Padded (180/100)</span>
           </div>
         </div>
       </ModalBody>

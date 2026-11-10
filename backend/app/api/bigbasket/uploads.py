@@ -41,14 +41,20 @@ def parse_filename_bbid_and_seq(filename: str, fallback_seq: int = 1) -> tuple:
         bbid = raw_id if raw_id else stem
         return bbid, seq, "unknown"
 
-    # 3. Pure numeric stem: e.g. "1.jpg" or "20004725.png"
+    # 3. Numeric SKU + sequence followed by a free-text label: e.g. "8906108896502_4_BATCH CODE"
+    #    (the label describes the image; the SKU and sequence come before it)
+    m_labelled = re.match(r"^(\d{5,})[-_\s]+(\d{1,3})[-_\s]+\D.*$", stem)
+    if m_labelled:
+        return m_labelled.group(1), int(m_labelled.group(2)), "unknown"
+
+    # 4. Pure numeric stem: e.g. "1.jpg" or "20004725.png"
     if stem.isdigit():
         val = int(stem)
         if val < 100:
             return stem, val, "unknown"
         return stem, fallback_seq, "unknown"
 
-    # 4. General identifier with no sequence suffix
+    # 5. General identifier with no sequence suffix
     return stem, fallback_seq, "unknown"
 
 

@@ -42,6 +42,8 @@ export default function ReviewStudio() {
     return target ? Number(target) : null;
   });
 
+  const initializedRef = useRef(false);
+
   // Clean address bar so internal imageId query parameters are never exposed in the URL
   useEffect(() => {
     if (window.location.search) {
@@ -49,25 +51,33 @@ export default function ReviewStudio() {
     }
   }, []);
 
-  // Sync activeImageId whenever URL query parameters or location state changes
+  // Sync activeImageId only on initial mount or route param change (never on internal switching)
   useEffect(() => {
-    const sId = (location.state as any)?.imageId || (location.state as any)?.id;
-    const qId = searchParams.get("imageId") || searchParams.get("id") || paramId;
-    const target = qId || sId;
-    if (target) {
-      const numId = Number(target);
-      if (!isNaN(numId) && numId !== activeImageId) {
-        setActiveImageId(numId);
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      const sId = (location.state as any)?.imageId || (location.state as any)?.id;
+      const qId = searchParams.get("imageId") || searchParams.get("id") || paramId;
+      const target = qId || sId;
+      if (target) {
+        const numId = Number(target);
+        if (!isNaN(numId)) {
+          setActiveImageId(numId);
+        }
       }
     }
-  }, [searchParams, location.state, paramId, activeImageId]);
+  }, [paramId]);
 
   const [image, setImage] = useState<any>(null);
   const [batchSiblings, setBatchSiblings] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [isSwitching, setIsSwitching] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [isWideView, setIsWideView] = useState(false);
   const [cacheBuster, setCacheBuster] = useState(Date.now());
+  const activeThumbnailRef = useRef<HTMLButtonElement | null>(null);
+  // Pixel size of the image shown in the Original pane. For an auto-extracted crop that is the uploaded
+  // back-of-pack image, not the crop, so it can't come from image.original_width/height.
+  const [originalShownSize, setOriginalShownSize] = useState<{ w: number; h: number } | null>(null);
 
   // Studio controls: Zoom & Pan
   const [viewMode, setViewMode] = useState<"side_by_side" | "result_only" | "original_only">("side_by_side");
@@ -129,14 +139,14 @@ export default function ReviewStudio() {
             setCacheBuster(Date.now());
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }, 3000);
 
     return () => clearInterval(timer);
   }, [image?.id, image?.status]);
 
   async function loadFirstPending() {
-    setLoading(true);
+    setInitialLoading(true);
     try {
       // 1. Check if any image needs manual review
       const queue = await fetchReviewQueue(1, 1);
@@ -169,28 +179,52 @@ export default function ReviewStudio() {
     } catch {
       setImage(null);
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
     }
   }
 
   async function loadDetails(id: number) {
-    setLoading(true);
+    if (!image) {
+      setInitialLoading(true);
+    } else {
+      setIsSwitching(true);
+    }
     try {
       const data = await fetchImageDetails(id);
       setImage(data);
       if (data?.batch_id) {
-        try {
-          const siblings = await fetchBatchImages(data.batch_id, 1, 100);
-          setBatchSiblings(siblings.items || []);
-        } catch { }
+        // Only fetch batch siblings if not loaded yet or if batch changed
+        setBatchSiblings((prev) => {
+          if (prev.length > 0 && prev[0]?.batch_id === data.batch_id) {
+            return prev;
+          }
+          fetchBatchImages(data.batch_id, 1, 100)
+            .then((siblings) => {
+              setBatchSiblings(siblings.items || []);
+            })
+            .catch(() => { });
+          return prev;
+        });
       }
     } catch (e: any) {
       showError(e.message || "Failed to load image details");
-      setImage(null);
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
+      setIsSwitching(false);
     }
   }
+
+  // Smoothly center the active thumbnail pill inside the strip. Scroll only the strip itself —
+  // scrollIntoView would also scroll the page/layout ancestors and shift the whole screen.
+  useEffect(() => {
+    const pill = activeThumbnailRef.current;
+    const strip = pill?.parentElement;
+    if (!pill || !strip) return;
+    const pillRect = pill.getBoundingClientRect();
+    const stripRect = strip.getBoundingClientRect();
+    const offset = pillRect.left - stripRect.left - (stripRect.width - pillRect.width) / 2;
+    strip.scrollTo({ left: strip.scrollLeft + offset, behavior: "smooth" });
+  }, [activeImageId, image?.id]);
 
   async function handleRetryPhotoroom() {
     if (!image) return;
@@ -234,10 +268,52 @@ export default function ReviewStudio() {
     }
   }
 
-  if (loading) {
+  const currentActiveId = activeImageId || image?.id;
+  const currentIdx = batchSiblings.findIndex((s) => s.id === currentActiveId);
+  const hasPrev = currentIdx > 0;
+  const hasNext = currentIdx >= 0 && currentIdx < batchSiblings.length - 1;
+
+  function handleGoPrev() {
+    if (currentIdx > 0) {
+      const prevId = batchSiblings[currentIdx - 1].id;
+      setActiveImageId(prevId);
+    }
+  }
+
+  function handleGoNext() {
+    if (currentIdx >= 0 && currentIdx < batchSiblings.length - 1) {
+      const nextId = batchSiblings[currentIdx + 1].id;
+      setActiveImageId(nextId);
+    }
+  }
+
+  // Keyboard navigation for Left/Right arrow keys
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === "ArrowLeft") {
+        if (hasPrev) {
+          e.preventDefault();
+          handleGoPrev();
+        }
+      } else if (e.key === "ArrowRight") {
+        if (hasNext) {
+          e.preventDefault();
+          handleGoNext();
+        }
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [hasPrev, hasNext, currentIdx, batchSiblings]);
+
+  if (initialLoading && !image) {
     return (
       <PageContainer>
-        <div className="text-center py-20 text-slate-400 text-xs">Loading Review Studio...</div>
+        <div className="text-center py-20 text-slate-400 text-xs flex items-center justify-center gap-2">
+          <RotateCcw className="w-4 h-4 animate-spin text-sky-500" />
+          Loading Review Studio...
+        </div>
       </PageContainer>
     );
   }
@@ -276,13 +352,12 @@ export default function ReviewStudio() {
           <div className="flex items-center gap-2">
             {/* Live Status Badge */}
             <span
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider ${
-                image.status === "auto_approved" || image.status === "manually_approved"
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider ${image.status === "auto_approved" || image.status === "manually_approved"
                   ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
                   : image.status === "rejected"
-                  ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
-                  : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
-              }`}
+                    ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
+                    : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
+                }`}
             >
               {image.status === "manually_approved" ? (
                 <>
@@ -329,17 +404,23 @@ export default function ReviewStudio() {
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
               <Package className="w-3.5 h-3.5 text-sky-500" />
-              Batch Products ({batchSiblings.findIndex((s) => s.id === image.id) + 1} of {batchSiblings.length})
+              Batch Products ({currentIdx >= 0 ? currentIdx + 1 : 1} of {batchSiblings.length})
             </span>
             <span className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-white/5 text-slate-500 font-mono font-medium">
               {image.batch_code || `Batch #${image.batch_id}`}
             </span>
+            {isSwitching && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-sky-500 font-medium">
+                <RotateCcw className="w-3 h-3 animate-spin" />
+                <span className="hidden sm:inline">Loading...</span>
+              </span>
+            )}
           </div>
 
           {/* Quick Item Pills / Thumbnails */}
           <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-thin">
             {batchSiblings.map((sibling, idx) => {
-              const isSelected = sibling.id === image.id;
+              const isSelected = sibling.id === currentActiveId;
               const isApproved = sibling.status?.includes("approved");
               const isProcessing = sibling.status === "processing";
               const isNeedsReview = sibling.status === "needs_review";
@@ -348,15 +429,15 @@ export default function ReviewStudio() {
               return (
                 <button
                   key={sibling.id}
+                  ref={isSelected ? activeThumbnailRef : null}
                   type="button"
                   onClick={() => {
                     setActiveImageId(sibling.id);
                   }}
-                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border text-left transition-all shrink-0 cursor-pointer ${
-                    isSelected
-                      ? "bg-sky-500/15 border-sky-500 text-sky-600 dark:text-sky-300 ring-2 ring-sky-500/20 font-bold"
-                      : "bg-white/40 dark:bg-slate-900/40 border-slate-200/70 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-sky-400/50"
-                  }`}
+                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border text-left transition-all shrink-0 cursor-pointer ${isSelected
+                      ? "bg-sky-500/15 border-sky-500 text-sky-600 dark:text-sky-300 ring-2 ring-sky-500/20 font-bold shadow-xs"
+                      : "bg-white/40 dark:bg-slate-900/40 border-slate-200/70 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-sky-400/50 hover:bg-slate-100/50 dark:hover:bg-white/5"
+                    }`}
                   title={`${sibling.original_filename || sibling.bbid} (${sibling.status})`}
                 >
                   <span className="text-[10px] font-mono text-slate-400">#{idx + 1}</span>
@@ -389,32 +470,19 @@ export default function ReviewStudio() {
           <div className="flex items-center gap-1.5 shrink-0 justify-end">
             <button
               type="button"
-              disabled={batchSiblings.findIndex((s) => s.id === image.id) <= 0}
-              onClick={() => {
-                const curIdx = batchSiblings.findIndex((s) => s.id === image.id);
-                if (curIdx > 0) {
-                  const prevId = batchSiblings[curIdx - 1].id;
-                  setActiveImageId(prevId);
-                }
-              }}
-              className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-40 text-xs font-semibold flex items-center gap-1 transition-all"
+              disabled={!hasPrev}
+              onClick={handleGoPrev}
+              className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-40 text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer disabled:cursor-not-allowed"
+              title="Previous Image (Left Arrow)"
             >
               <ChevronLeft className="w-3.5 h-3.5" /> Prev
             </button>
             <button
               type="button"
-              disabled={
-                batchSiblings.findIndex((s) => s.id === image.id) === -1 ||
-                batchSiblings.findIndex((s) => s.id === image.id) >= batchSiblings.length - 1
-              }
-              onClick={() => {
-                const curIdx = batchSiblings.findIndex((s) => s.id === image.id);
-                if (curIdx >= 0 && curIdx < batchSiblings.length - 1) {
-                  const nextId = batchSiblings[curIdx + 1].id;
-                  setActiveImageId(nextId);
-                }
-              }}
-              className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-40 text-xs font-semibold flex items-center gap-1 transition-all"
+              disabled={!hasNext}
+              onClick={handleGoNext}
+              className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-40 text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer disabled:cursor-not-allowed"
+              title="Next Image (Right Arrow)"
             >
               Next <ChevronRight className="w-3.5 h-3.5" />
             </button>
@@ -432,27 +500,24 @@ export default function ReviewStudio() {
                 <button
                   type="button"
                   onClick={() => setViewMode("side_by_side")}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                    viewMode === "side_by_side" ? "bg-sky-500 text-white" : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5"
-                  }`}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${viewMode === "side_by_side" ? "bg-sky-500 text-white" : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5"
+                    }`}
                 >
                   Side by Side
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewMode("original_only")}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                    viewMode === "original_only" ? "bg-sky-500 text-white" : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5"
-                  }`}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${viewMode === "original_only" ? "bg-sky-500 text-white" : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5"
+                    }`}
                 >
                   Original Only
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewMode("result_only")}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                    viewMode === "result_only" ? "bg-sky-500 text-white" : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5"
-                  }`}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${viewMode === "result_only" ? "bg-sky-500 text-white" : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5"
+                    }`}
                 >
                   Output Only
                 </button>
@@ -495,11 +560,10 @@ export default function ReviewStudio() {
                       key={level}
                       type="button"
                       onClick={() => setZoom(level)}
-                      className={`px-1.5 py-0.5 rounded transition-colors ${
-                        zoom === level
+                      className={`px-1.5 py-0.5 rounded transition-colors ${zoom === level
                           ? "bg-sky-500 text-white font-bold"
                           : "hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400"
-                      }`}
+                        }`}
                     >
                       {level}%
                     </button>
@@ -520,11 +584,10 @@ export default function ReviewStudio() {
                 <button
                   type="button"
                   onClick={() => setIsWideView(!isWideView)}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                    isWideView
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${isWideView
                       ? "bg-sky-500/15 text-sky-600 dark:text-sky-300 ring-1 ring-sky-500/30"
                       : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5"
-                  }`}
+                    }`}
                   title={isWideView ? "Switch to Split View" : "Maximize Canvas (Full Width)"}
                 >
                   {isWideView ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
@@ -541,21 +604,23 @@ export default function ReviewStudio() {
                 <div className="grid grid-cols-2 gap-4 w-full h-full max-h-[620px]">
                   {/* Original */}
                   <div
-                    className={`relative rounded-xl border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-900/40 p-2 flex flex-col items-center justify-center overflow-hidden select-none ${
-                      isDragging ? "cursor-grabbing" : "cursor-grab"
-                    }`}
+                    className={`relative rounded-xl border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-900/40 p-2 flex flex-col items-center justify-center overflow-hidden select-none ${isDragging ? "cursor-grabbing" : "cursor-grab"
+                      }`}
                     onMouseDown={handleMouseDown}
                     onMouseMove={handleMouseMove}
                     onMouseUp={handleMouseUp}
                     onMouseLeave={handleMouseUp}
                   >
                     <span className="absolute top-2 left-2 z-10 text-[10px] font-bold bg-black/60 text-white px-2 py-0.5 rounded-md pointer-events-none">
-                      Original ({image.original_width || "?"} × {image.original_height || "?"})
+                      Original ({originalShownSize?.w || image.original_width || "?"} × {originalShownSize?.h || image.original_height || "?"})
                     </span>
                     <img
                       src={`${getImageFileUrl(image.id, "original")}&_t=${cacheBuster}`}
                       alt="Original"
                       draggable={false}
+                      onLoad={(e) =>
+                        setOriginalShownSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })
+                      }
                       className="max-h-full max-w-full object-contain pointer-events-none select-none transition-transform duration-75 ease-out"
                       style={{
                         transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom / 100})`,
@@ -566,9 +631,8 @@ export default function ReviewStudio() {
 
                   {/* Processed (Transparent Checkerboard) */}
                   <div
-                    className={`relative rounded-xl border border-slate-200 dark:border-white/10 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] bg-slate-50 dark:bg-slate-950 p-2 flex flex-col items-center justify-center overflow-hidden select-none ${
-                      isDragging ? "cursor-grabbing" : "cursor-grab"
-                    }`}
+                    className={`relative rounded-xl border border-slate-200 dark:border-white/10 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] bg-slate-50 dark:bg-slate-950 p-2 flex flex-col items-center justify-center overflow-hidden select-none ${isDragging ? "cursor-grabbing" : "cursor-grab"
+                      }`}
                     onMouseDown={handleMouseDown}
                     onMouseMove={handleMouseMove}
                     onMouseUp={handleMouseUp}
@@ -615,9 +679,8 @@ export default function ReviewStudio() {
                 </div>
               ) : (
                 <div
-                  className={`relative w-full h-full max-h-[620px] rounded-xl border border-slate-200 dark:border-white/10 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] bg-slate-50 dark:bg-slate-950 p-2 flex items-center justify-center overflow-hidden select-none ${
-                    isDragging ? "cursor-grabbing" : "cursor-grab"
-                  }`}
+                  className={`relative w-full h-full max-h-[620px] rounded-xl border border-slate-200 dark:border-white/10 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] bg-slate-50 dark:bg-slate-950 p-2 flex items-center justify-center overflow-hidden select-none ${isDragging ? "cursor-grabbing" : "cursor-grab"
+                    }`}
                   onMouseDown={handleMouseDown}
                   onMouseMove={handleMouseMove}
                   onMouseUp={handleMouseUp}
@@ -802,10 +865,10 @@ export default function ReviewStudio() {
                   cat === "KITCHEN_ITEMS" || cat === "KITCHEN"
                     ? { label: "KITCHEN ITEMS", cls: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25" }
                     : cat === "NON_FOOD" || cat === "NONFOOD"
-                    ? { label: "NON-FOOD", cls: "bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 hover:bg-purple-500/25" }
-                    : cat === "FOOD"
-                    ? { label: "FOOD", cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25" }
-                    : { label: "UNKNOWN", cls: "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/25" };
+                      ? { label: "NON-FOOD", cls: "bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 hover:bg-purple-500/25" }
+                      : cat === "FOOD"
+                        ? { label: "FOOD", cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25" }
+                        : { label: "UNKNOWN", cls: "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/25" };
 
                 return (
                   <button
