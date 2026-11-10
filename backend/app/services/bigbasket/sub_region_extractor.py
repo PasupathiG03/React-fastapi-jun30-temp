@@ -1,5 +1,6 @@
 import io
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -9,40 +10,85 @@ from PIL import Image
 
 from app.core.logger import logger
 
-# Global singleton OCR reader loaded once into memory
+# EasyOCR is the single OCR engine (English, CPU). The reader is created once per process and reused.
+OCR_ENGINE = "easyocr"
+OCR_LANGUAGES = ["en"]
+OCR_USE_GPU = False
+
 _OCR_READER = None
+_OCR_INIT_ERROR: Optional[str] = None
+_OCR_LOCK = threading.Lock()
+
+
+class OcrError(RuntimeError):
+    """OCR could not run. Callers must treat this as 'unknown', never as 'no text found'."""
 
 
 def get_ocr_reader():
-    global _OCR_READER
-    if _OCR_READER is None:
-        try:
-            from rapidocr_onnxruntime import RapidOCR
-            engine = RapidOCR()
+    """Returns the shared EasyOCR reader, creating it on first use.
 
-            class RapidOCRWrapper:
-                def readtext(self, img_arr):
-                    res, _ = engine(img_arr)
-                    if not res:
-                        return []
-                    return [[r[0], r[1], float(r[2])] for r in res]
-
-            _OCR_READER = RapidOCRWrapper()
-            logger.info("Initialized high-speed RapidOCR ONNX engine.")
-        except Exception as e:
+    A failed initialisation is logged once and remembered, so it is not retried (and slowly re-failed)
+    for every image; restart the backend after fixing the install. Raises OcrError when unavailable.
+    """
+    global _OCR_READER, _OCR_INIT_ERROR
+    if _OCR_READER is not None:
+        return _OCR_READER
+    with _OCR_LOCK:
+        if _OCR_READER is None and _OCR_INIT_ERROR is None:
             try:
                 import easyocr
-                _OCR_READER = easyocr.Reader(["en"], gpu=False)
-                logger.info("Initialized EasyOCR engine.")
-            except Exception as e2:
-                logger.warning(f"No OCR engine available: {e}, {e2}")
-
-                class DummyOCR:
-                    def readtext(self, img_arr):
-                        return []
-
-                _OCR_READER = DummyOCR()
+                _OCR_READER = easyocr.Reader(OCR_LANGUAGES, gpu=OCR_USE_GPU)
+                logger.info("Initialized EasyOCR reader (languages=%s, gpu=%s).", OCR_LANGUAGES, OCR_USE_GPU)
+            except Exception as e:
+                _OCR_INIT_ERROR = f"{type(e).__name__}: {e}"
+                logger.error(
+                    "EasyOCR initialisation failed; OCR is UNAVAILABLE and BOP images that need OCR will be "
+                    "marked needs_review. Install backend requirements (easyocr) and restart. Cause: %s",
+                    _OCR_INIT_ERROR,
+                )
+        if _OCR_READER is None:
+            raise OcrError(f"OCR unavailable ({OCR_ENGINE}): {_OCR_INIT_ERROR}")
     return _OCR_READER
+
+
+def read_text(img_arr: np.ndarray) -> List[List[Any]]:
+    """Runs OCR and returns [[ [[x, y] x4 (tl, tr, br, bl)], text, confidence ], ...] with plain Python types."""
+    reader = get_ocr_reader()
+    try:
+        raw = reader.readtext(img_arr)
+    except Exception as e:
+        logger.error("EasyOCR text detection failed: %s: %s", type(e).__name__, e)
+        raise OcrError(f"OCR failed during text detection: {type(e).__name__}: {e}") from e
+    return [
+        [[[float(x), float(y)] for x, y in bbox], str(text), float(conf)]
+        for bbox, text, conf in raw
+    ]
+
+
+def get_ocr_status() -> Dict[str, Any]:
+    """OCR health for the /health endpoint. Never includes error details (the endpoint is public)."""
+    if _OCR_READER is not None:
+        status = "ready"
+    elif _OCR_INIT_ERROR is not None:
+        status = "unavailable"
+    else:
+        status = "initializing"
+    return {"engine": OCR_ENGINE, "status": status, "available": status == "ready"}
+
+
+def warm_up_ocr() -> None:
+    """Loads the reader ahead of the first image so /health reflects reality. Failures are logged, not raised."""
+    try:
+        get_ocr_reader()
+    except OcrError:
+        pass
+
+
+def _reset_ocr_reader_for_tests() -> None:
+    global _OCR_READER, _OCR_INIT_ERROR
+    with _OCR_LOCK:
+        _OCR_READER = None
+        _OCR_INIT_ERROR = None
 
 
 class SubRegionExtractor:
@@ -67,9 +113,8 @@ class SubRegionExtractor:
         orig_w, orig_h = raw_img.size
         arr = np.array(raw_img)
 
-        # 1. Dynamic Text Localization using OCR
-        ocr = get_ocr_reader()
-        raw_ocr_results = ocr.readtext(arr)
+        # 1. Dynamic Text Localization using OCR (raises OcrError if OCR cannot run)
+        raw_ocr_results = read_text(arr)
         logger.info(f"Dynamic OCR detected {len(raw_ocr_results)} text lines for BBID {bbid}")
 
         # Clean and sort text lines by vertical position y1
@@ -410,14 +455,19 @@ class SubRegionExtractor:
         """
         Dynamically analyzes packaging text to identify informational sections (metadata only).
         Never crops or replaces the complete product image.
+        Returns ocr_available=False (with ocr_error) when OCR could not run: callers must not
+        read an empty section list as "nothing on the pack".
         """
         try:
             raw_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
             arr = np.array(raw_img)
-            ocr = get_ocr_reader()
-            raw_ocr = ocr.readtext(arr)
+            try:
+                raw_ocr = read_text(arr)
+            except OcrError as ocr_err:
+                return {"ocr_available": False, "ocr_error": str(ocr_err), "sections": []}
 
             detected = {
+                "ocr_available": True,
                 "has_ingredients": False,
                 "has_directions": False,
                 "has_caution": False,
