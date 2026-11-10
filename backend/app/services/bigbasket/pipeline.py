@@ -116,42 +116,6 @@ class ImageProcessingPipeline:
             rgba_arr = np.array(clean_rgba)
             alpha_channel = rgba_arr[:, :, 3]
 
-            # Specular Reflection Punch-Through Guard:
-            # Prevents intense studio light glares/reflections on glossy, translucent, or reflective
-            # products (e.g. golden softgel capsules, glass/plastic bottles, metallic jars) from being
-            # mistakenly punched out as transparent holes.
-            raw_rgba = raw_img.convert("RGBA")
-            if raw_rgba.size != clean_rgba.size:
-                raw_rgba = raw_rgba.resize(clean_rgba.size, Image.Resampling.LANCZOS)
-            raw_rgba_arr = np.array(raw_rgba)
-            binary_alpha = (alpha_channel > 10).astype(np.uint8)
-            contours, hierarchy = cv2.findContours(binary_alpha, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
-
-            if hierarchy is not None and len(hierarchy[0]) > 0:
-                is_kitchen = "kitchen" in product_category.lower()
-                for i, h_info in enumerate(hierarchy[0]):
-                    # h_info[3] != -1 indicates an internal hole enclosed by an outer product boundary
-                    if h_info[3] != -1:
-                        hole_area = cv2.contourArea(contours[i])
-                        parent_area = cv2.contourArea(contours[h_info[3]]) if h_info[3] < len(contours) else 0
-                        # Heal genuine specular glare punch-throughs inside products (area >= 10 px).
-                        # Skip micro-edge boundary indentations (area < 10 px) so background is never inflated into corners.
-                        if parent_area > 0 and 10.0 <= hole_area and (hole_area / parent_area < 0.40 or not is_kitchen):
-                            hole_mask = np.zeros_like(alpha_channel)
-                            cv2.drawContours(hole_mask, [contours[i]], -1, 255, thickness=cv2.FILLED)
-                            # Dilate to fully seal semi-transparent fringe artifacts around glare
-                            hole_mask = cv2.dilate(hole_mask, np.ones((5, 5), np.uint8), iterations=3)
-                            # Constrain dilation strictly inside parent product contour to protect outer borders
-                            parent_mask = np.zeros_like(alpha_channel)
-                            cv2.drawContours(parent_mask, [contours[h_info[3]]], -1, 255, thickness=cv2.FILLED)
-                            hole_mask = cv2.bitwise_and(hole_mask, parent_mask)
-                            hole_pixels = (hole_mask > 0)
-                            alpha_channel[hole_pixels] = 255
-                            rgba_arr[hole_pixels, :3] = raw_rgba_arr[hole_pixels, :3]
-                            rgba_arr[hole_pixels, 3] = 255
-
-                clean_rgba = Image.fromarray(rgba_arr)
-
             # Step 2: Detect Product Bounding Box from Alpha Channel
             coords = cv2.findNonZero((alpha_channel > 10).astype(np.uint8))
             if coords is not None:
