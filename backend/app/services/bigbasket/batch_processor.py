@@ -18,7 +18,7 @@ from app.services.bigbasket.ai_provider import HybridAiManager
 from app.services.bigbasket.events import BigBasketEventBroadcaster
 from app.services.bigbasket.pipeline import ImageProcessingPipeline
 from app.services.bigbasket.storage import BigBasketStorage
-from app.services.bigbasket.sub_region_extractor import OcrError, SubRegionExtractor
+from app.services.bigbasket.sub_region_extractor import SubRegionExtractor
 
 
 class BatchProcessor:
@@ -335,33 +335,15 @@ class BatchProcessor:
                 if not img.validation_results:
                     img.validation_results = {}
                 img.validation_results["detected_sections"] = info_sections
-                ocr_ok = info_sections.get("ocr_available", True)
-                if not ocr_ok:
-                    cls._mark_ocr_unavailable(img, info_sections.get("ocr_error"))
                 db.commit()
 
                 # Standalone information crops are only extracted if explicitly enabled in batch configuration
-                if ocr_ok and (cfg.get("extract_standalone_info_images", False) or cfg.get("extract_sub_regions", False)):
+                if cfg.get("extract_standalone_info_images", False) or cfg.get("extract_sub_regions", False):
                     cls._extract_and_register_bop_sub_regions(db, img, batch, raw_bytes, cfg)
         except Exception as e:
             logger.error(f"Failed processing image {img.id}: {e}")
             img.status = "failed"
             img.error_message = str(e)
-
-    @staticmethod
-    def _mark_ocr_unavailable(img: BatchImage, error: Optional[str]) -> None:
-        """OCR failure means the pack text is unknown, not absent: route the image to a human."""
-        reason = "OCR unavailable: packaging text could not be read; manual review required."
-        val = dict(img.validation_results or {})  # new dict so SQLAlchemy sees the JSON change
-        reasons = list(val.get("failure_reasons") or [])
-        if reason not in reasons:
-            reasons.append(reason)
-        val["failure_reasons"] = reasons
-        val["passed"] = False
-        val["ocr_status"] = {"available": False, "error": error}
-        img.validation_results = val
-        if img.status in ("auto_approved", None):
-            img.status = "needs_review"
 
     @classmethod
     def _extract_and_register_bop_sub_regions(
@@ -460,11 +442,6 @@ class BatchProcessor:
                     "sub_region_extracted",
                     f"Auto-extracted {sub['display_name']} ({sub['filename']}) from BOP for BBID {parent_img.bbid}."
                 )
-        except OcrError as e:
-            logger.error(f"OCR unavailable during sub-region extraction for BOP image {parent_img.id}: {e}")
-            db.rollback()
-            cls._mark_ocr_unavailable(parent_img, str(e))
-            db.commit()
         except Exception as e:
             logger.error(f"Failed sub-region extraction for BOP image {parent_img.id}: {e}")
 

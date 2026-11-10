@@ -17,17 +17,3 @@ pillow>=12.3.0
 opencv-python-headless>=5.0.0.93
 onnxruntime>=1.23.2
 rembg>=2.0.69
-
-# OCR: EasyOCR is the single OCR engine (English, CPU). Its runtime dependencies are pinned
-# explicitly so a fresh install never silently lacks OCR. Models download to ~/.EasyOCR on first use.
-easyocr==1.7.2
-torch>=2.15.0
-torchvision>=0.29.2
-numpy>=2.5.4
-scipy>=1.18.1
-scikit-image>=0.26.0
-python-bidi>=0.6.12
-PyYAML>=6.0.3
-Shapely>=2.2.0
-pyclipper>=1.4.0
-ninja>=1.13.2
