@@ -2,9 +2,10 @@ import base64
 import hashlib
 import json
 import logging
+from pathlib import Path
 import random
 import time
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 import requests
 from pydantic import BaseModel, Field, ValidationError
 
@@ -12,10 +13,13 @@ from app.core.config import settings
 from app.prompts import (
     GEMINI_CLASSIFICATION_SCHEMA,
     PACKAGING_SUBREGIONS_SCHEMA,
+    MRP_EXPIRY_STAMPS_SCHEMA,
     SYSTEM_PROMPT,
     SUBREGION_SYSTEM_PROMPT,
+    MRP_EXPIRY_SYSTEM_PROMPT,
     build_gemini_classification_prompt,
     build_gemini_subregions_prompt,
+    build_gemini_mrp_expiry_prompt,
 )
 
 logger = logging.getLogger(__name__)
@@ -86,6 +90,7 @@ class GeminiClassificationService:
 
     _CACHE: Dict[str, GeminiProductClassification] = {}
     _SUBREGIONS_CACHE: Dict[str, List[Dict[str, Any]]] = {}
+    _MRP_EXPIRY_CACHE: Dict[str, Dict[str, Any]] = {}
     _MAX_CACHE_ITEMS = 2000
 
     # Official Google AI Studio Pricing for gemini-3.5-flash-lite / gemini-2.5-flash
@@ -488,21 +493,9 @@ class GeminiClassificationService:
             logger.warning("Gemini model or API key not configured; skipping AI sub-region localization.")
             return []
 
-        # Prepare optimized downscaled payload (<1280px) for fast and reliable inference
+        # Preserve 100% original image quality without any downscaling or lossy compression
         send_bytes = image_bytes
         mime_type = "image/png" if image_bytes[:8] == b"\x89PNG\r\n\x1a\n" else "image/jpeg"
-        try:
-            import io
-            from PIL import Image
-            im = Image.open(io.BytesIO(image_bytes))
-            if max(im.size) > 1280:
-                im.thumbnail((1280, 1280), Image.Resampling.LANCZOS)
-                buf = io.BytesIO()
-                im.convert("RGB").save(buf, format="JPEG", quality=90)
-                send_bytes = buf.getvalue()
-                mime_type = "image/jpeg"
-        except Exception as opt_err:
-            logger.warning(f"Could not downscale image for Gemini sub-regions: {opt_err}")
 
         b64_data = base64.b64encode(send_bytes).decode("utf-8")
 
@@ -610,3 +603,148 @@ class GeminiClassificationService:
                 logger.warning(f"Gemini packaging sub-region detection error: {e}")
 
         return []
+
+    @classmethod
+    def detect_mrp_expiry_stamps(
+        cls,
+        image_bytes: Union[bytes, str, Path],
+        bbid: str = "",
+        filename: str = "",
+        category: str = "FOOD",
+        batch_id: Optional[int] = None,
+        image_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Uses Gemini Multimodal Vision AI to semantically locate all variable price and expiration markings
+        (MRP, Unit Sale Price, Expiry Date, Mfg Date, Batch Code) per BigBasket SRS Section 5.
+        Returns a dict: {"has_removable_stamps": bool, "stamps": [{"stamp_type": ..., "box_2d": [...], ...}]}.
+        """
+        if isinstance(image_bytes, (str, Path)):
+            if not filename:
+                filename = Path(image_bytes).name
+            image_bytes = Path(image_bytes).read_bytes()
+
+        img_hash = cls.get_image_hash(image_bytes)
+        if img_hash in cls._MRP_EXPIRY_CACHE:
+            logger.info(f"Gemini MRP/Expiry Stamps Cache Hit for hash {img_hash[:10]} (BBID: {bbid})")
+            return cls._MRP_EXPIRY_CACHE[img_hash]
+
+        import os
+        model_name = (getattr(settings, "GEMINI_MODEL", "") or os.getenv("GEMINI_MODEL", "")).strip()
+        api_key = getattr(settings, "GEMINI_API_KEY", "") or ""
+
+        if not model_name or not api_key:
+            logger.warning("Gemini model or API key not configured; skipping AI stamp detection.")
+            return {"has_removable_stamps": False, "stamps": []}
+
+        # Preserve 100% original image quality without any downscaling or lossy compression
+        send_bytes = image_bytes
+        mime_type = "image/png" if image_bytes[:8] == b"\x89PNG\r\n\x1a\n" else "image/jpeg"
+
+        b64_data = base64.b64encode(send_bytes).decode("utf-8")
+        user_prompt = build_gemini_mrp_expiry_prompt(
+            bbid=bbid,
+            filename=filename,
+            category=category,
+        )
+
+        payload = {
+            "system_instruction": {
+                "parts": [{"text": MRP_EXPIRY_SYSTEM_PROMPT}]
+            },
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {"text": user_prompt},
+                        {
+                            "inline_data": {
+                                "mime_type": mime_type,
+                                "data": b64_data
+                            }
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "response_mime_type": "application/json",
+                "response_schema": MRP_EXPIRY_STAMPS_SCHEMA,
+                "temperature": 0.1,
+            }
+        }
+
+        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+
+        max_attempts = int(getattr(settings, "GEMINI_MAX_ATTEMPTS", 3) or os.getenv("GEMINI_MAX_ATTEMPTS", 3))
+        for attempt in range(1, max_attempts + 1):
+            try:
+                t0 = time.perf_counter()
+                resp = requests.post(
+                    endpoint,
+                    headers={"Content-Type": "application/json"},
+                    json=payload,
+                    timeout=35.0
+                )
+                latency = (time.perf_counter() - t0) * 1000
+
+                if resp.status_code == 200:
+                    raw_json = resp.json()
+                    usage_meta = raw_json.get("usageMetadata", {})
+                    prompt_tok = usage_meta.get("promptTokenCount", 300)
+                    candidates_tok = usage_meta.get("candidatesTokenCount", 120)
+                    thoughts_tok = usage_meta.get("thoughtsTokenCount", 0)
+                    total_tok = usage_meta.get("totalTokenCount", prompt_tok + candidates_tok + thoughts_tok)
+                    cost_usd = cls.calculate_cost(prompt_tok, candidates_tok, thoughts_tok)
+
+                    candidates = raw_json.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts and "text" in parts[0]:
+                            parsed = json.loads(parts[0]["text"])
+                            stamps_list = parsed.get("stamps", [])
+                            has_stamps = parsed.get("has_removable_stamps", bool(stamps_list))
+                            logger.info(
+                                f"Gemini AI localized {len(stamps_list)} price/date stamp(s) for {filename} (BBID {bbid}) in {latency:.1f}ms | "
+                                f"Tokens: {total_tok} | Cost: ${cost_usd:.6f}"
+                            )
+                            result = {"has_removable_stamps": has_stamps, "stamps": stamps_list}
+
+                            if len(cls._MRP_EXPIRY_CACHE) >= cls._MAX_CACHE_ITEMS:
+                                cls._MRP_EXPIRY_CACHE.clear()
+                            cls._MRP_EXPIRY_CACHE[img_hash] = result
+
+                            cls._log_usage(
+                                status="SUCCESS",
+                                status_code=200,
+                                model_name=model_name,
+                                prompt_tokens=prompt_tok,
+                                candidates_tokens=candidates_tok,
+                                thoughts_tokens=thoughts_tok,
+                                total_tokens=total_tok,
+                                estimated_cost_usd=cost_usd,
+                                latency_ms=latency,
+                                bbid=bbid,
+                                filename=filename,
+                                batch_id=batch_id,
+                                image_id=image_id,
+                                metadata_payload={"action": "mrp_expiry_stamps", "stamp_count": len(stamps_list)}
+                            )
+                            return result
+                elif resp.status_code in (429, 503) and attempt < max_attempts:
+                    backoff = min(10.0, (1.8 ** attempt) + random.uniform(0.5, 1.5))
+                    logger.warning(
+                        f"Gemini {resp.status_code} temporary capacity spike (attempt {attempt}/{max_attempts}). "
+                        f"Retrying in {backoff:.1f}s..."
+                    )
+                    time.sleep(backoff)
+                    continue
+                else:
+                    logger.warning(f"Gemini stamp detection responded with status {resp.status_code}: {resp.text[:200]}")
+            except Exception as e:
+                if attempt < max_attempts:
+                    backoff = min(10.0, (1.8 ** attempt) + random.uniform(0.5, 1.5))
+                    time.sleep(backoff)
+                    continue
+                logger.warning(f"Gemini stamp detection error: {e}")
+
+        return {"has_removable_stamps": False, "stamps": []}

@@ -282,6 +282,8 @@ class BatchProcessor:
 
             # 4. Embedded validation results, Gemini classification & status
             val = dict(result["validation"] or {})
+            val["inpaint_applied"] = result.get("inpaint_applied", False)
+            val["inpaint_notes"] = result.get("inpaint_notes", [])
             val["gemini_classification"] = {
                 "primary_category": prediction.get("primary_category"),
                 "subcategory": prediction.get("subcategory"),

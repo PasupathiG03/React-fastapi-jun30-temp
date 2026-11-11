@@ -546,23 +546,6 @@ export default function ReviewStudio() {
                   <ZoomIn className="w-4 h-4" />
                 </button>
 
-                {/* Quick Zoom Presets */}
-                <div className="hidden lg:flex items-center gap-1 ml-1 text-[10px] font-semibold">
-                  {[100, 300, 600, 1200].map((level) => (
-                    <button
-                      key={level}
-                      type="button"
-                      onClick={() => setZoom(level)}
-                      className={`px-1.5 py-0.5 rounded transition-colors ${zoom === level
-                          ? "bg-sky-500 text-white font-bold"
-                          : "hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400"
-                        }`}
-                    >
-                      {level}%
-                    </button>
-                  ))}
-                </div>
-
                 {(zoom !== 100 || pan.x !== 0 || pan.y !== 0) && (
                   <button
                     type="button"

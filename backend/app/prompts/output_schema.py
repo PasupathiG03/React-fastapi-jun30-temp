@@ -279,3 +279,47 @@ EXAMPLE_SUBREGIONS_OUTPUT = {
     ]
 }
 
+
+MRP_EXPIRY_STAMPS_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "has_removable_stamps": {
+            "type": "BOOLEAN",
+            "description": "True only if an actual variable VALUE (price amount, unit price amount, expiry/mfg date, or batch code) is printed on the packaging. Empty field labels alone do not count."
+        },
+        "stamps": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "stamp_type": {
+                        "type": "STRING",
+                        "enum": ["mrp", "expiry_date", "mfg_date", "batch_code"],
+                        "description": "The functional category of the variable value to be inpainted. Labels/headers are never returned."
+                    },
+                    "display_name": {
+                        "type": "STRING",
+                        "description": "Descriptive title for the detected element."
+                    },
+                    "box_2d": {
+                        "type": "ARRAY",
+                        "items": {"type": "INTEGER"},
+                        "description": "Normalized bounding box [ymin, xmin, ymax, xmax] scaled strictly between 0 and 1000."
+                    },
+                    "text_content": {
+                        "type": "STRING",
+                        "description": "Exact characters of the variable value inside the box, excluding its label."
+                    },
+                    "confidence": {
+                        "type": "NUMBER",
+                        "description": "Confidence score between 0.0 and 1.0."
+                    }
+                },
+                "required": ["stamp_type", "box_2d", "text_content"]
+            },
+            "description": "Every variable price/date/batch VALUE on the packaging, each boxed without its label."
+        }
+    },
+    "required": ["has_removable_stamps", "stamps"]
+}
+

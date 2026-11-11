@@ -78,6 +78,11 @@ class ImageProcessingPipeline:
         bg_provider = "photoroom" if requires_bg_removal else ("passthrough_lifestyle" if is_lifestyle_or_infographic else "passthrough")
         error_notes = []
 
+        inpaint_applied = False
+        inpaint_reasons = []
+        sku_bbid = cfg.get("bbid", "")
+        img_filename = cfg.get("filename", "")
+
         if requires_bg_removal:
             # Check if input already contains clean transparency (e.g. pre-segmented or pipeline re-processing)
             input_has_alpha = False
@@ -112,6 +117,19 @@ class ImageProcessingPipeline:
                     segmented_bytes = seg_buf.getvalue()
                     has_transparency = False
                     error_notes.append("Photoroom background removal unavailable or failed (check PHOTOROOM_API_KEY in .env)")
+
+            # Step 1.5: Inpaint MRP / Expiry on high-resolution subject before canvas scaling (SRS Section 5)
+            if auto_inpaint_mrp and is_fop_bop:
+                clean_rgba, inpaint_applied, inpaint_reasons = cls._safe_inpaint_mrp(
+                    clean_rgba,
+                    bbid=sku_bbid,
+                    filename=img_filename,
+                    category=product_category,
+                )
+                if inpaint_applied:
+                    seg_buf = io.BytesIO()
+                    clean_rgba.save(seg_buf, format="PNG")
+                    segmented_bytes = seg_buf.getvalue()
 
             rgba_arr = np.array(clean_rgba)
             alpha_channel = rgba_arr[:, :, 3]
@@ -157,6 +175,14 @@ class ImageProcessingPipeline:
             # - Preserve all headings, text, rows, columns, company details.
             # - Never distort, never cut off text or information.
             clean_rgba = raw_img.convert("RGBA")
+            if auto_inpaint_mrp and (is_fop_bop or is_product_shot):
+                clean_rgba, inpaint_applied, inpaint_reasons = cls._safe_inpaint_mrp(
+                    clean_rgba,
+                    bbid=sku_bbid,
+                    filename=img_filename,
+                    category=product_category,
+                )
+
             seg_buf = io.BytesIO()
             clean_rgba.save(seg_buf, format="PNG")
             segmented_bytes = seg_buf.getvalue()
@@ -208,11 +234,14 @@ class ImageProcessingPipeline:
                 canvas.paste(resized_panel, (offset_x, offset_y), resized_panel)
                 has_transparency = True
 
-        # Step 4: MRP / Expiry Removal if applicable (SRS Section 5)
-        inpaint_applied = False
-        inpaint_reasons = []
-        if auto_inpaint_mrp and is_fop_bop:
-            canvas, inpaint_applied, inpaint_reasons = cls._safe_inpaint_mrp(canvas)
+        # Step 4: MRP / Expiry Removal fallback if not already applied on subject (SRS Section 5)
+        if not inpaint_applied and auto_inpaint_mrp and is_fop_bop:
+            canvas, inpaint_applied, inpaint_reasons = cls._safe_inpaint_mrp(
+                canvas,
+                bbid=sku_bbid,
+                filename=img_filename,
+                category=product_category,
+            )
 
         # Step 5: Save final output PNG with 150 DPI metadata (SRS Section 1 & 2)
         out_buf = io.BytesIO()
@@ -281,10 +310,35 @@ class ImageProcessingPipeline:
         }
 
     @classmethod
-    def _safe_inpaint_mrp(cls, img: Image.Image) -> Tuple[Image.Image, bool, list]:
+    def _safe_inpaint_mrp(
+        cls,
+        img: Image.Image,
+        bbid: str = "",
+        filename: str = "",
+        category: str = "FOOD",
+    ) -> Tuple[Image.Image, bool, list]:
         """
-        Safely detects and removes small date/price stamps without affecting packaging labels (SRS Section 5).
+        Safely detects and removes variable MRP, unit sale price, expiry date,
+        manufacturing date, and batch code stamps without affecting packaging labels (SRS Section 5).
+        Features surgical text-stroke masking, boundary gradient sampling, and Telea diffusion.
         """
+        try:
+            from app.services.bigbasket.inpaint_service import DynamicInpaintService
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            inpainted_bytes, applied, stamp_details = DynamicInpaintService.detect_and_inpaint_stamps(
+                image_bytes=buf.getvalue(),
+                bbid=bbid,
+                filename=filename,
+                category=category,
+            )
+            if applied:
+                res_img = Image.open(io.BytesIO(inpainted_bytes))
+                notes = [f"Removed {s.get('type')}: '{s.get('text')}'" for s in stamp_details]
+                return res_img, True, notes
+        except Exception as inpaint_err:
+            logger.warning(f"Dynamic MRP/Expiry inpainting error: {inpaint_err}")
+
         return img, False, ["no_unwanted_text_detected"]
 
     @classmethod
