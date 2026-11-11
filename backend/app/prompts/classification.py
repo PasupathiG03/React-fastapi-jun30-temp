@@ -25,14 +25,10 @@ def build_gemini_classification_prompt(filename: str = "", bbid: str = "", addit
         "Determine primary_category (FOOD, NON_FOOD, or KITCHEN_ITEMS), subcategory, product_type, "
         "materials, structural components, visual properties, and catalog image_type.\n"
         "STRICT DYNAMIC VISUAL CLASSIFICATION DIRECTIVES:\n"
-        "- 'FOP' (Front of Pack): The primary front, 3/4 hero view, or front packaging face of the standalone product. "
-        "Even if photographed on a household surface (table, shelf, floor) or with un-clipped background, if the main subject "
-        "is the front face of the product without active human interaction, it is 'FOP' (to allow automated AI background removal). "
-        "NEVER classify as 'LIFESTYLE' unless human models are actively holding/demonstrating it.\n"
-        "- 'BOP' (Back of Pack): The rear face, back panel, regulatory panel, or underside of the product showing "
-        "directions, barcode, manufacturer details, or ingredients.\n"
-        "- 'LIFESTYLE': ONLY when visible human models, people, or active demonstration scenes are present.\n"
-        "- 'INFOGRAPHIC': Graphic marketing banners with multiple promotional text callouts, benefit icons, or multi-pack layouts.\n"
+        "- 'FOP' (Front of Pack): Primary product packshot showing the product, packaging, or complete multi-piece kit/set of items included for sale on a plain backdrop for background cutout.\n"
+        "- 'BOP' (Back of Pack): Rear face, back panel, regulatory panel, or underside showing specifications, barcode, or ingredients.\n"
+        "- 'LIFESTYLE': Action, in-use, or demonstration scenes showing the product interacting with food, beverages, liquid splashes, serving props, or real-world environments (preserve original background).\n"
+        "- 'INFOGRAPHIC': Graphic banners containing promotional text callouts, dimension diagrams, specification charts, or feature bullet points.\n"
         "Respond in validated JSON format conforming to the requested schema."
     )
 
