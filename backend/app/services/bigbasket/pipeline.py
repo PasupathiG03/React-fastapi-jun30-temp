@@ -107,6 +107,17 @@ class ImageProcessingPipeline:
                 if segmented_png_bytes:
                     clean_rgba = Image.open(io.BytesIO(segmented_png_bytes)).convert("RGBA")
                     segmented_bytes = segmented_png_bytes
+                    # Photoroom treats enclosed specular highlights (e.g. a white glint on a capsule)
+                    # as background and punches holes in the product; restore those from the original.
+                    clean_rgba, holes_filled = cls._fill_small_alpha_holes(
+                        clean_rgba,
+                        raw_img.convert("RGBA"),
+                        max_hole_ratio=float(cfg.get("fill_hole_max_ratio", 0.02)),
+                    )
+                    if holes_filled:
+                        seg_buf = io.BytesIO()
+                        clean_rgba.save(seg_buf, format="PNG")
+                        segmented_bytes = seg_buf.getvalue()
                     has_transparency = True
                     logger.info(f"[Pipeline] Photoroom background removal succeeded ({len(segmented_bytes)} bytes).")
                 else:
@@ -308,6 +319,99 @@ class ImageProcessingPipeline:
             "inpaint_notes": inpaint_reasons,
             "execution_time_ms": round(exec_time_ms, 2),
         }
+
+    @staticmethod
+    def _fill_small_alpha_holes(
+        segmented: Image.Image,
+        original: Image.Image,
+        max_hole_ratio: float = 0.02,
+        min_mean_bg_distance: float = 10.0,
+        min_p90_bg_distance: float = 20.0,
+        max_bg_noise: float = 25.0,
+    ) -> Tuple[Image.Image, int]:
+        """
+        Restores product pixels that background removal wrongly made transparent, such as a
+        specular glint on a capsule, without filling real see-through gaps (handle loops,
+        steamer perforations, slots).
+
+        A transparent area is filled only if all of these hold:
+        - it is fully enclosed by the product (does not touch the image border);
+        - it is at most max_hole_ratio of the product area (safety cap);
+        - in the ORIGINAL photo its pixels do NOT look like the photo's background. The
+          background colour is measured from the border-connected transparent region of the
+          same image, so this adapts to any backdrop colour. Real gaps show that backdrop;
+          a glint/reflection is tinted by the product and differs from it.
+
+        If the backdrop is not uniform (gradient, scene), nothing is filled because a hole
+        cannot be reliably classified. Returns (image, number_of_holes_filled).
+        """
+        if max_hole_ratio <= 0:
+            return segmented, 0
+
+        if original.size != segmented.size:
+            original = original.resize(segmented.size, Image.Resampling.LANCZOS)
+
+        seg = np.array(segmented)
+        alpha = seg[:, :, 3]
+        subject_area = int(np.count_nonzero(alpha >= 128))
+        if subject_area == 0:
+            return segmented, 0
+
+        transparent = (alpha < 128).astype(np.uint8)
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(transparent, connectivity=4)
+        h, w = alpha.shape
+        max_area = max_hole_ratio * subject_area
+
+        candidate_ids = []
+        background_ids = []
+        for i in range(1, n):
+            x, y, bw, bh, area = stats[i]
+            touches_border = x == 0 or y == 0 or x + bw >= w or y + bh >= h
+            if touches_border:
+                background_ids.append(i)
+            elif area <= max_area:
+                candidate_ids.append(i)
+
+        if not candidate_ids or not background_ids:
+            return segmented, 0
+
+        orig_rgb = np.array(original.convert("RGB")).astype(np.float32)
+
+        # Estimate the photo's backdrop colour from fully transparent, border-connected pixels.
+        backdrop = np.isin(labels, background_ids) & (alpha < 10)
+        backdrop_px = orig_rgb[backdrop]
+        if backdrop_px.shape[0] < 100:
+            return segmented, 0
+        bg_color = np.median(backdrop_px, axis=0)
+        bg_noise = float(np.linalg.norm(backdrop_px.std(axis=0)))
+        if bg_noise > max_bg_noise:
+            logger.info(f"[Pipeline] Hole fill skipped: backdrop not uniform (noise={bg_noise:.1f}).")
+            return segmented, 0
+
+        hole_ids = []
+        for i in candidate_ids:
+            dist = np.linalg.norm(orig_rgb[labels == i] - bg_color, axis=1)
+            if dist.mean() >= min_mean_bg_distance and np.percentile(dist, 90) >= min_p90_bg_distance:
+                hole_ids.append(i)
+
+        if not hole_ids:
+            return segmented, 0
+
+        keep_ids = [i for i in range(1, n) if i not in set(hole_ids)]
+
+        hole_mask = np.isin(labels, hole_ids).astype(np.uint8)
+        # Grow by a couple of pixels to also cover the semi-transparent anti-aliased rim,
+        # but never into real background / kept gaps.
+        hole_mask = cv2.dilate(hole_mask, np.ones((5, 5), np.uint8)).astype(bool)
+        hole_mask &= ~np.isin(labels, keep_ids)
+
+        seg[hole_mask, :3] = orig_rgb[hole_mask].astype(np.uint8)
+        seg[hole_mask, 3] = 255
+        logger.info(
+            f"[Pipeline] Filled {len(hole_ids)} enclosed alpha hole(s) that were product pixels "
+            f"(kept {len(candidate_ids) - len(hole_ids)} real see-through gap(s))."
+        )
+        return Image.fromarray(seg, "RGBA"), len(hole_ids)
 
     @classmethod
     def _safe_inpaint_mrp(
