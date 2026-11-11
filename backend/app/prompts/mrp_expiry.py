@@ -13,7 +13,6 @@ from typing import Optional
 MRP_EXPIRY_SYSTEM_PROMPT = """You are an expert multimodal computer vision and FMCG retail packaging graphics analyst.
 Your objective is to locate every VARIABLE packaging marking - retail price, unit price, expiry/best-before date, manufacturing/packing date, and batch/lot code - on packaging from any country, with tight, pixel-accurate bounding boxes.
 A marking is variable when its value changes between production runs or price revisions. Permanent artwork that is identical on every unit of the product is never a target, even when it mentions price, dates, or batches.
-Remove VALUES only: the printed field labels that name them (price, unit price, batch, mfg, expiry headers) are permanent artwork and must stay untouched.
 You must return only valid JSON conforming strictly to the provided output schema."""
 
 
@@ -59,14 +58,14 @@ def build_gemini_mrp_expiry_prompt(
         "- Placed in a reserved print zone or directly next to a field label that names it.\n"
         "- A short alphanumeric string printed beside a 2D / Data Matrix / QR code: these codes are normally "
         "printed per production run, so the human-readable string next to them is a run/batch code.\n"
-        "VALUES ONLY, NEVER LABELS: a field label or stacked list of labels that names a price, unit price, batch, "
-        "manufacturing or expiry field is printed artwork and must be kept. Return only the variable VALUE printed "
-        "next to / after / below the label. If a label's value slot is empty (nothing stamped yet), there is "
-        "nothing to remove for that field - do not return it.\n"
+        "FIELD HEADERS ARE TARGETS: a short label or stacked list of labels that names a price, unit price, batch, "
+        "manufacturing or expiry field (with a value next to it OR an empty slot left for stamping) exists only "
+        "to carry variable data - return each label line, together with its value when present.\n"
         "Permanent artwork - NEVER return these, even if they contain digits, dates or the words price/batch/date:\n"
         "- Running sentences inside paragraphs that only REFER to these fields (e.g. saying the batch number, "
         "dates or price are printed elsewhere on the pack), and shelf life expressed only as a duration from "
-        "manufacture with no actual calendar date. Like field labels, these are permanent and stay.\n"
+        "manufacture with no actual calendar date. These differ from field headers: they are part of body "
+        "text, not a label with a value slot.\n"
         "- Barcode / GTIN digits printed under or beside a linear barcode.\n"
         "- Registration, license, certification, regulatory or standards numbers; article / item / SKU / "
         "model codes; recycling or material codes; phone numbers, postal codes, web or email addresses.\n"
@@ -75,12 +74,12 @@ def build_gemini_mrp_expiry_prompt(
         "Set 'confidence' honestly for every returned item.\n\n"
 
         "STEP 3 - CATEGORIZE each variable marking by function (any language, script, currency or date notation):\n"
-        "1. 'mrp': the retail / maximum / consumer price amount and the unit sale price amount (per weight, volume "
-        "or unit), including a currency symbol / code or unit printed together WITH the amount. Exclude the label "
-        "words, any currency symbol or tax qualifier that belongs to the printed label, and label punctuation.\n"
-        "2. 'expiry_date': the expiry, best-before, use-by or similar date value only.\n"
-        "3. 'mfg_date': the manufacturing, packing or production date value only.\n"
-        "4. 'batch_code': the batch / lot / control number value (not its label), OR an unlabeled run code - a short "
+        "1. 'mrp': retail / maximum / consumer price, unit sale price (per weight, volume or unit), the currency "
+        "symbol or code attached to it, and a tax-inclusion qualifier only when it is printed as part of that "
+        "same price declaration. Include a price field label even if its value area is still blank.\n"
+        "2. 'expiry_date': expiry, best-before, use-by or similar date, with its label.\n"
+        "3. 'mfg_date': manufacturing, packing or production date, with its label.\n"
+        "4. 'batch_code': batch / lot / control number with its label, OR an unlabeled run code - a short "
         "alphanumeric string printed by the variable print process, typically beside a 2D / QR / Data Matrix "
         "code or in the reserved print zone. Do not confuse it with barcode/GTIN digits or permanent codes.\n\n"
 
@@ -89,17 +88,16 @@ def build_gemini_mrp_expiry_prompt(
         "- Box tightly around the characters of that one marking, with only a hairline margin. The box MUST "
         "fully contain the first and last character, including leading/trailing currency symbols, units, "
         "separators and punctuation - never cut a glyph in half.\n"
-        "- Use one box per value; separate fields on separate lines get separate boxes.\n"
-        "- When a label and its value share a line, start the box at the first character of the value and "
-        "leave a visible gap to the label - never cover any part of the label text.\n"
+        "- Use one box per marking. When separate fields sit on separate lines, return separate boxes; when "
+        "a label and its value form one line, return a single box for both.\n"
         "- NEVER include any part of a machine-readable code (linear barcode, QR code, Data Matrix, other 2D "
         "codes) - even when it encodes batch data. End the box at the gap between the code and the text.\n"
         "- NEVER extend a box over neighbouring permanent text or graphics; if a variable marking shares a "
         "container with permanent content (e.g. net quantity in the same strip), box only the variable part.\n"
         "- 'text_content' must be the exact characters inside the box.\n\n"
 
-        "If the image has no variable markings (e.g. a clean front-of-pack hero shot, only permanent "
-        "references to these fields, or field labels whose value slots are empty), set 'has_removable_stamps' to false and return an empty 'stamps' array.\n"
+        "If the image has no variable markings (e.g. a clean front-of-pack hero shot, or only permanent "
+        "references to these fields), set 'has_removable_stamps' to false and return an empty 'stamps' array.\n"
         "Respond in validated JSON conforming to the requested schema."
     )
 
