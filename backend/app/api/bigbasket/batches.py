@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, get_db
+from app.core.logger import logger
 from app.models.bigbasket import ImageBatch
 from app.models.user import User
 from app.schemas.bigbasket import (
@@ -107,6 +108,29 @@ def get_batch(
     return batch
 
 
+def dispatch_batch_processing(batch_id: int):
+    """Dispatches batch processing to Celery background worker if available.
+    Falls back gracefully to a detached daemon thread so Uvicorn's asyncio event loop
+    is NEVER blocked even if Redis/Celery is temporarily offline.
+    """
+    dispatched = False
+    try:
+        from app.tasks.batch_tasks import process_batch_task
+        task = process_batch_task.delay(batch_id)
+        logger.info(f"Dispatched batch {batch_id} to Celery worker (Task ID: {task.id})")
+        dispatched = True
+    except Exception as exc:
+        logger.warning(f"Celery dispatch failed for batch {batch_id} ({exc}); falling back to background thread.")
+
+    if not dispatched:
+        import threading
+        def _run_in_thread():
+            asyncio.run(BatchProcessor.process_batch_background(batch_id))
+        t = threading.Thread(target=_run_in_thread, daemon=True, name=f"batch-thread-{batch_id}")
+        t.start()
+        logger.info(f"Started batch {batch_id} in detached daemon thread.")
+
+
 @router.post("/{batch_id}/start")
 async def start_batch(
     batch_id: int,
@@ -120,8 +144,8 @@ async def start_batch(
     if batch.status == "processing":
         return {"message": "Batch is already processing", "status": batch.status}
 
-    # Launch background processing task
-    asyncio.create_task(BatchProcessor.process_batch_background(batch_id))
+    # Dispatch to Celery background worker (or detached daemon thread)
+    dispatch_batch_processing(batch_id)
 
     return {"message": "Batch processing started", "status": "processing"}
 
@@ -152,7 +176,7 @@ def resume_batch(
 
     BatchProcessor.resume(batch_id)
     if batch.status in ("paused", "failed"):
-        asyncio.create_task(BatchProcessor.process_batch_background(batch_id))
+        dispatch_batch_processing(batch_id)
 
     return {"message": "Resumed batch processing", "status": "processing"}
 

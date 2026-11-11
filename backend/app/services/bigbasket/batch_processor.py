@@ -15,7 +15,7 @@ from app.models.bigbasket import (
     ImageBatch,
 )
 from app.services.bigbasket.ai_provider import HybridAiManager
-from app.services.bigbasket.events import BigBasketEventBroadcaster
+from app.services.bigbasket.events import BigBasketEventBroadcaster, REDIS_URL
 from app.services.bigbasket.pipeline import ImageProcessingPipeline
 from app.services.bigbasket.storage import BigBasketStorage
 from app.services.bigbasket.sub_region_extractor import OcrError, SubRegionExtractor
@@ -24,22 +24,71 @@ from app.services.bigbasket.sub_region_extractor import OcrError, SubRegionExtra
 class BatchProcessor:
     """Orchestrates chunked batch image processing, background execution, and report generation."""
 
-    # Set of batch IDs requested to pause or cancel
+    # In-memory and Redis-backed state for cross-process synchronization (Celery worker <-> FastAPI)
     _PAUSE_REQUESTS = set()
     _CANCEL_REQUESTS = set()
 
     @classmethod
     def request_pause(cls, batch_id: int):
         cls._PAUSE_REQUESTS.add(batch_id)
+        try:
+            import redis
+            r = redis.from_url(REDIS_URL)
+            r.set(f"batch:pause:{batch_id}", "1", ex=86400)
+            r.close()
+        except Exception:
+            pass
 
     @classmethod
     def request_cancel(cls, batch_id: int):
         cls._CANCEL_REQUESTS.add(batch_id)
+        try:
+            import redis
+            r = redis.from_url(REDIS_URL)
+            r.set(f"batch:cancel:{batch_id}", "1", ex=86400)
+            r.delete(f"batch:pause:{batch_id}")
+            r.close()
+        except Exception:
+            pass
 
     @classmethod
     def resume(cls, batch_id: int):
         cls._PAUSE_REQUESTS.discard(batch_id)
         cls._CANCEL_REQUESTS.discard(batch_id)
+        try:
+            import redis
+            r = redis.from_url(REDIS_URL)
+            r.delete(f"batch:pause:{batch_id}")
+            r.delete(f"batch:cancel:{batch_id}")
+            r.close()
+        except Exception:
+            pass
+
+    @classmethod
+    def is_cancelled(cls, batch_id: int) -> bool:
+        if batch_id in cls._CANCEL_REQUESTS:
+            return True
+        try:
+            import redis
+            r = redis.from_url(REDIS_URL)
+            res = bool(r.exists(f"batch:cancel:{batch_id}"))
+            r.close()
+            return res
+        except Exception:
+            return False
+
+    @classmethod
+    def is_paused(cls, batch_id: int) -> bool:
+        if batch_id in cls._PAUSE_REQUESTS:
+            return True
+        try:
+            import redis
+            r = redis.from_url(REDIS_URL)
+            res = bool(r.exists(f"batch:pause:{batch_id}"))
+            r.close()
+            return res
+        except Exception:
+            return False
 
     @classmethod
     async def process_batch_background(cls, batch_id: int):
@@ -80,8 +129,8 @@ class BatchProcessor:
 
             total = len(images)
             for idx, img in enumerate(images, start=1):
-                # Check pause / cancel requests
-                if batch_id in cls._CANCEL_REQUESTS:
+                # Check pause / cancel requests (cross-process via Redis + local memory)
+                if cls.is_cancelled(batch_id):
                     batch.status = "cancelled"
                     cls._log_event(db, batch_id, "cancelled", "Batch processing was cancelled by user.")
                     db.commit()
@@ -92,7 +141,17 @@ class BatchProcessor:
                     })
                     return
 
-                while batch_id in cls._PAUSE_REQUESTS:
+                while cls.is_paused(batch_id):
+                    if cls.is_cancelled(batch_id):
+                        batch.status = "cancelled"
+                        cls._log_event(db, batch_id, "cancelled", "Batch processing was cancelled by user while paused.")
+                        db.commit()
+                        await BigBasketEventBroadcaster.publish_event({
+                            "type": "batch_status",
+                            "batch_id": batch_id,
+                            "status": "cancelled",
+                        })
+                        return
                     batch.status = "paused"
                     db.commit()
                     await BigBasketEventBroadcaster.publish_event({
