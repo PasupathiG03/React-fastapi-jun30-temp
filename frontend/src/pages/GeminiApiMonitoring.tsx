@@ -760,20 +760,20 @@ export default function GeminiApiMonitoring() {
                 </div>
                 <div className="divide-y divide-slate-100 dark:divide-white/5">
                   <div className="flex justify-between p-2.5">
-                    <span className="text-slate-500">Prompt Tokens (Input + Image Tiles)</span>
-                    <span className="font-mono font-semibold">{fmt(inspectItem.prompt_tokens)} tokens</span>
+                    <span className="text-slate-500 dark:text-slate-400">Prompt Tokens (Input + Image Tiles)</span>
+                    <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">{fmt(inspectItem.prompt_tokens)} tokens</span>
                   </div>
                   <div className="flex justify-between p-2.5">
-                    <span className="text-slate-500">Candidates Tokens (JSON Output)</span>
-                    <span className="font-mono font-semibold">{fmt(inspectItem.candidates_tokens)} tokens</span>
+                    <span className="text-slate-500 dark:text-slate-400">Candidates Tokens (JSON Output)</span>
+                    <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">{fmt(inspectItem.candidates_tokens)} tokens</span>
                   </div>
                   <div className="flex justify-between p-2.5">
-                    <span className="text-slate-500">Thinking Tokens (thoughtsTokenCount)</span>
-                    <span className="font-mono font-semibold text-violet-500">{fmt(inspectItem.thoughts_tokens)} tokens</span>
+                    <span className="text-slate-500 dark:text-slate-400">Thinking Tokens (thoughtsTokenCount)</span>
+                    <span className="font-mono font-semibold text-violet-600 dark:text-violet-400">{fmt(inspectItem.thoughts_tokens)} tokens</span>
                   </div>
                   <div className="flex justify-between p-2.5 bg-slate-50/50 dark:bg-slate-800/30 font-bold">
-                    <span>Total Billed Tokens</span>
-                    <span className="font-mono text-sky-500">{fmt(inspectItem.total_tokens)} tokens</span>
+                    <span className="text-slate-800 dark:text-slate-200">Total Billed Tokens</span>
+                    <span className="font-mono text-sky-600 dark:text-sky-400">{fmt(inspectItem.total_tokens)} tokens</span>
                   </div>
                 </div>
               </div>
@@ -785,16 +785,16 @@ export default function GeminiApiMonitoring() {
                 </div>
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-white/10 space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-[10px] font-bold">
+                    <span className="px-2.5 py-0.5 rounded-full bg-slate-200/90 dark:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-[10px] font-bold border border-slate-300/60 dark:border-white/5">
                       Category: {inspectItem.primary_category || "—"}
                     </span>
-                    <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-[10px] font-bold">
+                    <span className="px-2.5 py-0.5 rounded-full bg-slate-200/90 dark:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-[10px] font-bold border border-slate-300/60 dark:border-white/5">
                       Subcategory: {inspectItem.subcategory || "—"}
                     </span>
-                    <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-[10px] font-bold">
+                    <span className="px-2.5 py-0.5 rounded-full bg-slate-200/90 dark:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-[10px] font-bold border border-slate-300/60 dark:border-white/5">
                       Type: {inspectItem.product_type || "—"}
                     </span>
-                    <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-[10px] font-bold">
+                    <span className="px-2.5 py-0.5 rounded-full bg-slate-200/90 dark:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-[10px] font-bold border border-slate-300/60 dark:border-white/5">
                       Image Role: {inspectItem.image_type || "—"}
                     </span>
                   </div>

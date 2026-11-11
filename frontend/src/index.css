@@ -3,7 +3,11 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
+}
+:root.dark,
+html.dark {
+  color-scheme: dark;
 }
 
 html,
@@ -20,6 +24,7 @@ body {
      frame whenever a portal-mounted modal backdrop (fixed + backdrop-filter, a direct child of body)
      mounts or unmounts and forces a recomposite -- visible as a flash in dark mode on a light-OS system. */
   background-color: #eef4fc;
+  color: #0f172a;
 }
 #root {
   height: 100%;
@@ -28,6 +33,7 @@ body {
 }
 html.dark body {
   background-color: #070c1e;
+  color: #f8fafc;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -189,7 +195,7 @@ input:-webkit-autofill:focus {
     backdrop-filter: blur(24px) saturate(160%);
     border: 1px solid rgba(255, 255, 255, 0.9);
     box-shadow: 0 24px 64px rgba(0, 114, 255, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.95);
-    animation: glass-modal-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+    color: #0f172a;
   }
   .dark .glass-modal {
     background:
@@ -197,6 +203,7 @@ input:-webkit-autofill:focus {
       rgba(16, 26, 54, 0.92);
     border-color: rgba(255, 255, 255, 0.14);
     box-shadow: 0 28px 70px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    color: #f8fafc;
   }
 
   /* Dropdowns, select lists, toasts */
@@ -287,15 +294,7 @@ input:-webkit-autofill:focus {
 
 /* Collapsed-sidebar flyout: opens from the rail edge towards the panel */
 .sidebar-flyout-in {
-  animation: sidebar-flyout-in 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
   transform-origin: left center;
-}
-@keyframes sidebar-flyout-in {
-  from { opacity: 0; transform: translateX(-6px) scale(0.97); }
-  to { opacity: 1; transform: none; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .sidebar-flyout-in { animation: none; }
 }
 
 /* Page content on route change: the page fades and slides up (no blur), then its top-level

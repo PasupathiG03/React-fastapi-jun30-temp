@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import { Clock } from "lucide-react";
 import { API_BASE_URL } from "@/lib/constants";
 import {
@@ -105,8 +106,23 @@ export default function SessionWatcher() {
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" role="alertdialog" aria-modal="true" aria-labelledby="session-title">
-      <div className="w-full max-w-sm rounded-2xl glass-modal p-6 text-center">
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.2 }}
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+        aria-hidden="true"
+      />
+      <motion.div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="session-title"
+        initial={{ opacity: 0, scale: 0.94, y: 14 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: "spring", damping: 26, stiffness: 380, mass: 0.75 }}
+        className="relative z-10 w-full max-w-sm rounded-2xl glass-modal p-6 text-center"
+      >
         <div className="mx-auto mb-4 w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center">
           <Clock className="w-6 h-6" />
         </div>
@@ -133,7 +149,7 @@ export default function SessionWatcher() {
             </button>
           )}
         </div>
-      </div>
+      </motion.div>
     </div>,
     document.body
   );
