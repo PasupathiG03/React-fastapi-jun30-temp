@@ -546,16 +546,14 @@ export default function ReviewStudio() {
                   <ZoomIn className="w-4 h-4" />
                 </button>
 
-                {(zoom !== 100 || pan.x !== 0 || pan.y !== 0) && (
-                  <button
-                    type="button"
-                    onClick={resetView}
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 transition-colors"
-                    title="Reset to 100% and centered"
-                  >
-                    <RotateCcw className="w-3 h-3" /> Reset
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={resetView}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors"
+                  title="Reset to 100% and centered"
+                >
+                  <RotateCcw className="w-3 h-3" /> Reset
+                </button>
                 <div className="h-4 w-px bg-slate-200 dark:border-white/10 mx-1" />
                 <button
                   type="button"
