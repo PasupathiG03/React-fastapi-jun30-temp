@@ -137,8 +137,16 @@ class RMBG2Service:
             if cache_dir:
                 load_kwargs["cache_dir"] = cache_dir
 
+            import warnings
+
             logger.info(f"[RMBG-2.0] Loading PyTorch model '{model_id}' on device '{device}'...")
-            model = AutoModelForImageSegmentation.from_pretrained(model_id, **load_kwargs)
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message=r"Importing from timm\.models\.(layers|registry) is deprecated.*",
+                    category=FutureWarning,
+                )
+                model = AutoModelForImageSegmentation.from_pretrained(model_id, **load_kwargs)
             model.to(device)
             model.eval()
 
