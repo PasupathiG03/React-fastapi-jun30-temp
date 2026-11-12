@@ -27,6 +27,7 @@ import {
   CheckCircle,
   BarChart3,
   RotateCcw,
+  Maximize2,
 } from "lucide-react";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/components/ui";
@@ -43,6 +44,8 @@ import {
   createBatch,
   uploadBatchImageFiles,
   uploadBatchImagesZip,
+  inspectImageFiles,
+  inspectImagesZip,
   fetchDashboardSummary,
   getImageFileUrl,
   downloadBatchZipFile,
@@ -52,7 +55,9 @@ import {
   type BatchItem,
   type ImageItem,
   type DashboardSummary,
+  type InspectionResponse,
 } from "@/services/bigbasket";
+import ImageInspectionModal from "@/components/bigbasket/ImageInspectionModal";
 import { showError, showSuccess } from "@/lib/toast";
 
 export default function BatchProcessing() {
@@ -1214,6 +1219,22 @@ function BatchTableRow({
 
 // ── Integrated Create Batch Modal ─────────────────────────────────────────────
 
+function getClientImageDimensions(file: File): Promise<{ width: number; height: number }> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: 0, height: 0 });
+    };
+    img.src = url;
+  });
+}
+
 function CreateBatchModal({
   isOpen,
   onClose,
@@ -1228,19 +1249,48 @@ function CreateBatchModal({
   const [productCategory, setProductCategory] = useState<"auto" | "food" | "non_food" | "kitchen_items">("auto");
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [zipFile, setZipFile] = useState<File | null>(null);
+  const [targetWidth, setTargetWidth] = useState<number>(1500);
+  const [targetHeight, setTargetHeight] = useState<number>(1500);
   const [submitting, setSubmitting] = useState(false);
+  const [inspecting, setInspecting] = useState(false);
+  const [inspectionModalOpen, setInspectionModalOpen] = useState(false);
+  const [inspectionData, setInspectionData] = useState<InspectionResponse | null>(null);
+  const [clientLowResCount, setClientLowResCount] = useState(0);
 
-  // Set default batch name on open
+  // Set default batch name and resolution inputs on open
   useEffect(() => {
     if (isOpen) {
       const now = new Date();
       setBatchName(`Catalog Batch - ${now.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`);
       setImageFiles([]);
       setZipFile(null);
+      setTargetWidth(1500);
+      setTargetHeight(1500);
+      setClientLowResCount(0);
+      setInspectionData(null);
+      setInspectionModalOpen(false);
     }
   }, [isOpen]);
 
-  async function handleLaunch() {
+  async function recheckFiles(files: File[], reqW: number, reqH: number) {
+    let lowRes = 0;
+    for (const f of files) {
+      try {
+        const dim = await getClientImageDimensions(f);
+        if (dim.width > 0 && dim.height > 0 && (dim.width < reqW || dim.height < reqH)) {
+          lowRes++;
+        }
+      } catch { }
+    }
+    setClientLowResCount(lowRes);
+  }
+
+  async function handleFileSelection(files: File[]) {
+    setImageFiles(files);
+    await recheckFiles(files, targetWidth, targetHeight);
+  }
+
+  async function handleLaunchInspection() {
     if (!batchName.trim()) {
       return showError("Please enter a batch name");
     }
@@ -1251,6 +1301,25 @@ function CreateBatchModal({
       return showError("Please select a ZIP archive file to upload");
     }
 
+    setInspecting(true);
+    setInspectionModalOpen(true);
+    try {
+      let res: InspectionResponse;
+      if (mode === "files") {
+        res = await inspectImageFiles(imageFiles, targetWidth, targetHeight);
+      } else {
+        res = await inspectImagesZip(zipFile!, targetWidth, targetHeight);
+      }
+      setInspectionData(res);
+    } catch (e: any) {
+      showError(e.message || "Failed to inspect images");
+      setInspectionModalOpen(false);
+    } finally {
+      setInspecting(false);
+    }
+  }
+
+  async function handleConfirmAndUpload() {
     setSubmitting(true);
     try {
       // 1. Create batch
@@ -1282,6 +1351,7 @@ function CreateBatchModal({
 
       showSuccess(`Batch ${batch.batch_code} launched into automation!`);
       onCreated(batch);
+      setInspectionModalOpen(false);
       onClose();
     } catch (e: any) {
       showError(e.message || "Failed to create extraction batch");
@@ -1293,6 +1363,7 @@ function CreateBatchModal({
   if (!isOpen) return null;
 
   return (
+    <>
     <Modal
       onClose={onClose}
       title="Create Extraction Batch"
@@ -1415,6 +1486,64 @@ function CreateBatchModal({
             </div>
           </div>
 
+          {/* Dynamic Validation Resolution (Width x Height) */}
+          <div className="p-3.5 rounded-xl border border-sky-500/20 bg-sky-500/5 dark:bg-white/[0.02] space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <Maximize2 className="w-3.5 h-3.5 text-sky-500" />
+                <span>Validation Resolution Dimensions</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setTargetWidth(1500);
+                  setTargetHeight(1500);
+                  recheckFiles(imageFiles, 1500, 1500);
+                }}
+                className="text-[10px] text-sky-600 dark:text-sky-400 hover:underline font-medium cursor-pointer"
+              >
+                Reset Default (1500 × 1500 px)
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              Specify the minimum required pixel dimensions for image validation (Default: 1500 × 1500 px).
+            </p>
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  Min Width (px)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={targetWidth}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value) || 0;
+                    setTargetWidth(val);
+                    recheckFiles(imageFiles, val, targetHeight);
+                  }}
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-mono text-xs font-semibold focus:outline-none focus:border-sky-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  Min Height (px)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={targetHeight}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value) || 0;
+                    setTargetHeight(val);
+                    recheckFiles(imageFiles, targetWidth, val);
+                  }}
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-mono text-xs font-semibold focus:outline-none focus:border-sky-500"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Dropzone */}
           {mode === "files" ? (
             <div className="border-2 border-dashed border-slate-200 dark:border-white/10 rounded-2xl p-6 text-center hover:border-sky-500 transition-colors bg-slate-50/50 dark:bg-slate-900/40">
@@ -1428,16 +1557,31 @@ function CreateBatchModal({
                   className="hidden"
                   onChange={(e) => {
                     const files = Array.from(e.target.files || []);
-                    setImageFiles(files);
+                    handleFileSelection(files);
                   }}
                 />
               </label>
-              <p className="text-[11px] text-slate-400 mt-1">Supports PNG, JPG, JPEG, and WEBP files</p>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Supports PNG, JPG, JPEG, and WEBP files
+              </p>
               {imageFiles.length > 0 && (
-                <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-2 font-medium flex items-center justify-center gap-1.5">
-                  <CheckCircle className="w-4 h-4" />
-                  Selected {imageFiles.length} image file(s) (
-                  {(imageFiles.reduce((acc, f) => acc + f.size, 0) / (1024 * 1024)).toFixed(1)} MB)
+                <div className="mt-2 space-y-1">
+                  <div className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center justify-center gap-1.5">
+                    <CheckCircle className="w-4 h-4" />
+                    Selected {imageFiles.length} image file(s) (
+                    {(imageFiles.reduce((acc, f) => acc + f.size, 0) / (1024 * 1024)).toFixed(1)} MB)
+                  </div>
+                  {clientLowResCount > 0 ? (
+                    <div className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold flex items-center justify-center gap-1">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      {clientLowResCount} image(s) below {targetWidth}×{targetHeight}px threshold (details in inspection report)
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-sky-600 dark:text-sky-400 font-medium flex items-center justify-center gap-1">
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      All selected images meet required quality
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1456,7 +1600,7 @@ function CreateBatchModal({
                   }}
                 />
               </label>
-              <p className="text-[11px] text-slate-400 mt-1">All image files in the archive will be extracted automatically</p>
+              <p className="text-[11px] text-slate-400 mt-1">All image files in the archive will be extracted and inspected automatically</p>
               {zipFile && (
                 <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-2 font-medium flex items-center justify-center gap-1.5">
                   <CheckCircle className="w-4 h-4" />
@@ -1478,24 +1622,37 @@ function CreateBatchModal({
         <ModalCancelButton onClick={onClose} />
         <button
           type="button"
-          onClick={handleLaunch}
-          disabled={submitting || (mode === "files" ? imageFiles.length === 0 : !zipFile)}
+          onClick={handleLaunchInspection}
+          disabled={inspecting || submitting || (mode === "files" ? imageFiles.length === 0 : !zipFile)}
           className={PRIMARY_BUTTON}
         >
-          {submitting ? (
+          {inspecting ? (
             <>
               <RefreshCw className="w-4 h-4 animate-spin" />
-              <span>Uploading & Launching...</span>
+              <span>Inspecting Image Quality &amp; Claims...</span>
             </>
           ) : (
             <>
               <Zap className="w-4 h-4" />
-              <span>Launch Automated Standardization</span>
+              <span>Inspect &amp; Launch Batch</span>
             </>
           )}
         </button>
       </ModalFooter>
     </Modal>
+
+    <ImageInspectionModal
+      isOpen={inspectionModalOpen}
+      onClose={() => setInspectionModalOpen(false)}
+      onConfirm={handleConfirmAndUpload}
+      inspectionData={inspectionData}
+      targetWidth={targetWidth}
+      targetHeight={targetHeight}
+      isLoading={inspecting}
+      isUploading={submitting}
+      batchTitle={batchName}
+    />
+    </>
   );
 }
 

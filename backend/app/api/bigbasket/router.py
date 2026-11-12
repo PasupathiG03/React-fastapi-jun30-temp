@@ -5,6 +5,7 @@ from app.api.bigbasket import (
     events,
     google_drive,
     images,
+    inspection,
     reports,
     reviews,
     uploads,
@@ -14,6 +15,7 @@ bigbasket_router = APIRouter()
 
 bigbasket_router.include_router(batches.router, prefix="/batches", tags=["BigBasket Batches"])
 bigbasket_router.include_router(uploads.router, prefix="/uploads", tags=["BigBasket Uploads"])
+bigbasket_router.include_router(inspection.router, prefix="/inspect", tags=["BigBasket Inspection"])
 bigbasket_router.include_router(images.router, prefix="/images", tags=["BigBasket Images"])
 bigbasket_router.include_router(reviews.router, prefix="/reviews", tags=["BigBasket Reviews"])
 bigbasket_router.include_router(reports.router, prefix="/reports", tags=["BigBasket Reports"])

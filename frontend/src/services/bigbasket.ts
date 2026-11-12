@@ -50,6 +50,38 @@ export interface ImageListResponse {
   page_size: number;
 }
 
+export interface ImageInspectionItem {
+  filename: string;
+  width: number;
+  height: number;
+  format?: string | null;
+  file_size_bytes?: number;
+  megapixels?: number;
+  required_width?: number;
+  required_height?: number;
+  width_shortfall?: number;
+  height_shortfall?: number;
+  is_dimension_valid: boolean;
+  dimension_message: string;
+  has_hundred_percent: boolean;
+  hundred_percent_matches: Array<{
+    text: string;
+    confidence: number;
+    box: number[][];
+  }>;
+  ocr_status: string;
+  error?: string | null;
+}
+
+export interface InspectionResponse {
+  total_inspected: number;
+  required_width?: number;
+  required_height?: number;
+  has_any_invalid_dimension: boolean;
+  has_any_hundred_percent: boolean;
+  items: ImageInspectionItem[];
+}
+
 export interface DashboardSummary {
   total_batches: number;
   total_images: number;
@@ -148,6 +180,40 @@ export async function uploadBatchImageFiles(batchId: number, files: File[]): Pro
     method: "POST",
     body: fd,
   });
+}
+
+export async function inspectImageFiles(
+  files: File[],
+  minWidth = 1500,
+  minHeight = 1500
+): Promise<InspectionResponse> {
+  const fd = new FormData();
+  for (const f of files) {
+    fd.append("files", f);
+  }
+  return request<InspectionResponse>(
+    `/api/image-studio/inspect/images?min_width=${minWidth}&min_height=${minHeight}`,
+    {
+      method: "POST",
+      body: fd,
+    }
+  );
+}
+
+export async function inspectImagesZip(
+  zipFile: File,
+  minWidth = 1500,
+  minHeight = 1500
+): Promise<InspectionResponse> {
+  const fd = new FormData();
+  fd.append("file", zipFile);
+  return request<InspectionResponse>(
+    `/api/image-studio/inspect/zip?min_width=${minWidth}&min_height=${minHeight}`,
+    {
+      method: "POST",
+      body: fd,
+    }
+  );
 }
 
 export async function fetchBatchImages(
