@@ -67,20 +67,20 @@ IMAGE_ROLE_RULES = """
 You must classify image_type into exactly ONE of the following:
 
 1. "FOP" (Front-of-Pack / Primary Hero Product Shot):
-   - Scope: The primary front, 3/4 perspective, top view, or hero studio shot showcasing the product in its normal upright orientation for catalog listing.
-   - Includes standalone products on plain, white, neutral, transparent, or room/floor backgrounds (e.g., plastic stools upright, buckets, chairs, tables, cookware, appliances, bottles, packs, boxes).
-   - STRICT CRITERIA: If a single product is photographed upright in its standard orientation without human models and without marketing text, it is "FOP". NEVER classify as LIFESTYLE.
+   - Scope: The primary front, 3/4 perspective, top view, or hero studio shot showcasing the standalone sellable product (or complete multi-piece kit sold together) in its normal upright orientation for catalog listing.
+   - STRICT CRITERIA: Classify as "FOP" when the frame shows the sellable product on a plain, white, or neutral studio backdrop—even if there are studio cast shadows, surface reflections, or minimal background texture/foam/smear accents—with no human models, no marketing callouts, no real-world environment, and no separate surrounding prop objects.
 
 2. "BOP" (Back-of-Pack / Rear / Underside / Bottom / Inverted View):
    - Scope: The rear face, back panel, underside, bottom base, or inverted view of the product.
    - Packaged goods: The rear face showing regulatory details, barcodes, usage instructions, ingredients, or nutritional information.
-   - Non-packaged products (plastic stools, chairs, tables, buckets, basins, cookware, utensils, appliances): The rear side, back plate, underside view, bottom base, or inverted upside-down view (e.g., a plastic stool flipped upside down showing underside reinforcement ribs and legs pointing up, the bottom base of a bucket, the underside of a pan). Any inverted, underside, bottom, or rear view MUST be classified as "BOP", NEVER "FOP".
+   - Non-packaged goods: Any rear, back-plate, underside, bottom-base, or inverted view MUST be classified as "BOP", NEVER "FOP".
 
-3. "LIFESTYLE" (In-Context / Human Usage Scene):
-   - STRICT CRITERIA: ONLY classify as "LIFESTYLE" if the image contains:
-     a) Human models, people, or visible hands actively interacting with, holding, demonstrating, or using the product; OR
-     b) A composite promotional scene combining the product with people, appliances, and contextual domestic lifestyle activity.
-   - STRICT EXCLUSION: If there are NO people and NO promotional marketing text, a product sitting in a room or on a floor is NEVER "LIFESTYLE". Classify it as "FOP" if upright/front/hero, or as "BOP" if rear/back/underside/inverted.
+3. "LIFESTYLE" (In-Context / Staged Scene):
+   - STRICT CRITERIA: Classify as "LIFESTYLE" ONLY when the image depicts:
+     a) Human models, people, or visible hands interacting with, holding, demonstrating, or using the product; OR
+     b) A real-world domestic or environmental usage setting; OR
+     c) A rich multi-element promotional composition where multiple distinct external prop objects are arranged around the product to stage a scene.
+   - STRICT EXCLUSION: A standalone product on a plain/white studio backdrop—even with cast shadows, reflections, or subtle surface texture/foam accents behind it—is NEVER "LIFESTYLE". Classify it as "FOP" if upright/front/hero, or "BOP" if rear/back/underside/inverted.
 
 4. "INFOGRAPHIC" (Promotional / Educational Marketing Banner):
    - Scope: Graphic-heavy promotional banners containing marketing badges, text callouts, benefit points, dimension diagrams, or ingredient highlights.

@@ -160,21 +160,23 @@ def reapply_padding_endpoint(
 @router.post("/{image_id}/retry", response_model=BatchImageDetailOut)
 async def retry_image_processing(
     image_id: int,
+    provider: str = Query("photoroom"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Retries Photoroom AI background removal and standardization for an individual image.
+    Retries background removal and standardization for an individual image
+    using the specified provider ('photoroom' or 'rmbg2').
     """
     try:
         from app.services.bigbasket.batch_processor import BatchProcessor
-        img = await BatchProcessor.retry_single_image(db, image_id)
+        img = await BatchProcessor.retry_single_image(db, image_id, provider=provider)
         setattr(img, "validation_status", img.validation_results)
         return img
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Photoroom retry failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Background removal retry failed: {str(e)}")
 
 
 class UpdateCategoryPayload(BaseModel):

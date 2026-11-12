@@ -94,9 +94,9 @@ GEMINI_CLASSIFICATION_SCHEMA = {
             ],
             "description": (
                 "Catalog angle/type: "
-                "FOP (Front-of-pack, upright hero studio shot, or top view of standalone product); "
-                "BOP (Back-of-pack, rear view, underside base, or inverted/upside-down view such as an inverted stool or bucket bottom); "
-                "LIFESTYLE (STRICTLY ONLY scenes with human models/hands interacting with the product or composite marketing scenes); "
+                "FOP (Standalone sellable product upright hero studio shot with no separate decorative props arranged around it); "
+                "BOP (Back-of-pack, rear view, underside base, or inverted view); "
+                "LIFESTYLE (Scenes with human/hand interaction, real-world usage environments, or staged compositions where separate non-sellable decorative prop objects are arranged around the product, even on a plain backdrop); "
                 "INFOGRAPHIC (Marketing graphic banner with promotional callouts); "
                 "INGREDIENT, NUTRITION, MANUFACTURER, BARCODE, FSSAI (close-up text panel crops)."
             ),

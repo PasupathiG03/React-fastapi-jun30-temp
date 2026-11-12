@@ -233,8 +233,11 @@ export async function fetchImageDetails(imageId: number): Promise<any> {
   return request(`/api/image-studio/images/${imageId}`);
 }
 
-export async function retryImageProcessing(imageId: number): Promise<any> {
-  return request(`/api/image-studio/images/${imageId}/retry`, {
+export async function retryImageProcessing(
+  imageId: number,
+  provider: "photoroom" | "rmbg2" = "photoroom"
+): Promise<any> {
+  return request(`/api/image-studio/images/${imageId}/retry?provider=${provider}`, {
     method: "POST",
   });
 }

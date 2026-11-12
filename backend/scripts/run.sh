@@ -35,6 +35,20 @@ if [ -f "$REQ_FILE" ]; then
   fi
 fi
 
+# Pre-download RMBG-2.0 ONNX model once if not yet cached; reuse cached model on subsequent runs.
+RMBG2_STAMP="$BASE_DIR/env/.rmbg2.cached"
+if [ ! -f "$RMBG2_STAMP" ]; then
+  echo "[*] Checking/caching local RMBG-2.0 background-removal model (one-time download)..."
+  if HF_HUB_DISABLE_XET=1 python -c "import sys; sys.path.insert(0, '$BASE_DIR'); from app.services.bigbasket.rmbg2_service import RMBG2Service; ok, err = RMBG2Service._try_load_onnx(); print(err or 'RMBG-2.0 cached'); sys.exit(0 if ok else 1)"; then
+    date -u +"%Y-%m-%dT%H:%M:%SZ" > "$RMBG2_STAMP"
+    echo "[+] RMBG-2.0 model cached locally."
+  else
+    echo "[!] RMBG-2.0 pre-download skipped (will retry on first image or use 'Rerun Background Removal' for Photoroom)."
+  fi
+else
+  echo "[=] RMBG-2.0 local model is already cached."
+fi
+
 kill_port() {
   local PORT=$1
   if command -v lsof >/dev/null 2>&1; then

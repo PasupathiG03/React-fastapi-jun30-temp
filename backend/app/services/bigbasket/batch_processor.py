@@ -365,7 +365,7 @@ class BatchProcessor:
             img.original_width = result["original_width"]
             img.original_height = result["original_height"]
             img.file_size_bytes = len(result["final_image_bytes"])
-            img.error_message = None
+            img.error_message = result.get("bg_removal_error")
 
             # Log internal API request audit record ONLY when Photoroom API was actually called and credits consumed
             if result.get("photoroom_called", False):
@@ -675,9 +675,10 @@ class BatchProcessor:
         }
 
     @classmethod
-    async def retry_single_image(cls, db: Session, image_id: int) -> BatchImage:
+    async def retry_single_image(cls, db: Session, image_id: int, provider: str = "photoroom") -> BatchImage:
         """
-        Retries Photoroom AI and image standardization for an individual image.
+        Retries background removal and image standardization for an individual image
+        using the specified provider ('photoroom' or 'rmbg2').
         """
         img = db.query(BatchImage).filter(BatchImage.id == image_id).first()
         if not img:
@@ -688,7 +689,7 @@ class BatchProcessor:
             raise ValueError(f"Batch {img.batch_id} not found")
 
         ai_manager = HybridAiManager()
-        cfg = batch.config or {}
+        cfg = {**(batch.config or {}), "bg_removal_provider": provider}
 
         # Reset status to processing temporarily
         img.status = "processing"
@@ -744,7 +745,7 @@ class BatchProcessor:
         ).all()
 
         ai_manager = HybridAiManager()
-        cfg = batch.config or {}
+        cfg = {**(batch.config or {}), "bg_removal_provider": "photoroom"}
 
         for img in images:
             img.status = "processing"

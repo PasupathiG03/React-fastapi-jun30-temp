@@ -1,6 +1,34 @@
 @echo off
 setlocal
 
+set "BACKEND_DIR=%~dp0.."
+set "VENV_DIR=%BACKEND_DIR%\env"
+set "VENV_PY=%VENV_DIR%\Scripts\python.exe"
+
+rem 0. Ensure Python 3.10 virtual environment exists at backend\env
+if not exist "%VENV_PY%" (
+    echo [*] Creating Python 3.10 virtual environment at "%VENV_DIR%"...
+    py -3.10 -m venv "%VENV_DIR%" >nul 2>&1
+    if errorlevel 1 (
+        echo [!] py -3.10 not found, falling back to default python...
+        python -m venv "%VENV_DIR%"
+        if errorlevel 1 (
+            echo [!] Failed to create virtual environment at "%VENV_DIR%".
+            pause
+            exit /b 1
+        )
+    )
+    echo [*] Installing PyTorch 2.14.1 and backend requirements...
+    "%VENV_PY%" -m pip install --upgrade pip
+    "%VENV_PY%" -m pip install torch==2.14.1 torchvision
+    "%VENV_PY%" -m pip install -r "%BACKEND_DIR%\requirements.txt"
+    if errorlevel 1 (
+        echo [!] Failed to install requirements.txt.
+        pause
+        exit /b 1
+    )
+)
+
 rem 1. Check Redis via Docker (Windows environment)
 docker ps | findstr /i "local_redis" >nul 2>&1
 if errorlevel 1 (

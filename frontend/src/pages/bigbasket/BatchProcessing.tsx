@@ -33,6 +33,7 @@ import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/components/ui";
 import { TablePagination } from "@/components/DataTableControls";
 import Modal, { ModalBody, ModalFooter, ModalCancelButton, ConfirmDialog } from "@/components/Modal";
+import { RerunBgRemovalButton } from "@/components/bigbasket/RerunBgRemovalControls";
 import {
   fetchBatches,
   fetchBatchImages,
@@ -1042,8 +1043,13 @@ function BatchTableRow({
                           </td>
 
                           {/* Filename */}
-                          <td className="py-2 px-3 max-w-xs text-slate-600 dark:text-slate-300 font-medium truncate" title={img.original_filename}>
-                            {img.original_filename}
+                          <td className="py-2 px-3 max-w-xs text-slate-600 dark:text-slate-300 font-medium" title={img.original_filename}>
+                            <div className="truncate">{img.original_filename}</div>
+                            {img.error_message && (
+                              <div className="text-[11px] text-rose-600 dark:text-rose-400 mt-0.5 line-clamp-2" title={img.error_message}>
+                                {img.error_message}
+                              </div>
+                            )}
                           </td>
 
                           {/* Angle */}
@@ -1168,16 +1174,11 @@ function BatchTableRow({
                           <td className="py-2 px-3 text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-2">
                               {(img.status === "needs_review" || img.status === "failed") && (
-                                <button
-                                  type="button"
-                                  disabled={retryingImageId === img.id}
+                                <RerunBgRemovalButton
+                                  compact
+                                  loading={retryingImageId === img.id}
                                   onClick={() => onRetryImage(img.id)}
-                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-sky-700 bg-sky-50 dark:bg-sky-950/60 dark:text-sky-300 border border-sky-200 dark:border-sky-800 hover:bg-sky-100 dark:hover:bg-sky-900 transition-colors disabled:opacity-50"
-                                  title="Retry AI Background Removal with Photoroom"
-                                >
-                                  <RotateCcw className={`w-3 h-3 ${retryingImageId === img.id ? "animate-spin" : ""}`} />
-                                  <span>{retryingImageId === img.id ? "Retrying..." : "Retry Photoroom"}</span>
-                                </button>
+                                />
                               )}
                               <Link
                                 to="/image-studio/review-studio"

@@ -54,6 +54,7 @@ CLAUDE.local.md
 # ── Uploads / Generated files ──────────────────────────────────────────────
 uploads/
 exports/
+models/
 project doc/
 *.pdf
 *.docx

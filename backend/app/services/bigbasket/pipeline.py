@@ -8,6 +8,7 @@ from PIL import Image
 
 from app.core.config import settings
 from app.services.bigbasket.photoroom_service import PhotoroomService
+from app.services.bigbasket.rmbg2_service import RMBG2Service
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,8 @@ class ImageProcessingPipeline:
         num_components = 1
         has_transparency = False
         photoroom_called = False
-        bg_provider = "photoroom" if requires_bg_removal else ("passthrough_lifestyle" if is_lifestyle_or_infographic else "passthrough")
+        use_photoroom = cfg.get("bg_removal_provider") == "photoroom"
+        bg_provider = ("photoroom" if use_photoroom else "rmbg2") if requires_bg_removal else ("passthrough_lifestyle" if is_lifestyle_or_infographic else "passthrough")
         error_notes = []
 
         inpaint_applied = False
@@ -99,35 +101,46 @@ class ImageProcessingPipeline:
                 has_transparency = True
                 logger.info(f"[Pipeline] Preserving pre-existing transparent alpha channel ({orig_w}x{orig_h}). Photoroom call skipped (0 credits used).")
             else:
-                # Step 1: Photoroom AI Background Removal (SRS Section 3)
-                logger.info(f"[Pipeline] Processing FOP/BOP image through Photoroom AI ({orig_w}x{orig_h})...")
-                segmented_png_bytes = PhotoroomService.remove_background(image_bytes, crop=False, size="full")
-                photoroom_called = True
+                if use_photoroom:
+                    # Step 1: Photoroom AI Background Removal (SRS Section 3)
+                    logger.info(f"[Pipeline] Processing FOP/BOP image through Photoroom AI ({orig_w}x{orig_h})...")
+                    segmented_png_bytes = PhotoroomService.remove_background(image_bytes, crop=False, size="full")
+                    photoroom_called = True
+                    rmbg_error = None
+                else:
+                    # Step 1 (Primary): Local RMBG-2.0 Background Removal (no automatic Photoroom fallback)
+                    logger.info(f"[Pipeline] Processing FOP/BOP image locally through RMBG-2.0 ({orig_w}x{orig_h})...")
+                    segmented_png_bytes, rmbg_error = RMBG2Service.remove_background_with_status(image_bytes)
 
                 if segmented_png_bytes:
                     clean_rgba = Image.open(io.BytesIO(segmented_png_bytes)).convert("RGBA")
                     segmented_bytes = segmented_png_bytes
-                    # Photoroom treats enclosed specular highlights (e.g. a white glint on a capsule)
-                    # as background and punches holes in the product; restore those from the original.
-                    clean_rgba, holes_filled = cls._fill_small_alpha_holes(
-                        clean_rgba,
-                        raw_img.convert("RGBA"),
-                        max_hole_ratio=float(cfg.get("fill_hole_max_ratio", 0.02)),
-                    )
-                    if holes_filled:
-                        seg_buf = io.BytesIO()
-                        clean_rgba.save(seg_buf, format="PNG")
-                        segmented_bytes = seg_buf.getvalue()
+                    # Optional specular-highlight hole fill (opt-in only, so wire-basket gaps and hang-tab cutouts stay transparent).
+                    if use_photoroom and cfg.get("fill_small_alpha_holes", False):
+                        clean_rgba, holes_filled = cls._fill_small_alpha_holes(
+                            clean_rgba,
+                            raw_img.convert("RGBA"),
+                            max_hole_ratio=float(cfg.get("fill_hole_max_ratio", 0.02)),
+                        )
+                        if holes_filled:
+                            seg_buf = io.BytesIO()
+                            clean_rgba.save(seg_buf, format="PNG")
+                            segmented_bytes = seg_buf.getvalue()
                     has_transparency = True
-                    logger.info(f"[Pipeline] Photoroom background removal succeeded ({len(segmented_bytes)} bytes).")
+                    logger.info(f"[Pipeline] {bg_provider} background removal succeeded ({len(segmented_bytes)} bytes).")
                 else:
-                    logger.error("[Pipeline] Photoroom background removal unavailable or failed. Preserving original.")
+                    if use_photoroom:
+                        logger.error("[Pipeline] Photoroom background removal unavailable or failed. Preserving original.")
+                        err_msg = "Photoroom background removal unavailable or failed (check PHOTOROOM_API_KEY in .env)"
+                    else:
+                        err_msg = rmbg_error or "Local RMBG-2.0 background removal failed. Click 'Rerun Background Removal' to use Photoroom."
+                        logger.error(f"[Pipeline] {err_msg}")
                     clean_rgba = raw_img.convert("RGBA")
                     seg_buf = io.BytesIO()
                     clean_rgba.save(seg_buf, format="PNG")
                     segmented_bytes = seg_buf.getvalue()
                     has_transparency = False
-                    error_notes.append("Photoroom background removal unavailable or failed (check PHOTOROOM_API_KEY in .env)")
+                    error_notes.append(err_msg)
 
             # Step 1.5: Inpaint MRP / Expiry on high-resolution subject before canvas scaling (SRS Section 5)
             if auto_inpaint_mrp and is_fop_bop:
@@ -312,6 +325,7 @@ class ImageProcessingPipeline:
             "has_transparency": has_transparency,
             "photoroom_called": photoroom_called,
             "bg_provider": bg_provider,
+            "bg_removal_error": error_notes[0] if (requires_bg_removal and not has_transparency and error_notes) else None,
             "product_category": product_category,
             "validation": val_result,
             "five_dimensional_audit": val_result.get("five_point_audit"),

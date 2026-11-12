@@ -19,8 +19,8 @@ Your mission is to examine catalog product photographs and extract structured, a
 3. Identify all structural components (such as narrow handles, lids, knobs, pump dispensers).
 4. Identify visual characteristics (metallic sheen, reflections, transparency).
 5. Identify catalog image angle/role strictly following the IMAGE_ROLE_RULES:
-   - Standalone product shots: upright front/hero view MUST be "FOP". Rear face, underside, bottom, or inverted/upside-down view MUST be "BOP". NEVER classify as "LIFESTYLE".
-   - Only classify as "LIFESTYLE" if human models or people are actively interacting with the product or in a composite promotional scene.
+   - Standalone studio product shots on plain/white backdrops (including cast shadows, reflections, or minimal texture/foam accents): upright front/hero view MUST be "FOP"; rear/underside/bottom/inverted view MUST be "BOP".
+   - Classify as "LIFESTYLE" ONLY for human/hand interaction, real-world usage environments, or rich multi-element promotional compositions with distinct surrounding prop objects.
 6. Return strictly valid JSON adhering to the provided schema. Do not include markdown code block formatting or extraneous text.
 """
 

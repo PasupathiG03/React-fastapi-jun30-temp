@@ -29,6 +29,7 @@ import {
   getImageFileUrl,
 } from "@/services/bigbasket";
 import { showError, showSuccess } from "@/lib/toast";
+import { BgRemovalErrorBanner, RerunBgRemovalButton, RerunLocalModelButton } from "@/components/bigbasket/RerunBgRemovalControls";
 
 export default function ReviewStudio() {
   const { imageId: paramId } = useParams();
@@ -219,11 +220,13 @@ export default function ReviewStudio() {
     strip.scrollTo({ left: strip.scrollLeft + offset, behavior: "smooth" });
   }, [activeImageId, image?.id]);
 
+  const [retryingLocal, setRetryingLocal] = useState(false);
+
   async function handleRetryPhotoroom() {
     if (!image) return;
     setRetrying(true);
     try {
-      const updated = await retryImageProcessing(image.id);
+      const updated = await retryImageProcessing(image.id, "photoroom");
       setImage(updated);
       setCacheBuster(Date.now());
       if (updated.status === "auto_approved" || (updated.confidence_score && updated.confidence_score >= 0.95)) {
@@ -235,6 +238,27 @@ export default function ReviewStudio() {
       showError(e.message || "Failed to retry image with Photoroom");
     } finally {
       setRetrying(false);
+    }
+  }
+
+  async function handleRetryLocal() {
+    if (!image) return;
+    setRetryingLocal(true);
+    try {
+      const updated = await retryImageProcessing(image.id, "rmbg2");
+      setImage(updated);
+      setCacheBuster(Date.now());
+      if (updated.error_message) {
+        showError(updated.error_message);
+      } else if (updated.status === "auto_approved" || (updated.confidence_score && updated.confidence_score >= 0.95)) {
+        showSuccess(`Local RMBG-2.0 background removal succeeded! SKU ${updated.bbid} is auto-approved.`);
+      } else {
+        showSuccess(`Local RMBG-2.0 re-processed SKU ${updated.bbid} (Confidence: ${Math.round((updated.confidence_score || 0) * 100)}%).`);
+      }
+    } catch (e: any) {
+      showError(e.message || "Failed to run local RMBG-2.0 background removal");
+    } finally {
+      setRetryingLocal(false);
     }
   }
 
@@ -375,20 +399,21 @@ export default function ReviewStudio() {
               <ArrowLeft className="w-4 h-4" /> Studio
             </Link>
 
-            {(image.status === "needs_review" || image.status === "failed" || (image.confidence_score && image.confidence_score < 0.95)) && (
-              <button
-                type="button"
-                onClick={handleRetryPhotoroom}
-                disabled={retrying}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 shadow-sm transition-all disabled:opacity-50"
-                title="Retry AI background removal with Photoroom"
-              >
-                <RotateCcw className={`w-3.5 h-3.5 ${retrying ? "animate-spin" : ""}`} />
-                <span>{retrying ? "Processing Photoroom..." : "Retry with Photoroom"}</span>
-              </button>
-            )}
+            <RerunLocalModelButton onClick={handleRetryLocal} loading={retryingLocal} disabled={retrying} />
+            <RerunBgRemovalButton onClick={handleRetryPhotoroom} loading={retrying} disabled={retryingLocal} />
           </div>
         }
+      />
+
+      <BgRemovalErrorBanner
+        errorMessage={
+          image.error_message ||
+          image.validation_status?.failure_reasons?.find(
+            (r: string) => r.toLowerCase().includes("rmbg") || r.toLowerCase().includes("background removal")
+          )
+        }
+        onRerun={handleRetryPhotoroom}
+        loading={retrying}
       />
 
       {/* Batch Products Quick-Switcher Strip */}
