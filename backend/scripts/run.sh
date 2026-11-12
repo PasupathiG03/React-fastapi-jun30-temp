@@ -59,6 +59,61 @@ kill_port() {
 
 kill_port 8107
 
+# --- Redis & Celery Background Processing ---
+check_and_start_redis() {
+  if python -c "import redis; r = redis.from_url('redis://localhost:6379/0'); r.ping()" >/dev/null 2>&1; then
+    echo "[+] Redis server is active and reachable on port 6379."
+    return 0
+  fi
+
+  echo "[*] Redis not reachable on port 6379. Attempting automatic start..."
+  # Ubuntu / Debian native service
+  if command -v systemctl >/dev/null 2>&1; then
+    sudo systemctl start redis 2>/dev/null || true
+  elif command -v service >/dev/null 2>&1; then
+    sudo service redis-server start 2>/dev/null || true
+  fi
+
+  # Docker fallback (Windows / Linux Docker container)
+  if command -v docker >/dev/null 2>&1; then
+    docker start local_redis 2>/dev/null || docker run -d --name local_redis -p 6379:6379 redis:alpine 2>/dev/null || true
+  fi
+}
+
+start_celery_worker() {
+  # On Windows under Git Bash, celery is launched in its own console window by run.bat
+  if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]; then
+    return 0
+  fi
+
+  # Linux (Ubuntu) native background worker execution
+  if pgrep -f "celery -A app.core.celery_app worker" >/dev/null 2>&1; then
+    echo "[=] Celery background worker is already active."
+    return 0
+  fi
+
+  echo "[+] Launching Celery background worker process..."
+  celery -A app.core.celery_app worker --loglevel=INFO > "$BASE_DIR/celery.log" 2>&1 &
+  CELERY_PID=$!
+  echo "$CELERY_PID" > "$BASE_DIR/.celery.pid"
+  echo "[+] Celery worker running in background (PID: $CELERY_PID)."
+}
+
+cleanup() {
+  if [ -f "$BASE_DIR/.celery.pid" ]; then
+    local CPID=$(cat "$BASE_DIR/.celery.pid")
+    if kill -0 "$CPID" 2>/dev/null; then
+      echo "[*] Stopping Celery background worker (PID: $CPID)..."
+      kill "$CPID" 2>/dev/null || true
+    fi
+    rm -f "$BASE_DIR/.celery.pid"
+  fi
+}
+trap cleanup EXIT INT TERM
+
+check_and_start_redis
+start_celery_worker
+
 MODE="${1:-dev}"
 
 case "$MODE" in

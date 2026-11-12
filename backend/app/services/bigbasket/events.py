@@ -2,9 +2,10 @@ import asyncio
 import json
 import os
 from typing import AsyncGenerator, Dict, Any
+from app.core.config import settings
 from app.core.logger import logger
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+REDIS_URL = settings.REDIS_URL
 BIGBASKET_EVENT_CHANNEL = "bigbasket:events"
 
 # Local fallback queue if Redis server is unreachable

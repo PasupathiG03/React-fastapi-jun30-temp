@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { Toaster } from "react-hot-toast";
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import AccessGuard from "./components/AccessGuard";
 import RouteLoader from "./components/RouteLoader";
 import TopProgressBar from "./components/TopProgressBar";
@@ -15,12 +16,20 @@ function AppLayout() {
   return (
     <DashboardLayout>
       <Suspense fallback={<RouteLoader />}>
-        {/* Keyed by path so the fade replays on every page change, not just the first mount */}
         {/* Limited roles: only granted screens, one tab (see AccessGuard). Full access: everything. */}
         <AccessGuard>
-          <div key={location.pathname} className="route-fade-in h-full">
-            <Outlet />
-          </div>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              className="h-full flex-1"
+            >
+              <Outlet />
+            </motion.div>
+          </AnimatePresence>
         </AccessGuard>
       </Suspense>
     </DashboardLayout>

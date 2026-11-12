@@ -3,13 +3,17 @@ rem Stops what run_all.bat started: closes the Backend/Frontend terminals and fr
 set BACKEND_PORT=8107
 set FRONTEND_PORT=8106
 
-echo Closing Backend and Frontend terminals...
+echo Closing Backend, Frontend, and Celery terminals...
 rem 1. Terminate the cmd.exe terminal windows and their child processes
-powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name = 'cmd.exe'\" | Where-Object { $_.CommandLine -like '*backend\scripts\run.bat*' -or $_.CommandLine -like '*frontend\scripts\frontend_run.bat*' } | ForEach-Object { taskkill /F /T /PID $_.ProcessId } " >nul 2>&1
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name = 'cmd.exe'\" | Where-Object { $_.CommandLine -like '*backend\scripts\run.bat*' -or $_.CommandLine -like '*frontend\scripts\frontend_run.bat*' -or $_.CommandLine -like '*backend\scripts\run_celery.bat*' } | ForEach-Object { taskkill /F /T /PID $_.ProcessId } " >nul 2>&1
 
 rem 2. Also close by window title if available
+taskkill /F /T /FI "WINDOWTITLE eq Celery Worker*" >nul 2>&1
 taskkill /F /T /FI "WINDOWTITLE eq Backend*" >nul 2>&1
 taskkill /F /T /FI "WINDOWTITLE eq Frontend*" >nul 2>&1
+
+rem 3. Terminate any lingering Celery python worker processes
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name = 'python.exe'\" | Where-Object { $_.CommandLine -like '*celery*worker*' } | ForEach-Object { taskkill /F /T /PID $_.ProcessId } " >nul 2>&1
 
 rem 3. Free ports and terminate any remaining processes
 call :kill_port %BACKEND_PORT%

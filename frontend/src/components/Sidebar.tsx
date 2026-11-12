@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   BarChart3,
   ChevronDown,
@@ -172,47 +173,55 @@ function FlyoutGroup({
           </span>
         )}
       </button>
-      {pos &&
-        createPortal(
-        // The left padding is a transparent bridge so the pointer can cross the gap without closing the panel.
-        <div
-          role="menu"
-          className="fixed z-[1000]"
-          style={{ top: pos.top, left: pos.left, paddingLeft: pos.gap, maxHeight: `calc(100vh - ${pos.top}px - 8px)` }}
-        >
-          <div className="sidebar-flyout-in w-60 max-h-[inherit] overflow-y-auto no-scrollbar rounded-2xl p-2 shadow-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0c1427]">
-            <div className="px-3 pt-1 pb-1.5 flex items-center justify-between">
-              <p className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                {label}
-              </p>
-              {badge}
-            </div>
-            {items.map(({ href, label: text, Icon: ItemIcon, badge = 0 }) => {
-              const current = pathname === href || (href !== "/dashboard" && pathname.startsWith(href + "/"));
-              return (
-                <Link
-                  key={href}
-                  to={href}
-                  role="menuitem"
-                  className={`group flex items-center gap-3 px-3 py-2 rounded-xl text-[13.5px] font-medium transition-all duration-150 ${current
-                    ? "dark:bg-sky-500/20 dark:text-white [html:not(.dark)_&]:bg-[#e0f2fe] [html:not(.dark)_&]:text-[#0284c7] [html:not(.dark)_&]:font-semibold"
-                    : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/70 dark:hover:bg-white/[0.06] hover:translate-x-0.5 hover:shadow-sm"
-                    }`}
-                >
-                  <ItemIcon className="w-[18px] h-[18px] shrink-0 transition-transform duration-150 group-hover:scale-110" />
-                  <span className="truncate flex-1">{text}</span>
-                  {badge > 0 && (
-                    <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
-                      {badge > 99 ? "99+" : badge}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
-        </div>,
-        document.body
-      )}
+      <AnimatePresence>
+        {pos &&
+          createPortal(
+            // The left padding is a transparent bridge so the pointer can cross the gap without closing the panel.
+            <div
+              role="menu"
+              className="fixed z-[1000]"
+              style={{ top: pos.top, left: pos.left, paddingLeft: pos.gap, maxHeight: `calc(100vh - ${pos.top}px - 8px)` }}
+            >
+              <motion.div
+                initial={{ opacity: 0, x: -8, scale: 0.96 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                exit={{ opacity: 0, x: -6, scale: 0.96 }}
+                transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+                className="sidebar-flyout-in w-60 max-h-[inherit] overflow-y-auto no-scrollbar rounded-2xl p-2 shadow-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0c1427]"
+              >
+                <div className="px-3 pt-1 pb-1.5 flex items-center justify-between">
+                  <p className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                    {label}
+                  </p>
+                  {badge}
+                </div>
+                {items.map(({ href, label: text, Icon: ItemIcon, badge = 0 }) => {
+                  const current = pathname === href || (href !== "/dashboard" && pathname.startsWith(href + "/"));
+                  return (
+                    <Link
+                      key={href}
+                      to={href}
+                      role="menuitem"
+                      className={`group flex items-center gap-3 px-3 py-2 rounded-xl text-[13.5px] font-medium transition-all duration-150 ${current
+                        ? "dark:bg-sky-500/20 dark:text-white [html:not(.dark)_&]:bg-[#e0f2fe] [html:not(.dark)_&]:text-[#0284c7] [html:not(.dark)_&]:font-semibold"
+                        : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/70 dark:hover:bg-white/[0.06] hover:translate-x-0.5 hover:shadow-sm"
+                        }`}
+                    >
+                      <ItemIcon className="w-[18px] h-[18px] shrink-0 transition-transform duration-150 group-hover:scale-110" />
+                      <span className="truncate flex-1">{text}</span>
+                      {badge > 0 && (
+                        <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
+                          {badge > 99 ? "99+" : badge}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </motion.div>
+            </div>,
+            document.body
+          )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -474,35 +483,27 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
               }`}
           />
         </button>
-        <div
-          className={`grid transition-[grid-template-rows] duration-200 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-            }`}
-        >
-          <div className="overflow-hidden">
-            <div className="mt-0.5 ml-4 pl-2.5 border-l border-slate-200 dark:border-white/10 space-y-0.5">
-              {children}
-            </div>
-          </div>
-        </div>
+        <AnimatePresence initial={false}>
+          {open && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.22, ease: [0.25, 0.1, 0.25, 1] }}
+              className="overflow-hidden"
+            >
+              <div className="mt-0.5 ml-4 pl-2.5 border-l border-slate-200 dark:border-white/10 space-y-0.5">
+                {children}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     );
   };
 
-  return (
+  const sidebarContent = (
     <>
-      {/* Backdrop: only below `lg`, where the sidebar is an off-canvas drawer over the page content. */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-30 bg-black/50 lg:hidden" onClick={onCloseMobile} aria-hidden="true" />
-      )}
-      <aside
-        className={`shrink-0 flex flex-col justify-between rounded-[24px] transition-all duration-300 glass-panel p-3 select-none ${isDesktop
-          ? "relative h-full"
-          : `fixed z-40 top-2 left-2 bottom-2 sm:top-3.5 sm:left-3.5 sm:bottom-3.5 ${mobileOpen ? "translate-x-0" : "-translate-x-[calc(100%+1.5rem)] invisible"}`
-          }`}
-        style={{
-          width: collapsed ? 76 : 260,
-        }}
-      >
       {/* Collapse toggle: straddles the sidebar's right edge, level with the logo underline */}
       {isDesktop && onToggle && !loading && (
         // Invisible hover zone around the button's spot: the icon fades in only when the pointer is near it.
@@ -855,7 +856,50 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
           </div>
         )}
       </div>
-      </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile drawer with backdrop open motion animation */}
+      <AnimatePresence>
+        {!isDesktop && mobileOpen && (
+          <>
+            <motion.div
+              key="mobile-sidebar-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-30 bg-black/50 backdrop-blur-xs lg:hidden"
+              onClick={onCloseMobile}
+              aria-hidden="true"
+            />
+            <motion.aside
+              key="mobile-sidebar-drawer"
+              initial={{ x: -280, opacity: 0.8 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -280, opacity: 0 }}
+              transition={{ type: "spring", damping: 28, stiffness: 300 }}
+              style={{ width: 260 }}
+              className="shrink-0 flex flex-col justify-between rounded-[24px] glass-panel p-3 select-none fixed z-40 top-2 left-2 bottom-2 sm:top-3.5 sm:left-3.5 sm:bottom-3.5 shadow-2xl"
+            >
+              {sidebarContent}
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Desktop sidebar with smooth motion width transition */}
+      {isDesktop && (
+        <motion.aside
+          animate={{ width: collapsed ? 76 : 260 }}
+          transition={{ type: "spring", damping: 28, stiffness: 280, mass: 0.7 }}
+          className="shrink-0 flex flex-col justify-between rounded-[24px] glass-panel p-3 select-none relative h-full"
+        >
+          {sidebarContent}
+        </motion.aside>
+      )}
     </>
   );
 }

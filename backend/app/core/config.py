@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = ""  # Configured strictly in .env (e.g. GEMINI_MODEL=gemini-3.5-flash-lite)
     GEMINI_MAX_ATTEMPTS: int = 3
 
+    # Redis & Celery Distributed Task Queue configuration (configured strictly in .env)
+    REDIS_URL: str
+    CELERY_BROKER_URL: str
+    CELERY_RESULT_BACKEND: str
+
     @field_validator("DEFAULT_PASSWORD")
     @classmethod
     def _strong_default_password(cls, v: str) -> str:

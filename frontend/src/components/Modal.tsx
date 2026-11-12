@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { motion } from "framer-motion";
 import { AlertTriangle, Trash2, X } from "lucide-react";
 
 const SIZE_CLASS = {
@@ -104,20 +105,34 @@ export default function Modal({
 
   return createPortal(
     <div className="fixed inset-0 z-[100] overflow-y-auto">
-      <div className="fixed inset-0 bg-slate-950/55 backdrop-blur-sm modal-backdrop-in" aria-hidden="true" />
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        className="fixed inset-0 bg-slate-950/55 backdrop-blur-sm"
+        aria-hidden="true"
+      />
       <div
         className="relative min-h-full flex items-center justify-center p-3 sm:p-4"
         onMouseDown={(e) => {
           if (closeOnBackdrop && e.target === e.currentTarget) onClose();
         }}
       >
-        <div
+        <motion.div
           ref={panelRef}
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
           tabIndex={-1}
-          className={`glass-modal rounded-2xl w-full max-h-[calc(100dvh-2rem)] flex flex-col ${SIZE_CLASS[size]} focus:outline-none`}
+          initial={{ opacity: 0, scale: 0.95, y: 14 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{
+            type: "spring",
+            damping: 26,
+            stiffness: 360,
+            mass: 0.8,
+          }}
+          className={`glass-modal rounded-2xl w-full max-h-[calc(100dvh-2rem)] flex flex-col ${SIZE_CLASS[size]} text-slate-800 dark:text-slate-100 focus:outline-none`}
         >
           <div className="px-5 sm:px-6 py-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between gap-3 rounded-t-2xl bg-white/30 dark:bg-white/[0.02]">
             {header ? (
@@ -150,7 +165,7 @@ export default function Modal({
             </button>
           </div>
           {children}
-        </div>
+        </motion.div>
       </div>
     </div>,
     document.body
@@ -225,20 +240,34 @@ export function ConfirmDialog({
 
   return createPortal(
     <div className="fixed inset-0 z-[200] overflow-y-auto">
-      <div className="fixed inset-0 bg-slate-950/55 backdrop-blur-sm modal-backdrop-in" aria-hidden="true" />
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        className="fixed inset-0 bg-slate-950/55 backdrop-blur-sm"
+        aria-hidden="true"
+      />
       <div
         className="relative min-h-full flex items-center justify-center p-4"
         onMouseDown={(e) => {
           if (e.target === e.currentTarget && !busy) onCancel();
         }}
       >
-        <div
+        <motion.div
           ref={panelRef}
           role="alertdialog"
           aria-modal="true"
           aria-labelledby={titleId}
           tabIndex={-1}
-          className="glass-modal rounded-2xl p-6 max-w-sm w-full text-center focus:outline-none"
+          initial={{ opacity: 0, scale: 0.93, y: 14 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{
+            type: "spring",
+            damping: 26,
+            stiffness: 380,
+            mass: 0.75,
+          }}
+          className="glass-modal rounded-2xl p-6 max-w-sm w-full text-center text-slate-800 dark:text-slate-100 focus:outline-none"
         >
           <div
             className={`w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 ring-8 ${danger
@@ -271,7 +300,7 @@ export function ConfirmDialog({
               {busy ? busyLabel : confirmLabel}
             </button>
           </div>
-        </div>
+        </motion.div>
       </div>
     </div>,
     document.body
