@@ -8,7 +8,6 @@ import {
   Eye,
   Search,
   Trash2,
-  ChevronDown,
   ChevronRight,
   ChevronUp,
   PlusCircle,
@@ -125,16 +124,16 @@ export default function BatchProcessing() {
     loadBatches(true);
   }, []);
 
-  // When a batch is expanded, load its images if not yet loaded
+  // When a batch is expanded, ensure its images are loaded
   useEffect(() => {
-    if (expandedBatchId) {
+    if (expandedBatchId && !batchImages[expandedBatchId]) {
       loadImagesForBatch(
         expandedBatchId,
         imageStatusFilter[expandedBatchId] || "",
         imageSearch[expandedBatchId] || ""
       );
     }
-  }, [expandedBatchId]);
+  }, [expandedBatchId, batchImages]);
 
   // Polling sync every 3 seconds if any batch is currently processing
   useEffect(() => {
@@ -230,7 +229,14 @@ export default function BatchProcessing() {
   }
 
   function toggleExpand(batchId: number) {
-    setExpandedBatchId((prev) => (prev === batchId ? null : batchId));
+    setExpandedBatchId((prev) => {
+      const next = prev === batchId ? null : batchId;
+      if (next && !batchImages[next]) {
+        setBatchImagesLoading((p) => ({ ...p, [next]: true }));
+        loadImagesForBatch(next, imageStatusFilter[next] || "", imageSearch[next] || "");
+      }
+      return next;
+    });
   }
 
   async function handleStart(batch: BatchItem) {
@@ -529,6 +535,7 @@ export default function BatchProcessing() {
                     onDelete={() => handleDelete(batch)}
                     images={batchImages[batch.id] || []}
                     imagesLoading={batchImagesLoading[batch.id] || false}
+                    hasLoaded={batch.id in batchImages}
                     onReloadImages={(status, search) => {
                       setImageStatusFilter((p) => ({ ...p, [batch.id]: status }));
                       setImageSearch((p) => ({ ...p, [batch.id]: search }));
@@ -719,6 +726,7 @@ function BatchTableRow({
   onDelete,
   images,
   imagesLoading,
+  hasLoaded = false,
   onReloadImages,
   retryingImageId,
   retryingBatchId,
@@ -739,6 +747,7 @@ function BatchTableRow({
   onDelete: () => void;
   images: ImageItem[];
   imagesLoading: boolean;
+  hasLoaded?: boolean;
   onReloadImages: (status: string, search: string) => void;
   retryingImageId: number | null;
   retryingBatchId: number | null;
@@ -749,6 +758,7 @@ function BatchTableRow({
   const navigate = useNavigate();
   const [subSearch, setSubSearch] = useState("");
   const [subStatus, setSubStatus] = useState("");
+  const effectiveLoading = imagesLoading || (!hasLoaded && images.length === 0);
 
   // Sub-table images pagination state
   const [imgPage, setImgPage] = useState(1);
@@ -800,14 +810,14 @@ function BatchTableRow({
         <td className="py-3.5 px-2 text-center">
           <button
             type="button"
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/10 transition-transform"
+            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/10 transition-colors cursor-pointer"
             aria-label="Toggle batch images"
           >
-            {isExpanded ? (
-              <ChevronDown className="w-4 h-4 text-sky-500" />
-            ) : (
-              <ChevronRight className="w-4 h-4" />
-            )}
+            <ChevronRight
+              className={`w-4 h-4 transition-transform duration-200 ease-in-out ${
+                isExpanded ? "rotate-90 text-sky-500" : "text-slate-400"
+              }`}
+            />
           </button>
         </td>
 
@@ -1011,7 +1021,7 @@ function BatchTableRow({
       {isExpanded && (
         <tr className="bg-slate-50/70 dark:bg-slate-950/40 border-b border-slate-200/80 dark:border-white/10">
           <td colSpan={8} className="p-4 sm:p-6">
-            <div className="glass-card rounded-2xl p-5 border border-slate-200 dark:border-white/10 space-y-4">
+            <div className="glass-card rounded-2xl p-5 border border-slate-200 dark:border-white/10 space-y-4 subtable-row-in">
               {/* Sub-header & Image Search Bar */}
               <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200/60 dark:border-white/5">
                 <div className="flex items-center gap-2">
@@ -1020,7 +1030,14 @@ function BatchTableRow({
                     Processed Images: Batch {batch.batch_code}
                   </h4>
                   <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                    ({images.length} items loaded)
+                    {effectiveLoading ? (
+                      <span className="inline-flex items-center gap-1.5 text-sky-500 font-semibold">
+                        <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-ping" />
+                        Loading items...
+                      </span>
+                    ) : (
+                      `(${images.length} items loaded)`
+                    )}
                   </span>
                 </div>
 
@@ -1087,9 +1104,60 @@ function BatchTableRow({
               </div>
 
               {/* Sub-Table of Processed Images */}
-              {imagesLoading ? (
-                <div className="text-center py-10 text-slate-400 text-xs">
-                  Loading processed images...
+              {effectiveLoading ? (
+                <div className="overflow-x-auto rounded-xl border border-slate-200/60 dark:border-white/5 animate-pulse">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100/75 dark:bg-slate-900/80 text-slate-600 dark:text-slate-300 font-semibold text-xs border-b border-slate-200/60 dark:border-white/5">
+                        <th className="py-2.5 px-3 w-12 text-center">#</th>
+                        <th className="py-2.5 px-3 w-16">Preview</th>
+                        <th className="py-2.5 px-3">Product SKU</th>
+                        <th className="py-2.5 px-3">Original Filename</th>
+                        <th className="py-2.5 px-3">Angle / View</th>
+                        <th className="py-2.5 px-3">Category</th>
+                        <th className="py-2.5 px-3">Standardization Quality</th>
+                        <th className="py-2.5 px-3">AI Confidence</th>
+                        <th className="py-2.5 px-3">Status</th>
+                        <th className="py-2.5 px-3 text-right">Inspect</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-white/5 bg-white/40 dark:bg-transparent">
+                      {[1, 2, 3, 4].map((n) => (
+                        <tr key={n}>
+                          <td className="py-3 px-3 text-center">
+                            <div className="h-3 w-4 mx-auto bg-slate-200 dark:bg-slate-800 rounded" />
+                          </td>
+                          <td className="py-2 px-3">
+                            <div className="w-10 h-10 rounded-lg bg-slate-200 dark:bg-slate-800" />
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="h-3.5 w-28 bg-slate-200 dark:bg-slate-800 rounded" />
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="h-3.5 w-36 bg-slate-200 dark:bg-slate-800 rounded" />
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="h-4 w-14 bg-slate-200 dark:bg-slate-800 rounded-full" />
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="h-4 w-16 bg-slate-200 dark:bg-slate-800 rounded-full" />
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="h-3 w-24 bg-slate-200 dark:bg-slate-800 rounded" />
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="h-3 w-16 bg-slate-200 dark:bg-slate-800 rounded" />
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="h-5 w-24 bg-slate-200 dark:bg-slate-800 rounded-full" />
+                          </td>
+                          <td className="py-3 px-3 text-right">
+                            <div className="h-3 w-12 ml-auto bg-slate-200 dark:bg-slate-800 rounded" />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               ) : images.length > 0 ? (
                 <div className="overflow-x-auto rounded-xl border border-slate-200/60 dark:border-white/5">

@@ -35,6 +35,102 @@ import {
   RerunLocalModelButton,
 } from "@/components/bigbasket/RerunBgRemovalControls";
 
+function ReviewStudioSkeleton() {
+  return (
+    <PageContainer>
+      {/* Header Skeleton */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-200/70 dark:border-white/10 animate-pulse">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-slate-200 dark:bg-white/10 shrink-0" />
+          <div className="space-y-2">
+            <div className="h-5 w-64 bg-slate-200 dark:bg-white/10 rounded-md" />
+            <div className="h-3 w-80 max-w-full bg-slate-100 dark:bg-white/5 rounded" />
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="h-8 w-32 rounded-xl bg-slate-200 dark:bg-white/10" />
+          <div className="h-8 w-24 rounded-xl bg-slate-200 dark:bg-white/10" />
+        </div>
+      </div>
+
+      {/* Batch Products Quick-Switcher Strip Skeleton */}
+      <div className="glass-card rounded-2xl p-3 border border-slate-200/80 dark:border-white/10 mb-4 flex items-center justify-between gap-3 animate-pulse min-h-[58px]">
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded bg-slate-200 dark:bg-white/10" />
+          <div className="h-3.5 w-32 bg-slate-200 dark:bg-white/10 rounded" />
+          <div className="h-4 w-20 bg-slate-100 dark:bg-white/5 rounded" />
+        </div>
+        <div className="flex items-center gap-2 overflow-hidden">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-8 w-28 rounded-xl bg-slate-200 dark:bg-white/5 shrink-0" />
+          ))}
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <div className="h-7 w-16 rounded-xl bg-slate-200 dark:bg-white/10" />
+          <div className="h-7 w-16 rounded-xl bg-slate-200 dark:bg-white/10" />
+        </div>
+      </div>
+
+      {/* Main Viewport Grid Skeleton */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* Left 2 Cols: Canvas Viewport Skeleton */}
+        <div className="lg:col-span-2 flex flex-col space-y-4">
+          <div className="glass-card rounded-2xl p-4 flex flex-col items-center justify-between flex-1 min-h-[580px] lg:min-h-[720px] animate-pulse">
+            <div className="w-full flex items-center justify-between pb-3 border-b border-slate-200/60 dark:border-white/10">
+              <div className="flex items-center gap-2">
+                <div className="h-7 w-24 rounded-lg bg-sky-500/20" />
+                <div className="h-7 w-24 rounded-lg bg-slate-100 dark:bg-white/5" />
+                <div className="h-7 w-24 rounded-lg bg-slate-100 dark:bg-white/5" />
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-7 w-16 rounded-lg bg-slate-100 dark:bg-white/5" />
+                <div className="h-7 w-20 rounded-lg bg-slate-100 dark:bg-white/5" />
+              </div>
+            </div>
+
+            {/* Split canvases */}
+            <div className="w-full flex-1 p-4 grid grid-cols-2 gap-4">
+              <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-100/60 dark:bg-slate-900/40 flex items-center justify-center relative overflow-hidden">
+                <div className="w-8 h-8 rounded-full border-2 border-slate-300 dark:border-white/20 border-t-sky-500 animate-spin" />
+              </div>
+              <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] bg-slate-50 dark:bg-slate-950 flex items-center justify-center relative overflow-hidden">
+                <div className="w-8 h-8 rounded-full border-2 border-slate-300 dark:border-white/20 border-t-sky-500 animate-spin" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Col: Details Skeleton */}
+        <div className="space-y-4">
+          <div className="glass-card rounded-2xl p-4 space-y-4 animate-pulse">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-white/5">
+              <div className="h-4 w-40 bg-slate-200 dark:bg-white/10 rounded" />
+              <div className="h-5 w-20 rounded-full bg-slate-200 dark:bg-white/10" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/5 space-y-2">
+                  <div className="h-2.5 w-16 bg-slate-200 dark:bg-white/10 rounded" />
+                  <div className="h-4 w-24 bg-slate-200 dark:bg-white/10 rounded" />
+                </div>
+              ))}
+            </div>
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] space-y-2">
+              <div className="h-3 w-32 bg-slate-200 dark:bg-white/10 rounded" />
+              <div className="h-3 w-full bg-slate-100 dark:bg-white/5 rounded" />
+            </div>
+            <div className="flex items-center gap-2 pt-2">
+              <div className="h-9 flex-1 rounded-xl bg-slate-200 dark:bg-white/10" />
+              <div className="h-9 flex-1 rounded-xl bg-slate-200 dark:bg-white/10" />
+              <div className="h-9 flex-1 rounded-xl bg-slate-200 dark:bg-white/10" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </PageContainer>
+  );
+}
+
 export default function ReviewStudio() {
   const { imageId: paramId } = useParams();
   const [searchParams] = useSearchParams();
@@ -83,6 +179,7 @@ export default function ReviewStudio() {
   // Pixel size of the image shown in the Original pane. For an auto-extracted crop that is the uploaded
   // back-of-pack image, not the crop, so it can't come from image.original_width/height.
   const [originalShownSize, setOriginalShownSize] = useState<{ w: number; h: number } | null>(null);
+  const [imagesLoaded, setImagesLoaded] = useState<Record<string, boolean>>({});
 
   // Studio controls: Zoom & Pan
   const [viewMode, setViewMode] = useState<"side_by_side" | "result_only" | "original_only">("side_by_side");
@@ -333,14 +430,7 @@ export default function ReviewStudio() {
   }, [hasPrev, hasNext, currentIdx, batchSiblings]);
 
   if (initialLoading && !image) {
-    return (
-      <PageContainer>
-        <div className="text-center py-20 text-slate-400 text-xs flex items-center justify-center gap-2">
-          <RotateCcw className="w-4 h-4 animate-spin text-sky-500" />
-          Loading Review Studio...
-        </div>
-      </PageContainer>
-    );
+    return <ReviewStudioSkeleton />;
   }
 
   if (!image) {
@@ -369,149 +459,158 @@ export default function ReviewStudio() {
 
   return (
     <PageContainer>
-      <PageHeader
-        icon={Sliders}
-        title={image.original_filename ? `Review Studio: ${image.original_filename}` : `Review Studio: SKU ${image.bbid}`}
-        subtitle={`SKU: ${image.bbid} (${image.image_type.toUpperCase()}) · Side-by-side inspection, transparent boundary validation, and reviewer sign-off`}
-        actions={
-          <div className="flex items-center gap-2">
-            {/* Live Status Badge */}
-            <span
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider ${image.status === "auto_approved" || image.status === "manually_approved"
-                  ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
-                  : image.status === "rejected"
-                    ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
-                    : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
-                }`}
-            >
-              {image.status === "manually_approved" ? (
-                <>
-                  <CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> Manually Approved
-                </>
-              ) : image.status === "auto_approved" ? (
-                <>
-                  <CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> Auto Approved
-                </>
-              ) : image.status === "rejected" ? (
-                <>
-                  <XCircle className="w-3.5 h-3.5 text-rose-500" /> Rejected
-                </>
-              ) : (
-                <>
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> Needs Review
-                </>
-              )}
-            </span>
-
-            <Link to="/image-studio" className={SECONDARY_BUTTON} title="Return to Image Studio">
-              <ArrowLeft className="w-4 h-4" /> Studio
-            </Link>
-          </div>
-        }
-      />
-
-      <BgRemovalErrorBanner
-        errorMessage={
-          image.error_message ||
-          image.validation_status?.failure_reasons?.find(
-            (r: string) => r.toLowerCase().includes("rmbg") || r.toLowerCase().includes("background removal")
-          )
-        }
-        onRerun={handleRetryPhotoroom}
-        loading={retrying}
-      />
-
-      {/* Batch Products Quick-Switcher Strip */}
-      {batchSiblings.length > 0 && (
-        <div className="glass-card rounded-2xl p-3 border border-slate-200/80 dark:border-white/10 mb-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-xs">
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-              <Package className="w-3.5 h-3.5 text-sky-500" />
-              Batch Products ({currentIdx >= 0 ? currentIdx + 1 : 1} of {batchSiblings.length})
-            </span>
-            <span className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-white/5 text-slate-500 font-mono font-medium">
-              {image.batch_code || `Batch #${image.batch_id}`}
-            </span>
-            {isSwitching && (
-              <span className="inline-flex items-center gap-1 text-[11px] text-sky-500 font-medium">
-                <RotateCcw className="w-3 h-3 animate-spin" />
-                <span className="hidden sm:inline">Loading...</span>
+      <div className="subtable-row-in space-y-4">
+        <PageHeader
+          icon={Sliders}
+          title={image.original_filename ? `Review Studio: ${image.original_filename}` : `Review Studio: SKU ${image.bbid}`}
+          subtitle={`SKU: ${image.bbid} (${image.image_type.toUpperCase()}) · Side-by-side inspection, transparent boundary validation, and reviewer sign-off`}
+          actions={
+            <div className="flex items-center gap-2">
+              {/* Live Status Badge */}
+              <span
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider ${image.status === "auto_approved" || image.status === "manually_approved"
+                    ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                    : image.status === "rejected"
+                      ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
+                      : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
+                  }`}
+              >
+                {image.status === "manually_approved" ? (
+                  <>
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> Manually Approved
+                  </>
+                ) : image.status === "auto_approved" ? (
+                  <>
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> Auto Approved
+                  </>
+                ) : image.status === "rejected" ? (
+                  <>
+                    <XCircle className="w-3.5 h-3.5 text-rose-500" /> Rejected
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> Needs Review
+                  </>
+                )}
               </span>
+
+              <Link to="/image-studio" className={SECONDARY_BUTTON} title="Return to Image Studio">
+                <ArrowLeft className="w-4 h-4" /> Studio
+              </Link>
+            </div>
+          }
+        />
+
+        <BgRemovalErrorBanner
+          errorMessage={
+            image.error_message ||
+            image.validation_status?.failure_reasons?.find(
+              (r: string) => r.toLowerCase().includes("rmbg") || r.toLowerCase().includes("background removal")
+            )
+          }
+          onRerun={handleRetryPhotoroom}
+          loading={retrying}
+        />
+
+        {/* Batch Products Quick-Switcher Strip */}
+        {(batchSiblings.length > 0 || image.batch_id) && (
+          <div className="glass-card rounded-2xl p-3 border border-slate-200/80 dark:border-white/10 mb-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-xs min-h-[58px]">
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                <Package className="w-3.5 h-3.5 text-sky-500" />
+                Batch Products {batchSiblings.length > 0 && `(${currentIdx >= 0 ? currentIdx + 1 : 1} of ${batchSiblings.length})`}
+              </span>
+              <span className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-white/5 text-slate-500 font-mono font-medium">
+                {image.batch_code || (image.batch_id ? `Batch #${image.batch_id}` : "")}
+              </span>
+              {isSwitching && (
+                <span className="inline-flex items-center gap-1 text-[11px] text-sky-500 font-medium">
+                  <RotateCcw className="w-3 h-3 animate-spin" />
+                  <span className="hidden sm:inline">Loading...</span>
+                </span>
+              )}
+            </div>
+
+            {/* Quick Item Pills / Thumbnails */}
+            {batchSiblings.length > 0 ? (
+              <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-thin">
+                {batchSiblings.map((sibling, idx) => {
+                  const isSelected = sibling.id === currentActiveId;
+                  const isApproved = sibling.status?.includes("approved");
+                  const isProcessing = sibling.status === "processing";
+                  const isNeedsReview = sibling.status === "needs_review";
+                  const isFailed = sibling.status === "failed";
+
+                  return (
+                    <button
+                      key={sibling.id}
+                      ref={isSelected ? activeThumbnailRef : null}
+                      type="button"
+                      onClick={() => {
+                        setActiveImageId(sibling.id);
+                      }}
+                      className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border text-left transition-all shrink-0 cursor-pointer ${isSelected
+                          ? "bg-sky-500/15 border-sky-500 text-sky-600 dark:text-sky-300 ring-2 ring-sky-500/20 font-bold shadow-xs"
+                          : "bg-white/40 dark:bg-slate-900/40 border-slate-200/70 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-sky-400/50 hover:bg-slate-100/50 dark:hover:bg-white/5"
+                        }`}
+                      title={`${sibling.original_filename || sibling.bbid} (${sibling.status})`}
+                    >
+                      <span className="text-[10px] font-mono text-slate-400">#{idx + 1}</span>
+                      <div className="w-6 h-6 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/10 overflow-hidden flex items-center justify-center shrink-0">
+                        <img
+                          src={getImageFileUrl(sibling.id, isApproved ? "final" : "original")}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <span className="text-xs truncate max-w-[110px]">{sibling.bbid || sibling.original_filename || `Item ${idx + 1}`}</span>
+                      {/* Status Indicator Icon */}
+                      {isApproved ? (
+                        <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      ) : isProcessing ? (
+                        <RotateCcw className="w-3.5 h-3.5 text-sky-500 animate-spin shrink-0" />
+                      ) : isNeedsReview ? (
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      ) : isFailed ? (
+                        <XCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                      ) : (
+                        <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-thin animate-pulse">
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <div key={i} className="h-8 w-28 rounded-xl bg-slate-200/70 dark:bg-white/5 shrink-0" />
+                ))}
+              </div>
             )}
-          </div>
 
-          {/* Quick Item Pills / Thumbnails */}
-          <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-thin">
-            {batchSiblings.map((sibling, idx) => {
-              const isSelected = sibling.id === currentActiveId;
-              const isApproved = sibling.status?.includes("approved");
-              const isProcessing = sibling.status === "processing";
-              const isNeedsReview = sibling.status === "needs_review";
-              const isFailed = sibling.status === "failed";
-
-              return (
-                <button
-                  key={sibling.id}
-                  ref={isSelected ? activeThumbnailRef : null}
-                  type="button"
-                  onClick={() => {
-                    setActiveImageId(sibling.id);
-                  }}
-                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border text-left transition-all shrink-0 cursor-pointer ${isSelected
-                      ? "bg-sky-500/15 border-sky-500 text-sky-600 dark:text-sky-300 ring-2 ring-sky-500/20 font-bold shadow-xs"
-                      : "bg-white/40 dark:bg-slate-900/40 border-slate-200/70 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-sky-400/50 hover:bg-slate-100/50 dark:hover:bg-white/5"
-                    }`}
-                  title={`${sibling.original_filename || sibling.bbid} (${sibling.status})`}
-                >
-                  <span className="text-[10px] font-mono text-slate-400">#{idx + 1}</span>
-                  <div className="w-6 h-6 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/10 overflow-hidden flex items-center justify-center shrink-0">
-                    <img
-                      src={getImageFileUrl(sibling.id, isApproved ? "final" : "original")}
-                      alt=""
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <span className="text-xs truncate max-w-[110px]">{sibling.bbid || sibling.original_filename || `Item ${idx + 1}`}</span>
-                  {/* Status Indicator Icon */}
-                  {isApproved ? (
-                    <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                  ) : isProcessing ? (
-                    <RotateCcw className="w-3.5 h-3.5 text-sky-500 animate-spin shrink-0" />
-                  ) : isNeedsReview ? (
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                  ) : isFailed ? (
-                    <XCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                  ) : (
-                    <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  )}
-                </button>
-              );
-            })}
+            {/* Prev / Next Buttons */}
+            <div className="flex items-center gap-1.5 shrink-0 justify-end">
+              <button
+                type="button"
+                disabled={!hasPrev || batchSiblings.length === 0}
+                onClick={handleGoPrev}
+                className={`${SECONDARY_BUTTON} !px-3 !py-1.5 !gap-1 cursor-pointer disabled:!opacity-40 disabled:cursor-not-allowed`}
+                title="Previous Image (Left Arrow)"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" /> Prev
+              </button>
+              <button
+                type="button"
+                disabled={!hasNext || batchSiblings.length === 0}
+                onClick={handleGoNext}
+                className={`${SECONDARY_BUTTON} !px-3 !py-1.5 !gap-1 cursor-pointer disabled:!opacity-40 disabled:cursor-not-allowed`}
+                title="Next Image (Right Arrow)"
+              >
+                Next <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
-
-          {/* Prev / Next Buttons */}
-          <div className="flex items-center gap-1.5 shrink-0 justify-end">
-            <button
-              type="button"
-              disabled={!hasPrev}
-              onClick={handleGoPrev}
-              className={`${SECONDARY_BUTTON} !px-3 !py-1.5 !gap-1 cursor-pointer disabled:!opacity-40 disabled:cursor-not-allowed`}
-              title="Previous Image (Left Arrow)"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" /> Prev
-            </button>
-            <button
-              type="button"
-              disabled={!hasNext}
-              onClick={handleGoNext}
-              className={`${SECONDARY_BUTTON} !px-3 !py-1.5 !gap-1 cursor-pointer disabled:!opacity-40 disabled:cursor-not-allowed`}
-              title="Next Image (Right Arrow)"
-            >
-              Next <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
+        )}
 
       <div className={`grid grid-cols-1 ${isWideView ? "lg:grid-cols-1" : "lg:grid-cols-3"} gap-5 transition-all duration-300`}>
         {/* Left 2 Cols (or full width in wide view): Interactive Canvas & Viewer */}
@@ -618,14 +717,22 @@ export default function ReviewStudio() {
                     <span className="absolute top-2 left-2 z-10 text-[10px] font-bold bg-black/60 text-white px-2 py-0.5 rounded-md pointer-events-none">
                       Original ({originalShownSize?.w || image.original_width || "?"} × {originalShownSize?.h || image.original_height || "?"})
                     </span>
+                    {!imagesLoaded[`${image.id}_orig`] && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="w-8 h-8 rounded-full border-2 border-slate-300 dark:border-white/20 border-t-sky-500 animate-spin" />
+                      </div>
+                    )}
                     <img
                       src={`${getImageFileUrl(image.id, "original")}&_t=${cacheBuster}`}
                       alt="Original"
                       draggable={false}
-                      onLoad={(e) =>
-                        setOriginalShownSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })
-                      }
-                      className="max-h-full max-w-full object-contain pointer-events-none select-none transition-transform duration-75 ease-out"
+                      onLoad={(e) => {
+                        setOriginalShownSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight });
+                        setImagesLoaded((prev) => ({ ...prev, [`${image.id}_orig`]: true }));
+                      }}
+                      className={`max-h-full max-w-full object-contain pointer-events-none select-none transition-all duration-200 ease-out ${
+                        imagesLoaded[`${image.id}_orig`] ? "opacity-100" : "opacity-0"
+                      }`}
                       style={{
                         transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom / 100})`,
                         transformOrigin: "center center",
@@ -646,16 +753,28 @@ export default function ReviewStudio() {
                       Output Canvas (2000 × 2000 px, 150 DPI)
                     </span>
                     {image.final_output_path || image.status?.includes("approved") ? (
-                      <img
-                        src={`${getImageFileUrl(image.id, "final")}&_t=${cacheBuster}`}
-                        alt="Result"
-                        draggable={false}
-                        className="max-h-full max-w-full object-contain pointer-events-none select-none transition-transform duration-75 ease-out"
-                        style={{
-                          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom / 100})`,
-                          transformOrigin: "center center",
-                        }}
-                      />
+                      <>
+                        {!imagesLoaded[`${image.id}_final`] && (
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div className="w-8 h-8 rounded-full border-2 border-slate-300 dark:border-white/20 border-t-sky-500 animate-spin" />
+                          </div>
+                        )}
+                        <img
+                          src={`${getImageFileUrl(image.id, "final")}&_t=${cacheBuster}`}
+                          alt="Result"
+                          draggable={false}
+                          onLoad={() => {
+                            setImagesLoaded((prev) => ({ ...prev, [`${image.id}_final`]: true }));
+                          }}
+                          className={`max-h-full max-w-full object-contain pointer-events-none select-none transition-all duration-200 ease-out ${
+                            imagesLoaded[`${image.id}_final`] ? "opacity-100" : "opacity-0"
+                          }`}
+                          style={{
+                            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom / 100})`,
+                            transformOrigin: "center center",
+                          }}
+                        />
+                      </>
                     ) : (
                       <div className="flex flex-col items-center justify-center p-8 text-center space-y-3 z-10">
                         <div className="w-12 h-12 rounded-2xl bg-sky-500/10 text-sky-500 flex items-center justify-center animate-spin">
@@ -711,16 +830,28 @@ export default function ReviewStudio() {
                       </button>
                     </div>
                   ) : (
-                    <img
-                      src={`${getImageFileUrl(image.id, viewMode === "original_only" ? "original" : "final")}&_t=${cacheBuster}`}
-                      alt="Viewer"
-                      draggable={false}
-                      className="max-h-full max-w-full object-contain pointer-events-none select-none transition-transform duration-75 ease-out"
-                      style={{
-                        transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom / 100})`,
-                        transformOrigin: "center center",
-                      }}
-                    />
+                    <>
+                      {!imagesLoaded[`${image.id}_single`] && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="w-8 h-8 rounded-full border-2 border-slate-300 dark:border-white/20 border-t-sky-500 animate-spin" />
+                        </div>
+                      )}
+                      <img
+                        src={`${getImageFileUrl(image.id, viewMode === "original_only" ? "original" : "final")}&_t=${cacheBuster}`}
+                        alt="Viewer"
+                        draggable={false}
+                        onLoad={() => {
+                          setImagesLoaded((prev) => ({ ...prev, [`${image.id}_single`]: true }));
+                        }}
+                        className={`max-h-full max-w-full object-contain pointer-events-none select-none transition-all duration-200 ease-out ${
+                          imagesLoaded[`${image.id}_single`] ? "opacity-100" : "opacity-0"
+                        }`}
+                        style={{
+                          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom / 100})`,
+                          transformOrigin: "center center",
+                        }}
+                      />
+                    </>
                   )}
                 </div>
               )}
@@ -1017,6 +1148,7 @@ export default function ReviewStudio() {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </PageContainer>
   );
