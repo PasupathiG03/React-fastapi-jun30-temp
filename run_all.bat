@@ -1,4 +1,6 @@
 @echo off
+set "CELERY_STARTED=1"
+
 echo Starting Redis and Celery Worker in a new terminal...
 start "Celery Worker" cmd /k call "%~dp0backend\scripts\run_celery.bat"
 

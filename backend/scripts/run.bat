@@ -40,12 +40,16 @@ if errorlevel 1 (
 )
 
 rem 2. Ensure Celery background worker terminal is running (check running Celery process)
-powershell -NoProfile -Command "if (@(Get-CimInstance Win32_Process -Filter 'Name=''python.exe'' and CommandLine LIKE ''%%celery%%''').Count -gt 0) { exit 0 } else { exit 1 }" >nul 2>&1
-if errorlevel 1 (
-    echo [*] Starting Celery background worker terminal...
-    start "Celery Worker" cmd /k call "%~dp0run_celery.bat"
+if defined CELERY_STARTED (
+    echo [=] Celery background worker managed by launcher.
 ) else (
-    echo [=] Celery background worker is already active.
+    powershell -NoProfile -Command "if (@(Get-CimInstance Win32_Process -Filter 'Name=''python.exe'' and CommandLine LIKE ''%%celery%%''').Count -gt 0) { exit 0 } else { exit 1 }" >nul 2>&1
+    if errorlevel 1 (
+        echo [*] Starting Celery background worker terminal...
+        start "Celery Worker" cmd /k call "%~dp0run_celery.bat"
+    ) else (
+        echo [=] Celery background worker is already active.
+    )
 )
 
 for /f "delims=" %%G in ('where git 2^>nul') do (
