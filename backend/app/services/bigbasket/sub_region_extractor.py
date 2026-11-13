@@ -577,6 +577,8 @@ class SubRegionExtractor:
         image_bytes: bytes,
         bbid: str = "",
         category: str = "FOOD",
+        batch_id: Optional[int] = None,
+        image_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Dynamically analyzes packaging to identify informational sections (metadata only).
@@ -591,6 +593,8 @@ class SubRegionExtractor:
                 image_bytes=image_bytes,
                 bbid=bbid,
                 category=category,
+                batch_id=batch_id,
+                image_id=image_id,
             )
             if gemini_regions:
                 detected_types = {r.get("region_type") for r in gemini_regions if isinstance(r, dict)}

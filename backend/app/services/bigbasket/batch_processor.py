@@ -294,6 +294,8 @@ class BatchProcessor:
             cfg_with_sku = dict(cfg)
             cfg_with_sku["bbid"] = img.bbid
             cfg_with_sku["filename"] = img.original_filename
+            cfg_with_sku["batch_id"] = batch.id
+            cfg_with_sku["image_id"] = img.id
             batch_cat = cfg.get("product_category")
             if not batch_cat or batch_cat == "auto":
                 cfg_with_sku["product_category"] = prediction.get("primary_category") or prediction.get("product_category") or "UNKNOWN"
@@ -403,6 +405,8 @@ class BatchProcessor:
                     raw_bytes,
                     bbid=img.bbid,
                     category=getattr(img, "category", "") or "FOOD",
+                    batch_id=batch.id,
+                    image_id=img.id,
                 )
                 if not img.validation_results:
                     img.validation_results = {}

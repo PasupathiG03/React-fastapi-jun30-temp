@@ -25,7 +25,6 @@ import {
   fetchBatches,
   fetchBatchImages,
   retryImageProcessing,
-  updateImageCategory,
   getImageFileUrl,
 } from "@/services/bigbasket";
 import { showError, showSuccess } from "@/lib/toast";
@@ -267,7 +266,6 @@ export default function ReviewStudio() {
     }
   }
 
-  const [updatingCat, setUpdatingCat] = useState(false);
   const [downloadingSingle, setDownloadingSingle] = useState(false);
 
   async function handleDownloadIndividualImage() {
@@ -292,27 +290,6 @@ export default function ReviewStudio() {
       showError(e?.message || "Failed to download image");
     } finally {
       setDownloadingSingle(false);
-    }
-  }
-
-  async function handleCycleCategory(currentCategory: string) {
-    if (!image?.id) return;
-    const catUpper = currentCategory.toUpperCase().replace(/-/g, "_");
-    let nextCat: "FOOD" | "NON_FOOD" | "KITCHEN_ITEMS" = "NON_FOOD";
-    if (catUpper === "FOOD") nextCat = "NON_FOOD";
-    else if (catUpper === "NON_FOOD" || catUpper === "NONFOOD") nextCat = "KITCHEN_ITEMS";
-    else if (catUpper === "KITCHEN_ITEMS" || catUpper === "KITCHEN") nextCat = "FOOD";
-    else nextCat = "NON_FOOD";
-
-    setUpdatingCat(true);
-    try {
-      const updated = await updateImageCategory(image.id, nextCat);
-      setImage(updated);
-      showSuccess(`Product category updated to ${nextCat.replace("_", " ")}`);
-    } catch (e: any) {
-      showError(e?.message || "Failed to update category");
-    } finally {
-      setUpdatingCat(false);
     }
   }
 
@@ -752,7 +729,7 @@ export default function ReviewStudio() {
         </div>
 
         {/* Right Col: Quality Checklist & Specifications */}
-        <div className={isWideView ? "grid grid-cols-1 md:grid-cols-2 gap-5" : "space-y-4"}>
+        <div className={isWideView ? "space-y-4" : "space-y-4"}>
           {/* Quality Validation Checklist */}
           {/* Quality Validation Checklist (Strict 6 BigBasket SRS Categories) */}
           {/* Hidden for now — Automated Quality Checklist card. Uncomment to restore.
@@ -892,24 +869,19 @@ export default function ReviewStudio() {
 
                 const badgeConfig =
                   cat === "KITCHEN_ITEMS" || cat === "KITCHEN"
-                    ? { label: "KITCHEN ITEMS", cls: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25" }
+                    ? { label: "KITCHEN ITEMS", cls: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30" }
                     : cat === "NON_FOOD" || cat === "NONFOOD"
-                      ? { label: "NON-FOOD", cls: "bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 hover:bg-purple-500/25" }
+                      ? { label: "NON-FOOD", cls: "bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30" }
                       : cat === "FOOD"
-                        ? { label: "FOOD", cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25" }
-                        : { label: "UNKNOWN", cls: "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/25" };
+                        ? { label: "FOOD", cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30" }
+                        : { label: "UNKNOWN", cls: "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30" };
 
                 return (
-                  <button
-                    type="button"
-                    disabled={updatingCat}
-                    onClick={() => handleCycleCategory(cat)}
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center gap-1 ${badgeConfig.cls}`}
-                    title="Click to cycle between Non-Food, Kitchen Items, and Food"
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider inline-flex items-center ${badgeConfig.cls}`}
                   >
                     {badgeConfig.label}
-                    <span className="text-[9px] opacity-70 underline font-normal">(change)</span>
-                  </button>
+                  </span>
                 );
               })()}
             </div>
@@ -1021,28 +993,28 @@ export default function ReviewStudio() {
                 )}
               </div>
             )}
-          </div>
 
-          {/* Background Removal Reprocessing & Download Actions */}
-          <div className="glass-card rounded-2xl p-3 border border-slate-200/80 dark:border-white/10 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-            <RerunLocalModelButton
-              onClick={handleRetryLocal}
-              loading={retryingLocal}
-              disabled={retrying || downloadingSingle}
-              className="flex-1 justify-center"
-            />
-            <RerunBgRemovalButton
-              onClick={handleRetryPhotoroom}
-              loading={retrying}
-              disabled={retryingLocal || downloadingSingle}
-              className="flex-1 justify-center"
-            />
-            <DownloadOutputImageButton
-              onClick={handleDownloadIndividualImage}
-              loading={downloadingSingle}
-              disabled={retrying || retryingLocal || (!image?.final_output_path && !image?.status?.includes("approved"))}
-              className="flex-1 justify-center"
-            />
+            {/* Background Removal Reprocessing & Download Actions embedded directly in card */}
+            <div className="pt-3 border-t border-slate-100 dark:border-white/5 flex flex-wrap items-center justify-end gap-2">
+              <RerunLocalModelButton
+                onClick={handleRetryLocal}
+                loading={retryingLocal}
+                disabled={retrying || downloadingSingle}
+                className="justify-center"
+              />
+              <RerunBgRemovalButton
+                onClick={handleRetryPhotoroom}
+                loading={retrying}
+                disabled={retryingLocal || downloadingSingle}
+                className="justify-center"
+              />
+              <DownloadOutputImageButton
+                onClick={handleDownloadIndividualImage}
+                loading={downloadingSingle}
+                disabled={retrying || retryingLocal || (!image?.final_output_path && !image?.status?.includes("approved"))}
+                className="justify-center"
+              />
+            </div>
           </div>
         </div>
       </div>

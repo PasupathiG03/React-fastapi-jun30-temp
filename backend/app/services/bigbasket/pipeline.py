@@ -84,6 +84,8 @@ class ImageProcessingPipeline:
         inpaint_reasons = []
         sku_bbid = cfg.get("bbid", "")
         img_filename = cfg.get("filename", "")
+        batch_id_val = cfg.get("batch_id")
+        image_id_val = cfg.get("image_id")
 
         if requires_bg_removal:
             # Check if input already contains clean transparency (e.g. pre-segmented or pipeline re-processing)
@@ -149,6 +151,8 @@ class ImageProcessingPipeline:
                     bbid=sku_bbid,
                     filename=img_filename,
                     category=product_category,
+                    batch_id=batch_id_val,
+                    image_id=image_id_val,
                 )
                 if inpaint_applied:
                     seg_buf = io.BytesIO()
@@ -205,6 +209,8 @@ class ImageProcessingPipeline:
                     bbid=sku_bbid,
                     filename=img_filename,
                     category=product_category,
+                    batch_id=batch_id_val,
+                    image_id=image_id_val,
                 )
 
             seg_buf = io.BytesIO()
@@ -265,6 +271,8 @@ class ImageProcessingPipeline:
                 bbid=sku_bbid,
                 filename=img_filename,
                 category=product_category,
+                batch_id=batch_id_val,
+                image_id=image_id_val,
             )
 
         # Step 5: Save final output PNG with 150 DPI metadata (SRS Section 1 & 2)
@@ -434,6 +442,8 @@ class ImageProcessingPipeline:
         bbid: str = "",
         filename: str = "",
         category: str = "FOOD",
+        batch_id: Optional[int] = None,
+        image_id: Optional[int] = None,
     ) -> Tuple[Image.Image, bool, list]:
         """
         Safely detects and removes variable MRP, unit sale price, expiry date,
@@ -449,6 +459,8 @@ class ImageProcessingPipeline:
                 bbid=bbid,
                 filename=filename,
                 category=category,
+                batch_id=batch_id,
+                image_id=image_id,
             )
             if applied:
                 res_img = Image.open(io.BytesIO(inpainted_bytes))

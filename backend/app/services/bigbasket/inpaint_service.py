@@ -31,6 +31,8 @@ class DynamicInpaintService:
         filename: str = "",
         category: str = "FOOD",
         neighbor_exclusion_boxes: Optional[List[List[int]]] = None,
+        batch_id: Optional[int] = None,
+        image_id: Optional[int] = None,
     ) -> Tuple[bytes, bool, List[Dict[str, Any]]]:
         """
         Executes dynamic Gemini stamp localization followed by surgical color-adaptive inpainting.
@@ -51,6 +53,8 @@ class DynamicInpaintService:
             bbid=bbid,
             filename=filename,
             category=category,
+            batch_id=batch_id,
+            image_id=image_id,
         )
 
         stamps = stamp_data.get("stamps", [])

@@ -126,6 +126,7 @@ class GeminiClassificationService:
         filename: str = "",
         batch_id: Optional[int] = None,
         image_id: Optional[int] = None,
+        user_id: Optional[int] = None,
         classification: Optional[GeminiProductClassification] = None,
         error_message: Optional[str] = None,
         metadata_payload: Optional[Dict[str, Any]] = None,
@@ -136,9 +137,27 @@ class GeminiClassificationService:
             from app.models.user import User  # noqa: F401
             from app.core.database import SessionLocal
             from app.models.gemini_usage import GeminiApiLog
+            from app.models.bigbasket import ImageBatch, BatchImage
 
             db = SessionLocal()
             try:
+                # If user_id is not passed, resolve automatically from batch or image
+                effective_user_id = user_id
+                if not effective_user_id and batch_id:
+                    batch_obj = db.query(ImageBatch.created_by_id).filter(ImageBatch.id == batch_id).first()
+                    if batch_obj and batch_obj[0]:
+                        effective_user_id = batch_obj[0]
+                if not effective_user_id and image_id:
+                    img_obj = db.query(BatchImage.created_by_id, BatchImage.batch_id).filter(BatchImage.id == image_id).first()
+                    if img_obj:
+                        if img_obj[0]:
+                            effective_user_id = img_obj[0]
+                        elif not batch_id and img_obj[1]:
+                            batch_id = img_obj[1]
+                            b_rec = db.query(ImageBatch.created_by_id).filter(ImageBatch.id == batch_id).first()
+                            if b_rec and b_rec[0]:
+                                effective_user_id = b_rec[0]
+
                 meta = dict(metadata_payload or {})
                 if classification and classification.is_multi_product_image:
                     meta["is_multi_product_image"] = True
@@ -161,6 +180,7 @@ class GeminiClassificationService:
                     filename=filename,
                     batch_id=batch_id,
                     image_id=image_id,
+                    user_id=effective_user_id,
                     primary_category=classification.primary_category if classification else None,
                     subcategory=classification.subcategory if classification else None,
                     product_type=classification.product_type if classification else None,

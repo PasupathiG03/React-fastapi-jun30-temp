@@ -1584,59 +1584,43 @@ function CreateBatchModal({
             </div>
           </div>
 
-          {/* Dynamic Validation Resolution (Width x Height) */}
-          <div className="p-3.5 rounded-xl border border-sky-500/20 bg-sky-500/5 dark:bg-white/[0.02] space-y-2">
+          {/* Validation Resolution Dimensions (Fixed Standards) */}
+          <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-white/10 bg-slate-50/50 dark:bg-white/[0.02] space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                 <Maximize2 className="w-3.5 h-3.5 text-sky-500" />
                 <span>Validation Resolution Dimensions</span>
               </label>
-              <button
-                type="button"
-                onClick={() => {
-                  setTargetWidth(1500);
-                  setTargetHeight(1500);
-                  recheckFiles(imageFiles, 1500, 1500);
-                }}
-                className="text-[10px] text-sky-600 dark:text-sky-400 hover:underline font-medium cursor-pointer"
-              >
-                Reset Default (1500 × 1500 px)
-              </button>
+              <span className="text-[10px] text-slate-400 font-medium font-mono">
+                Standard (1500 × 1500 px)
+              </span>
             </div>
             <p className="text-[11px] text-slate-500">
-              Specify the minimum required pixel dimensions for image validation (Default: 1500 × 1500 px).
+              Minimum required pixel dimensions for image validation (Standard: 1500 × 1500 px).
             </p>
             <div className="grid grid-cols-2 gap-3 pt-1">
               <div>
-                <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
                   Min Width (px)
                 </label>
                 <input
                   type="number"
-                  min={1}
+                  readOnly
+                  disabled
                   value={targetWidth}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value) || 0;
-                    setTargetWidth(val);
-                    recheckFiles(imageFiles, val, targetHeight);
-                  }}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-mono text-xs font-semibold focus:outline-none focus:border-sky-500"
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-mono text-xs font-semibold cursor-not-allowed select-none focus:outline-none"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
                   Min Height (px)
                 </label>
                 <input
                   type="number"
-                  min={1}
+                  readOnly
+                  disabled
                   value={targetHeight}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value) || 0;
-                    setTargetHeight(val);
-                    recheckFiles(imageFiles, targetWidth, val);
-                  }}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-mono text-xs font-semibold focus:outline-none focus:border-sky-500"
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-mono text-xs font-semibold cursor-not-allowed select-none focus:outline-none"
                 />
               </div>
             </div>
