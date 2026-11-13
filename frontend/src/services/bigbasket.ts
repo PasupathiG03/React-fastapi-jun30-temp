@@ -321,12 +321,13 @@ export function getExcelReportUrl(batchRef: string | number): string {
   return `${API_BASE_URL}/api/image-studio/reports/batch/${batchRef}/excel`;
 }
 
-export function getOutputZipUrl(batchRef: string | number): string {
-  return `${API_BASE_URL}/api/image-studio/reports/batch/${batchRef}/zip`;
+export function getOutputZipUrl(batchRef: string | number, includeAll: boolean = false): string {
+  const query = includeAll ? "?include_all=true" : "";
+  return `${API_BASE_URL}/api/image-studio/reports/batch/${batchRef}/zip${query}`;
 }
 
-export async function downloadBatchZipFile(batchRef: string | number, filename?: string): Promise<void> {
-  const url = getOutputZipUrl(batchRef);
+export async function downloadBatchZipFile(batchRef: string | number, filename?: string, includeAll: boolean = false): Promise<void> {
+  const url = getOutputZipUrl(batchRef, includeAll);
   const response = await fetch(url, { credentials: "include" });
   if (!response.ok) {
     throw new Error(`Failed to download ZIP: ${response.statusText}`);
@@ -335,7 +336,8 @@ export async function downloadBatchZipFile(batchRef: string | number, filename?:
   const blobUrl = window.URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = blobUrl;
-  a.download = filename || `${batchRef}_output_images.zip`;
+  const defaultName = includeAll ? `${batchRef}_all_images.zip` : `${batchRef}_output_images.zip`;
+  a.download = filename || defaultName;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

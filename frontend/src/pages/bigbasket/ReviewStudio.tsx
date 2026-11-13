@@ -29,7 +29,12 @@ import {
   getImageFileUrl,
 } from "@/services/bigbasket";
 import { showError, showSuccess } from "@/lib/toast";
-import { BgRemovalErrorBanner, RerunBgRemovalButton, RerunLocalModelButton } from "@/components/bigbasket/RerunBgRemovalControls";
+import {
+  BgRemovalErrorBanner,
+  DownloadOutputImageButton,
+  RerunBgRemovalButton,
+  RerunLocalModelButton,
+} from "@/components/bigbasket/RerunBgRemovalControls";
 
 export default function ReviewStudio() {
   const { imageId: paramId } = useParams();
@@ -263,6 +268,32 @@ export default function ReviewStudio() {
   }
 
   const [updatingCat, setUpdatingCat] = useState(false);
+  const [downloadingSingle, setDownloadingSingle] = useState(false);
+
+  async function handleDownloadIndividualImage() {
+    if (!image) return;
+    setDownloadingSingle(true);
+    try {
+      const url = `${getImageFileUrl(image.id, "final")}&_t=${cacheBuster}`;
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch image file");
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      const cleanBbid = image.bbid || "image";
+      const seq = image.sequence_order || 1;
+      a.download = `${cleanBbid}_${seq}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (e: any) {
+      showError(e?.message || "Failed to download image");
+    } finally {
+      setDownloadingSingle(false);
+    }
+  }
 
   async function handleCycleCategory(currentCategory: string) {
     if (!image?.id) return;
@@ -398,9 +429,6 @@ export default function ReviewStudio() {
             <Link to="/image-studio" className={SECONDARY_BUTTON} title="Return to Image Studio">
               <ArrowLeft className="w-4 h-4" /> Studio
             </Link>
-
-            <RerunLocalModelButton onClick={handleRetryLocal} loading={retryingLocal} disabled={retrying} />
-            <RerunBgRemovalButton onClick={handleRetryPhotoroom} loading={retrying} disabled={retryingLocal} />
           </div>
         }
       />
@@ -993,6 +1021,28 @@ export default function ReviewStudio() {
                 )}
               </div>
             )}
+          </div>
+
+          {/* Background Removal Reprocessing & Download Actions */}
+          <div className="glass-card rounded-2xl p-3 border border-slate-200/80 dark:border-white/10 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <RerunLocalModelButton
+              onClick={handleRetryLocal}
+              loading={retryingLocal}
+              disabled={retrying || downloadingSingle}
+              className="flex-1 justify-center"
+            />
+            <RerunBgRemovalButton
+              onClick={handleRetryPhotoroom}
+              loading={retrying}
+              disabled={retryingLocal || downloadingSingle}
+              className="flex-1 justify-center"
+            />
+            <DownloadOutputImageButton
+              onClick={handleDownloadIndividualImage}
+              loading={downloadingSingle}
+              disabled={retrying || retryingLocal || (!image?.final_output_path && !image?.status?.includes("approved"))}
+              className="flex-1 justify-center"
+            />
           </div>
         </div>
       </div>

@@ -77,6 +77,7 @@ async def download_excel_report(
 @router.get("/batch/{batch_ref}/zip")
 async def download_output_zip(
     batch_ref: str,
+    include_all: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -88,14 +89,15 @@ async def download_output_zip(
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found.")
 
-    # Refresh export package dynamically to ensure 100% current approved outputs and zero duplicate/stale files
+    # Refresh export package dynamically to ensure current outputs and zero duplicate/stale files
     from app.services.bigbasket.batch_processor import BatchProcessor
-    await BatchProcessor.generate_export_package(batch.id, db)
+    pkg = await BatchProcessor.generate_export_package(batch.id, db, include_all=include_all)
 
-    if not batch.zip_export_path:
+    zip_file = pkg.get("zip_file_path") if pkg else batch.zip_export_path
+    if not zip_file:
         raise HTTPException(status_code=404, detail="Output ZIP archive not yet generated for this batch.")
 
-    p = Path(batch.zip_export_path)
+    p = Path(zip_file)
     if not p.exists():
         raise HTTPException(status_code=404, detail="ZIP archive file not found on disk.")
 

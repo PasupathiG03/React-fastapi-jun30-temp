@@ -33,7 +33,6 @@ import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/components/ui";
 import { TablePagination } from "@/components/DataTableControls";
 import Modal, { ModalBody, ModalFooter, ModalCancelButton, ConfirmDialog } from "@/components/Modal";
-import { RerunBgRemovalButton } from "@/components/bigbasket/RerunBgRemovalControls";
 import {
   fetchBatches,
   fetchBatchImages,
@@ -96,6 +95,31 @@ export default function BatchProcessing() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isAnalyticsModalOpen, setIsAnalyticsModalOpen] = useState(false);
   const [batchToDelete, setBatchToDelete] = useState<BatchItem | null>(null);
+  const [batchToDownloadZip, setBatchToDownloadZip] = useState<BatchItem | null>(null);
+  const [downloadingZipType, setDownloadingZipType] = useState<"approved" | "all" | null>(null);
+
+  function handleInitiateZipDownload(batch: BatchItem) {
+    // If the batch has review-needed images, prompt with modal options
+    if (batch.review_needed_images > 0) {
+      setBatchToDownloadZip(batch);
+    } else {
+      // Direct download of approved images if there are no pending reviews
+      downloadBatchZipFile(batch.batch_code, undefined, false);
+    }
+  }
+
+  async function handleConfirmZipDownload(includeAll: boolean) {
+    if (!batchToDownloadZip) return;
+    try {
+      setDownloadingZipType(includeAll ? "all" : "approved");
+      await downloadBatchZipFile(batchToDownloadZip.batch_code, undefined, includeAll);
+      setBatchToDownloadZip(null);
+    } catch (err) {
+      console.error("Failed to download ZIP:", err);
+    } finally {
+      setDownloadingZipType(null);
+    }
+  }
 
   useEffect(() => {
     loadBatches(true);
@@ -514,6 +538,7 @@ export default function BatchProcessing() {
                     retryingBatchId={retryingBatchId}
                     onRetryImage={(imageId) => handleRetryImage(batch.id, imageId)}
                     onRetryBatchFailed={() => handleRetryBatchFailed(batch.id)}
+                    onDownloadZip={() => handleInitiateZipDownload(batch)}
                   />
                 );
               })}
@@ -580,6 +605,83 @@ export default function BatchProcessing() {
         onClose={() => setIsAnalyticsModalOpen(false)}
       />
 
+      {/* DOWNLOAD ZIP SELECTION MODAL */}
+      {batchToDownloadZip && (
+        <Modal
+          onClose={() => setBatchToDownloadZip(null)}
+          title={`Download Images: ${batchToDownloadZip.batch_code}`}
+          size="md"
+        >
+          <ModalBody>
+            <div className="space-y-4 py-2">
+              <p className="text-xs text-slate-600 dark:text-slate-300">
+                This batch contains{" "}
+                <span className="font-bold text-amber-500">
+                  {batchToDownloadZip.review_needed_images} item(s) awaiting review
+                </span>{" "}
+                and{" "}
+                <span className="font-bold text-emerald-500">
+                  {batchToDownloadZip.approved_images} approved item(s)
+                </span>
+                . Choose which images you would like to package into the ZIP download:
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                {/* Option 1: Approved Only */}
+                <button
+                  type="button"
+                  disabled={downloadingZipType !== null}
+                  onClick={() => handleConfirmZipDownload(false)}
+                  className="flex flex-col items-start p-4 rounded-xl border border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20 hover:bg-emerald-100/60 dark:hover:bg-emerald-950/40 text-left transition-all group cursor-pointer disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">
+                      Approved Only ({batchToDownloadZip.approved_images})
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Downloads only fully verified and approved catalog images. Recommended for production.
+                  </p>
+                  <div className="mt-3 text-xs font-semibold text-emerald-600 dark:text-emerald-400 group-hover:underline flex items-center gap-1">
+                    <Download className={`w-3.5 h-3.5 ${downloadingZipType === "approved" ? "animate-spin" : ""}`} />
+                    <span>{downloadingZipType === "approved" ? "Preparing ZIP..." : "Download Approved"}</span>
+                  </div>
+                </button>
+
+                {/* Option 2: All Images (Approved + Needs Review) */}
+                <button
+                  type="button"
+                  disabled={downloadingZipType !== null}
+                  onClick={() => handleConfirmZipDownload(true)}
+                  className="flex flex-col items-start p-4 rounded-xl border border-sky-500/30 bg-sky-50/50 dark:bg-sky-950/20 hover:bg-sky-100/60 dark:hover:bg-sky-950/40 text-left transition-all group cursor-pointer disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Download className="w-4 h-4 text-sky-500 shrink-0" />
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">
+                      All Images ({batchToDownloadZip.approved_images + batchToDownloadZip.review_needed_images})
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Downloads all processed images including those marked for review, for inspection or offline editing.
+                  </p>
+                  <div className="mt-3 text-xs font-semibold text-sky-600 dark:text-sky-400 group-hover:underline flex items-center gap-1">
+                    <Download className={`w-3.5 h-3.5 ${downloadingZipType === "all" ? "animate-spin" : ""}`} />
+                    <span>{downloadingZipType === "all" ? "Preparing ZIP..." : "Download All"}</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </ModalBody>
+
+          <ModalFooter>
+            <ModalCancelButton onClick={() => setBatchToDownloadZip(null)}>
+              Cancel
+            </ModalCancelButton>
+          </ModalFooter>
+        </Modal>
+      )}
+
       {/* CUSTOM CONFIRM DELETE MODAL */}
       {batchToDelete && (
         <ConfirmDialog
@@ -622,6 +724,7 @@ function BatchTableRow({
   retryingBatchId,
   onRetryImage,
   onRetryBatchFailed,
+  onDownloadZip,
 }: {
   index: number;
   batch: BatchItem;
@@ -641,6 +744,7 @@ function BatchTableRow({
   retryingBatchId: number | null;
   onRetryImage: (imageId: number) => void;
   onRetryBatchFailed: () => void;
+  onDownloadZip: () => void;
 }) {
   const navigate = useNavigate();
   const [subSearch, setSubSearch] = useState("");
@@ -854,7 +958,7 @@ function BatchTableRow({
               <>
                 <button
                   type="button"
-                  onClick={() => downloadBatchZipFile(batch.batch_code)}
+                  onClick={onDownloadZip}
                   className="p-1.5 rounded-lg text-slate-400 hover:text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-500/10 transition-colors cursor-pointer"
                   title="Download standardized images ZIP"
                 >
@@ -1173,13 +1277,6 @@ function BatchTableRow({
                           {/* Action Button */}
                           <td className="py-2 px-3 text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-2">
-                              {(img.status === "needs_review" || img.status === "failed") && (
-                                <RerunBgRemovalButton
-                                  compact
-                                  loading={retryingImageId === img.id}
-                                  onClick={() => onRetryImage(img.id)}
-                                />
-                              )}
                               <Link
                                 to="/image-studio/review-studio"
                                 state={{ imageId: img.id }}

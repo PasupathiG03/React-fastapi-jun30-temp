@@ -600,23 +600,25 @@ class BatchProcessor:
             logger.error(f"Failed sub-region extraction for BOP image {parent_img.id}: {e}")
 
     @classmethod
-    async def generate_export_package(cls, batch_id: int, db: Session) -> Optional[Dict[str, Any]]:
+    async def generate_export_package(cls, batch_id: int, db: Session, include_all: bool = False) -> Optional[Dict[str, Any]]:
         batch = db.query(ImageBatch).filter(ImageBatch.id == batch_id).first()
         if not batch:
             return None
 
         export_dir = BigBasketStorage.get_export_dir(batch)
-        zip_path = export_dir / f"{batch.batch_code}_output_images.zip"
+        zip_filename = f"{batch.batch_code}_all_images.zip" if include_all else f"{batch.batch_code}_output_images.zip"
+        zip_path = export_dir / zip_filename
         excel_path = export_dir / f"{batch.batch_code}_processing_report.xlsx"
 
         images = db.query(BatchImage).filter(BatchImage.batch_id == batch_id).order_by(BatchImage.sequence_order).all()
 
-        # 1. Build ZIP package of approved outputs
+        # 1. Build ZIP package of outputs (approved only by default, or all processed images including needs_review)
         exported_count = 0
         seen_arcnames = set()
+        allowed_statuses = ("auto_approved", "manually_approved", "needs_review") if include_all else ("auto_approved", "manually_approved")
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             for img in images:
-                if img.status in ("auto_approved", "manually_approved") and img.final_output_path:
+                if img.status in allowed_statuses and img.final_output_path:
                     p = Path(img.final_output_path)
                     if p.exists() and p.name not in seen_arcnames:
                         # Standard BigBasket naming: {BBID}_{sequence}.png
