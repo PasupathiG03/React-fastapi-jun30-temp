@@ -330,6 +330,11 @@ export default function ReviewStudio() {
       const updated = await retryImageProcessing(image.id, "photoroom");
       setImage(updated);
       setCacheBuster(Date.now());
+      if (image.batch_id) {
+        fetchBatchImages(image.batch_id, 1, 100)
+          .then((siblings) => setBatchSiblings(siblings.items || []))
+          .catch(() => {});
+      }
       if (updated.status === "auto_approved" || (updated.confidence_score && updated.confidence_score >= 0.95)) {
         showSuccess(`Photoroom AI background removal succeeded! SKU ${updated.bbid} is auto-approved.`);
       } else {
@@ -349,6 +354,11 @@ export default function ReviewStudio() {
       const updated = await retryImageProcessing(image.id, "rmbg2");
       setImage(updated);
       setCacheBuster(Date.now());
+      if (image.batch_id) {
+        fetchBatchImages(image.batch_id, 1, 100)
+          .then((siblings) => setBatchSiblings(siblings.items || []))
+          .catch(() => {});
+      }
       if (updated.error_message) {
         showError(updated.error_message);
       } else if (updated.status === "auto_approved" || (updated.confidence_score && updated.confidence_score >= 0.95)) {

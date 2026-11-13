@@ -474,11 +474,17 @@ class BatchProcessor:
                     db.delete(s)
             db.flush()
 
+            # Keep only retained images in memory so deduplication check doesn't block newly extracted crops
+            same_sku_imgs = [
+                s for s in same_sku_imgs
+                if (s.validation_results or {}).get("auto_extracted_from") != parent_img.id
+            ]
+
             # Crops take the next free sequence numbers for this SKU, after every image already in the batch
             # (uploaded images keep their numbers; uq_batch_images_bbid_sequence can't be violated).
             used_seqs = [
                 s.sequence_order for s in same_sku_imgs
-                if (s.validation_results or {}).get("auto_extracted_from") != parent_img.id and s.sequence_order
+                if s.sequence_order
             ]
             next_seq = max(used_seqs + [parent_img.sequence_order or 0]) + 1
 
@@ -705,6 +711,9 @@ class BatchProcessor:
         await cls._process_single_image(db, img, batch, ai_manager, cfg)
 
         # Update batch counters
+        batch.total_images = db.query(BatchImage).filter(
+            BatchImage.batch_id == batch.id,
+        ).count()
         batch.processed_images = db.query(BatchImage).filter(
             BatchImage.batch_id == batch.id,
             BatchImage.status.in_(["auto_approved", "needs_review", "manually_approved", "rejected"]),
@@ -759,6 +768,9 @@ class BatchProcessor:
             await cls._process_single_image(db, img, batch, ai_manager, cfg)
 
         # Update batch counters
+        batch.total_images = db.query(BatchImage).filter(
+            BatchImage.batch_id == batch.id,
+        ).count()
         batch.processed_images = db.query(BatchImage).filter(
             BatchImage.batch_id == batch.id,
             BatchImage.status.in_(["auto_approved", "needs_review", "manually_approved", "rejected"]),
