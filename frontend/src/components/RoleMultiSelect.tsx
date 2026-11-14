@@ -1,5 +1,6 @@
 import { Check } from "lucide-react";
 import type { RoleItem } from "@/services/role";
+import { GlobalInlineLoader } from "@/components/GlobalLoader";
 
 /** Pick which roles may open a workflow stage. Rendered as toggleable chips. */
 export default function RoleMultiSelect({
@@ -18,7 +19,7 @@ export default function RoleMultiSelect({
   }
 
   if (loading) {
-    return <p className="text-[11px] text-slate-400 dark:text-slate-500">Loading roles...</p>;
+    return <GlobalInlineLoader text="Loading roles..." className="text-[11px]" />;
   }
   if (roles.length === 0) {
     return <p className="text-[11px] text-slate-400 dark:text-slate-500">No roles available.</p>;

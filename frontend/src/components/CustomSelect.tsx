@@ -126,23 +126,23 @@ export function CustomSelect<T extends string | number = string | number>({
     };
   }, [isOpen]);
 
-  // Size styling tokens
+  // Size styling tokens - standardized to align with TableSearchInput & global form elements
   const sizeClasses = {
-    sm: "px-2.5 py-1 text-xs rounded-lg min-h-[30px]",
-    md: "px-3 py-2 text-xs md:text-sm rounded-xl min-h-[38px]",
-    lg: "px-3.5 py-2.5 text-sm md:text-base rounded-xl min-h-[44px]",
+    sm: "px-3 py-1.5 text-xs rounded-xl min-h-[36px] h-9",
+    md: "px-3.5 py-2 text-xs md:text-sm rounded-xl min-h-[38px]",
+    lg: "px-4 py-2.5 text-sm md:text-base rounded-xl min-h-[44px]",
   }[size];
 
   const chevronSizes = {
-    sm: "w-3 h-3",
-    md: "w-3.5 h-3.5",
+    sm: "w-3.5 h-3.5",
+    md: "w-4 h-4",
     lg: "w-4 h-4",
   }[size];
 
   const itemPadding = {
-    sm: "px-2.5 py-1.5 text-xs",
-    md: "px-3 py-2 text-xs md:text-sm",
-    lg: "px-3.5 py-2.5 text-sm",
+    sm: "px-3 py-1.5 text-xs",
+    md: "px-3.5 py-2 text-xs md:text-sm",
+    lg: "px-4 py-2.5 text-sm",
   }[size];
 
   return (

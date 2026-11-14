@@ -97,6 +97,123 @@ class SubRegionExtractor:
     """
 
     @classmethod
+    def validate_and_refine_crop_box(
+        cls,
+        box: Any,
+        cat: str,
+        orig_w: int,
+        orig_h: int,
+        all_regions: Optional[List[Dict[str, Any]]] = None,
+        arr: Optional[np.ndarray] = None,
+    ) -> Optional[Tuple[int, int, int, int]]:
+        """
+        Rigorous 'Check Before Crop' coordinate verification and adaptive boundary refinement.
+        1. Validates normalized coordinate bounds [0 <= ymin < ymax <= 1000, 0 <= xmin < xmax <= 1000].
+        2. Rejects degenerate or inverted bounding boxes.
+        3. Computes section-specific adaptive padding based on actual package resolution
+           (preventing static 10px padding from slicing ascenders/descenders on 2000px images).
+        4. Isolates sections that touch (e.g. separates FSSAI top from preceding Manufacturer address,
+           and protects multiple statutory license lines).
+        5. Returns clamped pixel coordinates (fx1, fy1, fx2, fy2) or None if invalid.
+        """
+        if not box or not isinstance(box, (list, tuple)) or len(box) != 4:
+            logger.warning(f"Invalid coordinate format for category {cat}: {box}")
+            return None
+
+        try:
+            ymin, xmin, ymax, xmax = [float(v) for v in box]
+        except (ValueError, TypeError):
+            logger.warning(f"Non-numeric coordinates for category {cat}: {box}")
+            return None
+
+        # Sanity check normalized coordinates
+        if not (0 <= ymin < ymax <= 1000 and 0 <= xmin < xmax <= 1000):
+            logger.warning(f"Coordinates out of bounds [0, 1000] for category {cat}: {box}")
+            return None
+
+        # Minimum viable extent (reject slivers smaller than 0.8% of image dimension)
+        if (ymax - ymin) < 8 or (xmax - xmin) < 8:
+            logger.warning(f"Degenerate box dimensions for category {cat}: {box}")
+            return None
+
+        # Convert to pixel space
+        py1 = int(round(ymin * orig_h / 1000.0))
+        px1 = int(round(xmin * orig_w / 1000.0))
+        py2 = int(round(ymax * orig_h / 1000.0))
+        px2 = int(round(xmax * orig_w / 1000.0))
+
+        bw = max(1, px2 - px1)
+        bh = max(1, py2 - py1)
+
+        # Proportional, resolution-aware adaptive margins
+        cat_lower = cat.lower().strip()
+
+        if cat_lower == "fssai":
+            # FSSAI block: Needs top room for the swirl/leaf emblem, bottom room for 14-digit license numbers
+            # and horizontal room for wide license strings.
+            pad_top = max(18, int(0.12 * bh), int(0.015 * orig_h))
+            pad_bottom = max(24, int(0.18 * bh), int(0.022 * orig_h))
+            pad_x = max(24, int(0.08 * bw), int(0.020 * orig_w))
+
+            # Check if there is an adjacent manufacturer address directly above
+            if all_regions:
+                mfg_reg = next(
+                    (r for r in all_regions if (r.get("region_type") or "").lower() == "manufactured_by" and r.get("box_2d")),
+                    None
+                )
+                if mfg_reg:
+                    mfg_box = mfg_reg["box_2d"]
+                    mfg_py2 = int(round(mfg_box[2] * orig_h / 1000.0))
+                    # If FSSAI starts directly below manufacturer address, ensure pad_top doesn't clip into address
+                    if 0 <= (py1 - mfg_py2) < pad_top * 2:
+                        split_y = (mfg_py2 + py1) // 2
+                        py1 = max(split_y + 2, py1 - 6)
+                        pad_top = 0  # Already cleanly positioned
+
+        elif cat_lower == "nutritional":
+            # Complete table: Needs uniform margin around outer border lines and footnotes
+            pad_top = max(20, int(0.04 * bh), int(0.012 * orig_h))
+            pad_bottom = max(24, int(0.05 * bh), int(0.016 * orig_h))
+            pad_x = max(22, int(0.04 * bw), int(0.015 * orig_w))
+
+        elif cat_lower == "ingredient":
+            # Ingredients block: Needs clean header room and bottom allergen room
+            pad_top = max(18, int(0.05 * bh), int(0.012 * orig_h))
+            pad_bottom = max(20, int(0.05 * bh), int(0.014 * orig_h))
+            pad_x = max(20, int(0.04 * bw), int(0.015 * orig_w))
+
+        elif cat_lower == "manufactured_by":
+            # Manufacturer & Marketer: Clean header and bottom customer support details
+            pad_top = max(16, int(0.04 * bh), int(0.012 * orig_h))
+            pad_bottom = max(18, int(0.04 * bh), int(0.014 * orig_h))
+            pad_x = max(20, int(0.04 * bw), int(0.015 * orig_w))
+
+        elif cat_lower == "barcode":
+            # Barcode: Generous horizontal quiet zone margins (GS1 specification)
+            pad_top = max(12, int(0.03 * bh))
+            pad_bottom = max(14, int(0.04 * bh))
+            pad_x = max(28, int(0.10 * bw), int(0.025 * orig_w))
+
+        else:
+            pad_top = max(14, int(0.03 * bh))
+            pad_bottom = max(14, int(0.03 * bh))
+            pad_x = max(16, int(0.03 * bw))
+
+        fx1 = max(0, px1 - pad_x)
+        fy1 = max(0, py1 - pad_top)
+        fx2 = min(orig_w, px2 + pad_x)
+        fy2 = min(orig_h, py2 + pad_bottom)
+
+        # Final verification: crop must be at least 35px wide and 25px tall
+        final_w = fx2 - fx1
+        final_h = fy2 - fy1
+        if final_w < 35 or final_h < 25:
+            logger.warning(f"Refined crop box too small ({final_w}x{final_h}) for category {cat}")
+            return None
+
+        return (fx1, fy1, fx2, fy2)
+
+    @classmethod
     def detect_and_extract_sub_regions(
         cls,
         image_bytes: bytes,
@@ -140,30 +257,20 @@ class SubRegionExtractor:
                     cat = (reg.get("region_type") or "").lower().strip()
                     disp = reg.get("display_name") or cat.replace("_", " ").title()
                     box = reg.get("box_2d")
-                    if not box or len(box) != 4:
+                    refined_coords = cls.validate_and_refine_crop_box(
+                        box=box,
+                        cat=cat,
+                        orig_w=orig_w,
+                        orig_h=orig_h,
+                        all_regions=gemini_regions,
+                        arr=arr,
+                    )
+                    if not refined_coords:
                         continue
-                    ymin, xmin, ymax, xmax = box
-                    py1 = int(round(ymin * orig_h / 1000.0))
-                    px1 = int(round(xmin * orig_w / 1000.0))
-                    py2 = int(round(ymax * orig_h / 1000.0))
-                    px2 = int(round(xmax * orig_w / 1000.0))
 
-                    # Safety padding to ensure no text strokes or logo edges are clipped
-                    pad_x = 12
-                    pad_y = 10
-                    if cat == "fssai":
-                        pad_y = 15
-                    elif cat == "barcode":
-                        pad_x = 20
-                        pad_y = 10
-
-                    fx1 = max(0, px1 - pad_x)
-                    fy1 = max(0, py1 - pad_y)
-                    fx2 = min(orig_w, px2 + pad_x)
-                    fy2 = min(orig_h, py2 + pad_y)
-
+                    fx1, fy1, fx2, fy2 = refined_coords
                     crop = arr[fy1:fy2, fx1:fx2]
-                    if crop.shape[0] > 20 and crop.shape[1] > 30:
+                    if crop.shape[0] >= 20 and crop.shape[1] >= 30:
                         assigned_seq = reg.get("catalog_sequence") or current_seq
                         cls._append_crop_result(
                             extracted_results,

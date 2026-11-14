@@ -9,6 +9,7 @@ import {
   Workflow as WorkflowIcon,
 } from "lucide-react";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
+import { GlobalKpiSkeleton } from "@/components/GlobalLoader";
 import Modal, { ConfirmDialog, ModalCancelButton, ModalFooter } from "@/components/Modal";
 import EmptyState from "@/components/EmptyState";
 import { PRIMARY_BUTTON } from "@/components/ui";
@@ -860,49 +861,7 @@ export default function WorkflowManagementPage() {
       />
 
       {loadingWorkflows ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="glass-card rounded-[22px] p-5 space-y-4 animate-pulse"
-            >
-              {/* Card Header Skeleton */}
-              <div className="flex items-center gap-3">
-                <div
-                  className="h-4.5 bg-slate-200 dark:bg-white/10 rounded-md"
-                  style={{ width: `${38 + ((i * 15) % 25)}%` }}
-                />
-                <div className="h-5 w-16 bg-slate-100 dark:bg-white/5 rounded-full shrink-0" />
-                <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-white/5 shrink-0 ml-auto" />
-              </div>
-
-              {/* Stages List Skeleton */}
-              <div className="space-y-2.5">
-                {[1, 2].map((s) => (
-                  <div
-                    key={s}
-                    className="relative flex items-center gap-2.5 bg-white/40 dark:bg-white/[0.02] rounded-xl border border-slate-200/80 dark:border-white/[0.06] pl-4 pr-2.5 py-2.5 overflow-hidden"
-                  >
-                    <span className="absolute left-0 top-0 bottom-0 w-1 bg-slate-200 dark:bg-white/10" />
-                    <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-white/10 shrink-0" />
-                    <div className="w-7 h-7 rounded-lg bg-slate-200 dark:bg-white/10 shrink-0" />
-                    <div
-                      className="h-3.5 bg-slate-200 dark:bg-white/10 rounded-md flex-1"
-                      style={{ maxWidth: `${45 + ((s * 25) % 35)}%` }}
-                    />
-                    <div className="w-5 h-5 rounded-lg bg-slate-100 dark:bg-white/5 shrink-0" />
-                  </div>
-                ))}
-
-                {/* Add Stage dashed placeholder */}
-                <div className="w-full h-11 rounded-xl border-2 border-dashed border-slate-200/80 dark:border-white/[0.08] bg-white/20 dark:bg-white/[0.01] flex items-center justify-center gap-2">
-                  <div className="w-3.5 h-3.5 rounded bg-slate-200 dark:bg-white/10" />
-                  <div className="h-3 w-20 bg-slate-200 dark:bg-white/10 rounded" />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+        <GlobalKpiSkeleton count={3} />
       ) : workflows.length === 0 ? (
         <div className="glass-card rounded-[22px]">
           <EmptyState

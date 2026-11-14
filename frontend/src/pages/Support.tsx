@@ -4,6 +4,7 @@ import { showError, showSuccess, showUpdate } from "../lib/toast";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { CustomSelect } from "@/components/CustomSelect";
 import { TablePagination, TableSearchInput } from "@/components/DataTableControls";
+import { GlobalModalLoader, GlobalTableSkeleton } from "@/components/GlobalLoader";
 import { useTableData } from "@/hooks/useTableData";
 import Modal, { ConfirmDialog, ModalCancelButton, ModalFooter } from "@/components/Modal";
 import EmptyState from "@/components/EmptyState";
@@ -161,84 +162,51 @@ export default function Support() {
       />
 
       <div className="glass-card rounded-[22px] overflow-hidden">
-        {/* Table header bar: title + tabs on the left, search on the right (same layout as Role Management). */}
-        {loading ? (
-          <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.06] flex items-center justify-between animate-pulse">
-            <div className="h-4 w-32 bg-slate-200 dark:bg-white/10 rounded" />
-            <div className="h-7 w-52 bg-slate-100 dark:bg-white/5 rounded-xl" />
+        {/* Table header bar: title + tabs on the left, search on the right */}
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.06] flex flex-wrap sm:flex-nowrap sm:items-center gap-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">Requests</h2>
+            <span className="text-xs text-slate-400">
+              {table.filtered.length} request{table.filtered.length !== 1 ? "s" : ""}
+            </span>
           </div>
-        ) : (
-          <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.06] flex flex-wrap sm:flex-nowrap sm:items-center gap-3">
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">Requests</h2>
-              <span className="text-xs text-slate-400">
-                {table.filtered.length} request{table.filtered.length !== 1 ? "s" : ""}
-              </span>
-            </div>
-            <div className="inline-flex p-0.5 rounded-xl border border-slate-200 dark:border-white/10 glass-field sm:ml-3">
-              {(["all", "open", "resolved"] as Tab[]).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => {
-                    setTab(t);
-                    table.setPage(1);
-                  }}
-                  className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize transition-colors ${tab === t
-                    ? "bg-sky-500/15 text-sky-700 dark:text-white dark:bg-white/10"
-                    : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
-                    }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-            <TableSearchInput
-              query={table.query}
-              onQueryChange={table.setQuery}
-              placeholder="Search by subject or number"
-              className="basis-full sm:basis-auto sm:w-64 sm:ml-auto"
-            />
+          <div className="inline-flex p-0.5 rounded-xl border border-slate-200 dark:border-white/10 glass-field sm:ml-3">
+            {(["all", "open", "resolved"] as Tab[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => {
+                  setTab(t);
+                  table.setPage(1);
+                }}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize transition-colors ${tab === t
+                  ? "bg-sky-500/15 text-sky-700 dark:text-white dark:bg-white/10"
+                  : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
+                  }`}
+              >
+                {t}
+              </button>
+            ))}
           </div>
-        )}
+          <TableSearchInput
+            query={table.query}
+            onQueryChange={table.setQuery}
+            placeholder="Search by subject or number"
+            className="basis-full sm:basis-auto sm:w-64 sm:ml-auto"
+          />
+        </div>
 
         {/* Column headings (hidden on phones, where each row stacks) */}
         <div className="hidden sm:grid grid-cols-[80px_1fr_120px_100px_56px] gap-4 px-6 py-3 border-b border-slate-100 dark:border-white/[0.06] text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-          {loading ? (
-            <>
-              <span className="h-2.5 w-10 bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
-              <span className="h-2.5 w-14 bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
-              <span className="h-2.5 w-12 bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
-              <span className="h-2.5 w-14 bg-slate-200 dark:bg-white/10 rounded animate-pulse justify-self-end" />
-              <span />
-            </>
-          ) : (
-            <>
-              <span>Ticket</span>
-              <span>Subject</span>
-              <span>Status</span>
-              <span className="text-right">Updated</span>
-              <span />
-            </>
-          )}
+          <span>Ticket</span>
+          <span>Subject</span>
+          <span>Status</span>
+          <span className="text-right">Updated</span>
+          <span />
         </div>
 
         {loading ? (
-          // Same grid as the real rows, so nothing shifts when the data arrives.
-          <div className="divide-y divide-slate-100 dark:divide-white/[0.04] animate-pulse">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="grid grid-cols-[1fr_auto] sm:grid-cols-[80px_1fr_120px_100px_20px] gap-x-4 gap-y-1.5 items-center px-6 py-3.5">
-                <div className="hidden sm:block h-3 w-10 bg-slate-200 dark:bg-white/10 rounded" />
-                <div className="space-y-2">
-                  <div className="h-3.5 bg-slate-200 dark:bg-white/10 rounded" style={{ width: `${45 + ((i * 17) % 35)}%`, maxWidth: 320 }} />
-                  <div className="h-4 w-40 max-w-full bg-slate-100 dark:bg-white/5 rounded-full" />
-                </div>
-                <div className="h-5 w-16 bg-slate-100 dark:bg-white/5 rounded-full justify-self-end sm:justify-self-start" />
-                <div className="hidden sm:block h-3 w-14 bg-slate-100 dark:bg-white/5 rounded justify-self-end" />
-                <div className="hidden sm:block h-3 w-3 bg-slate-100 dark:bg-white/5 rounded" />
-              </div>
-            ))}
-          </div>
+          <GlobalTableSkeleton rows={4} />
         ) : (
           <>
             {visible.length === 0 && (
@@ -566,10 +534,7 @@ function TicketDetailModal({
       onClose={onClose}
     >
       {!ticket ? (
-        <div className="p-6 space-y-3 animate-pulse">
-          <div className="h-4 w-48 bg-slate-200 dark:bg-white/10 rounded" />
-          <div className="h-20 bg-slate-100 dark:bg-white/5 rounded-xl" />
-        </div>
+        <GlobalModalLoader lines={4} />
       ) : (
         <>
           <div className="p-5 sm:p-6 space-y-5">

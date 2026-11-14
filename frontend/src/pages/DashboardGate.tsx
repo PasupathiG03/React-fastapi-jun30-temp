@@ -5,7 +5,7 @@ import { API_BASE_URL } from "@/lib/constants";
 import { fetchMenus, type MenuItem } from "@/services/menu";
 import { useLive } from "@/context/LiveContext";
 import PageContainer from "@/components/PageContainer";
-import DashboardSkeleton from "@/components/DashboardSkeleton";
+import GlobalPageLoader from "@/components/GlobalLoader";
 import EmptyState from "@/components/EmptyState";
 
 import { Dashboard, preloadRoute } from "@/lib/lazyPages";
@@ -59,9 +59,9 @@ export default function DashboardGate() {
     };
   }, [accessVersion]);
 
-  if (decision.kind === "loading") return <DashboardSkeleton />;
+  if (decision.kind === "loading") return <GlobalPageLoader />;
   if (decision.kind === "dashboard") return (
-      <Suspense fallback={<DashboardSkeleton />}>
+      <Suspense fallback={<GlobalPageLoader />}>
         <Dashboard />
       </Suspense>
     );

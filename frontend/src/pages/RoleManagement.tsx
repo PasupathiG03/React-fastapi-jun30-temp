@@ -4,6 +4,7 @@ import { Shield, Plus, Trash2, ToggleLeft, ToggleRight, Edit2, Search } from "lu
 import { RoleItem, fetchRoles, createRole, updateRole, deleteRole, RoleCreatePayload } from "@/services/role";
 import { TablePagination, TableSearchInput, TableExportButton } from "@/components/DataTableControls";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
+import { GlobalTableSkeleton } from "@/components/GlobalLoader";
 import { useTableData } from "@/hooks/useTableData";
 import Modal, { ConfirmDialog, ModalBody, ModalCancelButton, ModalFooter } from "@/components/Modal";
 import EmptyState from "@/components/EmptyState";
@@ -169,49 +170,22 @@ export default function RoleManagementPage() {
 
       {/* Roles List */}
       <div className="glass-card rounded-[22px] overflow-hidden">
-        {loadingRoles ? (
-          <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.06] flex items-center justify-between animate-pulse">
-            <div className="h-4 w-32 bg-slate-200 dark:bg-white/10 rounded" />
-            <div className="h-3 w-12 bg-slate-100 dark:bg-white/5 rounded" />
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.06] flex flex-wrap sm:flex-nowrap sm:items-center gap-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">Roles</h2>
+            <span className="text-xs text-slate-400">{roles.length} role{roles.length !== 1 ? "s" : ""}</span>
           </div>
-        ) : (
-          <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.06] flex flex-wrap sm:flex-nowrap sm:items-center gap-3">
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">Roles</h2>
-              <span className="text-xs text-slate-400">{roles.length} role{roles.length !== 1 ? "s" : ""}</span>
-            </div>
-            {/* Export sits top-right next to the title on mobile; search drops to its own full-width row
-                below it. From `sm` up, both sit together to the right of the title in one row instead. */}
-            <TableExportButton onExport={handleExport} disabled={table.filtered.length === 0} className="ml-auto sm:ml-0 sm:order-3" />
-            <TableSearchInput
-              query={table.query}
-              onQueryChange={table.setQuery}
-              placeholder="Search roles..."
-              className="basis-full sm:basis-auto sm:w-52 sm:ml-auto sm:order-2"
-            />
-          </div>
-        )}
+          <TableExportButton onExport={handleExport} disabled={table.filtered.length === 0} className="ml-auto sm:ml-0 sm:order-3" />
+          <TableSearchInput
+            query={table.query}
+            onQueryChange={table.setQuery}
+            placeholder="Search roles..."
+            className="basis-full sm:basis-auto sm:w-52 sm:ml-auto sm:order-2"
+          />
+        </div>
 
         {loadingRoles ? (
-          <div className="divide-y divide-slate-100 dark:divide-white/[0.04] animate-pulse">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="flex items-center gap-4 px-6 py-4">
-                <div className="w-8 shrink-0 flex justify-center">
-                  <div className="w-3 h-4 bg-slate-200 dark:bg-white/10 rounded" />
-                </div>
-                <div className="w-9 h-9 rounded-xl bg-slate-200 dark:bg-white/10 shrink-0" />
-                <div className="flex-1 space-y-2 py-1">
-                  <div className="h-3.5 w-32 bg-slate-200 dark:bg-white/10 rounded" />
-                  <div className="h-3 w-48 bg-slate-100 dark:bg-white/5 rounded" />
-                </div>
-                <div className="h-6 w-16 bg-slate-100 dark:bg-white/5 rounded-full shrink-0" />
-                <div className="flex items-center gap-2 shrink-0">
-                  <div className="w-5 h-5 bg-slate-100 dark:bg-white/5 rounded shrink-0" />
-                  <div className="w-5 h-5 bg-slate-100 dark:bg-white/5 rounded shrink-0" />
-                </div>
-              </div>
-            ))}
-          </div>
+          <GlobalTableSkeleton rows={5} />
         ) : roles.length === 0 ? (
           <EmptyState
             icon={Shield}

@@ -6,7 +6,6 @@ import {
   Pause,
   XCircle,
   Eye,
-  Search,
   Trash2,
   ChevronRight,
   ChevronUp,
@@ -30,8 +29,10 @@ import {
 } from "lucide-react";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/components/ui";
-import { TablePagination } from "@/components/DataTableControls";
+import { TablePagination, TableSearchInput } from "@/components/DataTableControls";
 import Modal, { ModalBody, ModalFooter, ModalCancelButton, ConfirmDialog } from "@/components/Modal";
+import { CustomSelect } from "@/components/CustomSelect";
+import { GlobalModalLoader, GlobalInlineLoader, GlobalKpiSkeleton, GlobalTableRowSkeleton } from "@/components/GlobalLoader";
 import {
   fetchBatches,
   fetchBatchImages,
@@ -366,6 +367,7 @@ export default function BatchProcessing() {
         icon={Sparkles}
         title="Image Studio"
         subtitle="End-to-end automated catalog standardization pipeline, live extraction monitor, and quality inspector"
+        loading={loadingBatches}
         actions={
           <div className="flex items-center gap-2.5">
             <button
@@ -400,96 +402,98 @@ export default function BatchProcessing() {
       />
 
       {/* KPI Overview Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-        <div className="glass-card rounded-2xl p-4 flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              Total Extractions
-            </p>
-            <p className="text-xl font-bold text-slate-900 dark:text-white mt-1">
-              {totalBatchesCount}
-            </p>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-sky-500/10 text-sky-500 flex items-center justify-center">
-            <Layers className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="glass-card rounded-2xl p-4 flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              In Processing
-            </p>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-xl font-bold text-slate-900 dark:text-white">
-                {processingCount}
-              </span>
-              {processingCount > 0 && (
-                <span className="w-2 h-2 rounded-full bg-sky-500 animate-ping" />
-              )}
+      {loadingBatches ? (
+        <GlobalKpiSkeleton count={4} />
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+          <div className="glass-card rounded-2xl p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Total Extractions
+              </p>
+              <p className="text-xl font-bold text-slate-900 dark:text-white mt-1">
+                {totalBatchesCount}
+              </p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-sky-500/10 text-sky-500 flex items-center justify-center">
+              <Layers className="w-5 h-5" />
             </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-sky-500/10 text-sky-500 flex items-center justify-center">
-            <Sparkles className="w-5 h-5" />
-          </div>
-        </div>
 
-        <div className="glass-card rounded-2xl p-4 flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              Completed Batches
-            </p>
-            <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-              {completedCount}
-            </p>
+          <div className="glass-card rounded-2xl p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                In Processing
+              </p>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-xl font-bold text-slate-900 dark:text-white">
+                  {processingCount}
+                </span>
+                {processingCount > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-sky-500 animate-ping" />
+                )}
+              </div>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-sky-500/10 text-sky-500 flex items-center justify-center">
+              <Sparkles className="w-5 h-5" />
+            </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
-            <CheckCircle2 className="w-5 h-5" />
-          </div>
-        </div>
 
-        <div className="glass-card rounded-2xl p-4 flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              Images Standardized
-            </p>
-            <p className="text-xl font-bold text-slate-900 dark:text-white mt-1">
-              {totalImagesProcessed}
-            </p>
+          <div className="glass-card rounded-2xl p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Completed Batches
+              </p>
+              <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+                {completedCount}
+              </p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
-            <Clock className="w-5 h-5" />
+
+          <div className="glass-card rounded-2xl p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Images Standardized
+              </p>
+              <p className="text-xl font-bold text-slate-900 dark:text-white mt-1">
+                {totalImagesProcessed}
+              </p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+              <Clock className="w-5 h-5" />
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Main Batches Filter Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-        <div className="relative w-full max-w-sm">
-          <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search extraction batches by code or title..."
-            value={batchSearchTerm}
-            onChange={(e) => setBatchSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 text-xs font-medium focus:outline-none focus:border-slate-300 dark:focus:border-slate-600 transition-colors"
-          />
-        </div>
+        <TableSearchInput
+          query={batchSearchTerm}
+          onQueryChange={setBatchSearchTerm}
+          placeholder="Search extraction batches by code or title..."
+          className="w-full max-w-sm"
+        />
 
         <div className="flex items-center gap-2">
           <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Status:</span>
-          <select
+          <CustomSelect
             value={batchStatusFilter}
-            onChange={(e) => setBatchStatusFilter(e.target.value)}
-            className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-medium focus:outline-none focus:border-slate-300 dark:focus:border-slate-600 cursor-pointer transition-colors"
-          >
-            <option value="">All Batches</option>
-            <option value="processing">Processing (Active)</option>
-            <option value="completed">Completed</option>
-            <option value="created">Created / Pending</option>
-            <option value="paused">Paused</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
+            onChange={(val) => setBatchStatusFilter(String(val))}
+            options={[
+              { value: "", label: "All Batches" },
+              { value: "processing", label: "Processing (Active)" },
+              { value: "completed", label: "Completed" },
+              { value: "created", label: "Created / Pending" },
+              { value: "paused", label: "Paused" },
+              { value: "cancelled", label: "Cancelled" },
+            ]}
+            className="w-48"
+            size="sm"
+          />
         </div>
       </div>
 
@@ -510,45 +514,49 @@ export default function BatchProcessing() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-              {pagedBatches.map((batch, index) => {
-                const isExpanded = expandedBatchId === batch.id;
-                const progressPct =
-                  batch.total_images > 0
-                    ? batch.status === "completed"
-                      ? 100
-                      : Math.min(100, Math.round((batch.processed_images / batch.total_images) * 100))
-                    : 0;
+              {loadingBatches ? (
+                <GlobalTableRowSkeleton rows={5} cols={8} />
+              ) : (
+                pagedBatches.map((batch, index) => {
+                  const isExpanded = expandedBatchId === batch.id;
+                  const progressPct =
+                    batch.total_images > 0
+                      ? batch.status === "completed"
+                        ? 100
+                        : Math.min(100, Math.round((batch.processed_images / batch.total_images) * 100))
+                      : 0;
 
-                return (
-                  <BatchTableRow
-                    key={batch.id}
-                    index={(page - 1) * pageSize + index}
-                    batch={batch}
-                    isExpanded={isExpanded}
-                    progressPct={progressPct}
-                    actionLoading={actionLoadingId === batch.id}
-                    onToggle={() => toggleExpand(batch.id)}
-                    onStart={() => handleStart(batch)}
-                    onPause={() => handlePause(batch)}
-                    onResume={() => handleResume(batch)}
-                    onCancel={() => handleCancel(batch)}
-                    onDelete={() => handleDelete(batch)}
-                    images={batchImages[batch.id] || []}
-                    imagesLoading={batchImagesLoading[batch.id] || false}
-                    hasLoaded={batch.id in batchImages}
-                    onReloadImages={(status, search) => {
-                      setImageStatusFilter((p) => ({ ...p, [batch.id]: status }));
-                      setImageSearch((p) => ({ ...p, [batch.id]: search }));
-                      loadImagesForBatch(batch.id, status, search);
-                    }}
-                    retryingImageId={retryingImageId}
-                    retryingBatchId={retryingBatchId}
-                    onRetryImage={(imageId) => handleRetryImage(batch.id, imageId)}
-                    onRetryBatchFailed={() => handleRetryBatchFailed(batch.id)}
-                    onDownloadZip={() => handleInitiateZipDownload(batch)}
-                  />
-                );
-              })}
+                  return (
+                    <BatchTableRow
+                      key={batch.id}
+                      index={(page - 1) * pageSize + index}
+                      batch={batch}
+                      isExpanded={isExpanded}
+                      progressPct={progressPct}
+                      actionLoading={actionLoadingId === batch.id}
+                      onToggle={() => toggleExpand(batch.id)}
+                      onStart={() => handleStart(batch)}
+                      onPause={() => handlePause(batch)}
+                      onResume={() => handleResume(batch)}
+                      onCancel={() => handleCancel(batch)}
+                      onDelete={() => handleDelete(batch)}
+                      images={batchImages[batch.id] || []}
+                      imagesLoading={batchImagesLoading[batch.id] || false}
+                      hasLoaded={batch.id in batchImages}
+                      onReloadImages={(status, search) => {
+                        setImageStatusFilter((p) => ({ ...p, [batch.id]: status }));
+                        setImageSearch((p) => ({ ...p, [batch.id]: search }));
+                        loadImagesForBatch(batch.id, status, search);
+                      }}
+                      retryingImageId={retryingImageId}
+                      retryingBatchId={retryingBatchId}
+                      onRetryImage={(imageId) => handleRetryImage(batch.id, imageId)}
+                      onRetryBatchFailed={() => handleRetryBatchFailed(batch.id)}
+                      onDownloadZip={() => handleInitiateZipDownload(batch)}
+                    />
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -576,12 +584,6 @@ export default function BatchProcessing() {
                 <span>Create First Batch</span>
               </button>
             </div>
-          </div>
-        )}
-
-        {loadingBatches && (
-          <div className="text-center py-16 text-slate-400 text-xs">
-            Loading batch extractions...
           </div>
         )}
 
@@ -814,9 +816,8 @@ function BatchTableRow({
             aria-label="Toggle batch images"
           >
             <ChevronRight
-              className={`w-4 h-4 transition-transform duration-200 ease-in-out ${
-                isExpanded ? "rotate-90 text-sky-500" : "text-slate-400"
-              }`}
+              className={`w-4 h-4 transition-transform duration-200 ease-in-out ${isExpanded ? "rotate-90 text-sky-500" : "text-slate-400"
+                }`}
             />
           </button>
         </td>
@@ -1031,10 +1032,7 @@ function BatchTableRow({
                   </h4>
                   <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                     {effectiveLoading ? (
-                      <span className="inline-flex items-center gap-1.5 text-sky-500 font-semibold">
-                        <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-ping" />
-                        Loading items...
-                      </span>
+                      <GlobalInlineLoader text="Loading items..." className="text-xs font-semibold" />
                     ) : (
                       `(${images.length} items loaded)`
                     )}
@@ -1042,35 +1040,34 @@ function BatchTableRow({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2.5">
-                  <div className="relative">
-                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder="Filter SKU or filename..."
-                      value={subSearch}
-                      onChange={(e) => {
-                        setSubSearch(e.target.value);
-                        onReloadImages(subStatus, e.target.value);
-                      }}
-                      className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 text-xs focus:outline-none"
-                    />
-                  </div>
-
-                  <select
-                    value={subStatus}
-                    onChange={(e) => {
-                      setSubStatus(e.target.value);
-                      onReloadImages(e.target.value, subSearch);
+                  <TableSearchInput
+                    query={subSearch}
+                    onQueryChange={(val) => {
+                      setSubSearch(val);
+                      onReloadImages(subStatus, val);
                     }}
-                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs focus:outline-none"
-                  >
-                    <option value="">All Statuses</option>
-                    <option value="auto_approved">Auto Approved</option>
-                    <option value="needs_review">Needs Review</option>
-                    <option value="manually_approved">Manually Approved</option>
-                    <option value="processing">Processing</option>
-                    <option value="failed">Failed</option>
-                  </select>
+                    placeholder="Filter SKU or filename..."
+                    className="w-full sm:w-56"
+                  />
+
+                  <CustomSelect
+                    value={subStatus}
+                    onChange={(val) => {
+                      const v = String(val);
+                      setSubStatus(v);
+                      onReloadImages(v, subSearch);
+                    }}
+                    options={[
+                      { value: "", label: "All Statuses" },
+                      { value: "auto_approved", label: "Auto Approved" },
+                      { value: "needs_review", label: "Needs Review" },
+                      { value: "manually_approved", label: "Manually Approved" },
+                      { value: "processing", label: "Processing" },
+                      { value: "failed", label: "Failed" },
+                    ]}
+                    className="w-full sm:w-48"
+                    size="sm"
+                  />
 
                   {images.some((i) => i.status === "needs_review" || i.status === "failed") && (
                     <button
@@ -1122,40 +1119,7 @@ function BatchTableRow({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-white/5 bg-white/40 dark:bg-transparent">
-                      {[1, 2, 3, 4].map((n) => (
-                        <tr key={n}>
-                          <td className="py-3 px-3 text-center">
-                            <div className="h-3 w-4 mx-auto bg-slate-200 dark:bg-slate-800 rounded" />
-                          </td>
-                          <td className="py-2 px-3">
-                            <div className="w-10 h-10 rounded-lg bg-slate-200 dark:bg-slate-800" />
-                          </td>
-                          <td className="py-3 px-3">
-                            <div className="h-3.5 w-28 bg-slate-200 dark:bg-slate-800 rounded" />
-                          </td>
-                          <td className="py-3 px-3">
-                            <div className="h-3.5 w-36 bg-slate-200 dark:bg-slate-800 rounded" />
-                          </td>
-                          <td className="py-3 px-3">
-                            <div className="h-4 w-14 bg-slate-200 dark:bg-slate-800 rounded-full" />
-                          </td>
-                          <td className="py-3 px-3">
-                            <div className="h-4 w-16 bg-slate-200 dark:bg-slate-800 rounded-full" />
-                          </td>
-                          <td className="py-3 px-3">
-                            <div className="h-3 w-24 bg-slate-200 dark:bg-slate-800 rounded" />
-                          </td>
-                          <td className="py-3 px-3">
-                            <div className="h-3 w-16 bg-slate-200 dark:bg-slate-800 rounded" />
-                          </td>
-                          <td className="py-3 px-3">
-                            <div className="h-5 w-24 bg-slate-200 dark:bg-slate-800 rounded-full" />
-                          </td>
-                          <td className="py-3 px-3 text-right">
-                            <div className="h-3 w-12 ml-auto bg-slate-200 dark:bg-slate-800 rounded" />
-                          </td>
-                        </tr>
-                      ))}
+                      <GlobalTableRowSkeleton rows={4} cols={10} />
                     </tbody>
                   </table>
                 </div>
@@ -1196,8 +1160,8 @@ function BatchTableRow({
                             <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-white/10 overflow-hidden flex items-center justify-center relative shadow-2xs shrink-0">
                               <img
                                 src={getImageFileUrl(
-                                   img.id,
-                                   img.status.includes("approved") ? "final" : "original"
+                                  img.id,
+                                  img.status.includes("approved") ? "final" : "original"
                                 )}
                                 alt={img.original_filename}
                                 className="max-h-full max-w-full object-contain"
@@ -1321,8 +1285,8 @@ function BatchTableRow({
                                 }}
                                 title="Click to retry background removal with Photoroom AI"
                                 className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all hover:scale-105 ${img.status === "needs_review"
-                                    ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25"
-                                    : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/25"
+                                  ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25"
+                                  : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/25"
                                   }`}
                               >
                                 <RotateCcw className={`w-2.5 h-2.5 ${retryingImageId === img.id ? "animate-spin" : ""}`} />
@@ -1530,278 +1494,278 @@ function CreateBatchModal({
 
   return (
     <>
-    <Modal
-      onClose={onClose}
-      title="Create Extraction Batch"
-      subtitle="Upload catalog product photos for automated background removal, padding, and validation"
-      icon={Sparkles}
-      size="xl"
-    >
-      <ModalBody>
-        <div className="space-y-4">
-          {/* Batch Name */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                Batch Title *
+      <Modal
+        onClose={onClose}
+        title="Create Extraction Batch"
+        subtitle="Upload catalog product photos for automated background removal, padding, and validation"
+        icon={Sparkles}
+        size="xl"
+      >
+        <ModalBody>
+          <div className="space-y-4">
+            {/* Batch Name */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  Batch Title *
+                </label>
+                <span className="text-[10px] font-mono font-medium text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-md border border-sky-500/20">
+                  Auto-assigned ID: IS-BATCH&lt;id&gt;
+                </span>
+              </div>
+              <input
+                type="text"
+                value={batchName}
+                onChange={(e) => setBatchName(e.target.value)}
+                placeholder="e.g. Catalog Batch - Nov 7"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 text-xs font-medium focus:outline-none focus:border-slate-300 dark:focus:border-slate-600 transition-colors"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">
+                Enter descriptive title. The extraction batch ID is automatically created as <span className="text-sky-400 font-mono font-medium">IS-BATCH-&lt;id&gt;</span> based on the database index.
+              </p>
+            </div>
+
+            {/* Upload Method Selector */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1.5">
+                Upload Method
               </label>
-              <span className="text-[10px] font-mono font-medium text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-md border border-sky-500/20">
-                Auto-assigned ID: IS-BATCH&lt;id&gt;
-              </span>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setMode("files")}
+                  className={`p-3 rounded-xl border text-left transition-all flex items-center gap-3 ${mode === "files"
+                    ? "border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 shadow-2xs ring-1 ring-sky-500/30"
+                    : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-slate-300"
+                    }`}
+                >
+                  <ImageIcon className="w-5 h-5 shrink-0" />
+                  <div>
+                    <div className="font-semibold text-xs text-slate-900 dark:text-white">Direct Images</div>
+                    <div className="text-[10px] text-slate-500">Select multiple JPG, PNG, WEBP</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setMode("zip")}
+                  className={`p-3 rounded-xl border text-left transition-all flex items-center gap-3 ${mode === "zip"
+                    ? "border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 shadow-2xs ring-1 ring-sky-500/30"
+                    : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-slate-300"
+                    }`}
+                >
+                  <FolderArchive className="w-5 h-5 shrink-0" />
+                  <div>
+                    <div className="font-semibold text-xs text-slate-900 dark:text-white">ZIP Archive</div>
+                    <div className="text-[10px] text-slate-500">Upload single .zip with images</div>
+                  </div>
+                </button>
+              </div>
             </div>
-            <input
-              type="text"
-              value={batchName}
-              onChange={(e) => setBatchName(e.target.value)}
-              placeholder="e.g. Catalog Batch - Nov 7"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 text-xs font-medium focus:outline-none focus:border-slate-300 dark:focus:border-slate-600 transition-colors"
-            />
-            <p className="text-[11px] text-slate-500 mt-1">
-              Enter descriptive title. The extraction batch ID is automatically created as <span className="text-sky-400 font-mono font-medium">IS-BATCH-&lt;id&gt;</span> based on the database index.
-            </p>
-          </div>
 
-          {/* Upload Method Selector */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1.5">
-              Upload Method
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setMode("files")}
-                className={`p-3 rounded-xl border text-left transition-all flex items-center gap-3 ${mode === "files"
-                  ? "border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 shadow-2xs ring-1 ring-sky-500/30"
-                  : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-slate-300"
-                  }`}
-              >
-                <ImageIcon className="w-5 h-5 shrink-0" />
-                <div>
-                  <div className="font-semibold text-xs text-slate-900 dark:text-white">Direct Images</div>
-                  <div className="text-[10px] text-slate-500">Select multiple JPG, PNG, WEBP</div>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setMode("zip")}
-                className={`p-3 rounded-xl border text-left transition-all flex items-center gap-3 ${mode === "zip"
-                  ? "border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 shadow-2xs ring-1 ring-sky-500/30"
-                  : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-slate-300"
-                  }`}
-              >
-                <FolderArchive className="w-5 h-5 shrink-0" />
-                <div>
-                  <div className="font-semibold text-xs text-slate-900 dark:text-white">ZIP Archive</div>
-                  <div className="text-[10px] text-slate-500">Upload single .zip with images</div>
-                </div>
-              </button>
-            </div>
-          </div>
-
-          {/* Product Category Selector */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1.5">
-              Product Category Logic
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <button
-                type="button"
-                onClick={() => setProductCategory("auto")}
-                className={`p-2.5 rounded-xl border text-left transition-all ${productCategory === "auto"
+            {/* Product Category Selector */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1.5">
+                Product Category Logic
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setProductCategory("auto")}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${productCategory === "auto"
                     ? "border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 ring-1 ring-sky-500/30"
                     : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-slate-300"
-                  }`}
-              >
-                <div className="font-semibold text-xs text-slate-900 dark:text-white">Auto-Detect</div>
-                <div className="text-[10px] text-slate-500">Gemini AI classification</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setProductCategory("food")}
-                className={`p-2.5 rounded-xl border text-left transition-all ${productCategory === "food"
+                    }`}
+                >
+                  <div className="font-semibold text-xs text-slate-900 dark:text-white">Auto-Detect</div>
+                  <div className="text-[10px] text-slate-500">Gemini AI classification</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProductCategory("food")}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${productCategory === "food"
                     ? "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30"
                     : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-slate-300"
-                  }`}
-              >
-                <div className="font-semibold text-xs text-emerald-600 dark:text-emerald-400">Food</div>
-                <div className="text-[10px] text-slate-500">FSSAI & Nutrition rules</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setProductCategory("non_food")}
-                className={`p-2.5 rounded-xl border text-left transition-all ${productCategory === "non_food"
+                    }`}
+                >
+                  <div className="font-semibold text-xs text-emerald-600 dark:text-emerald-400">Food</div>
+                  <div className="text-[10px] text-slate-500">FSSAI & Nutrition rules</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProductCategory("non_food")}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${productCategory === "non_food"
                     ? "border-purple-500 bg-purple-500/10 text-purple-600 dark:text-purple-400 ring-1 ring-purple-500/30"
                     : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-slate-300"
-                  }`}
-              >
-                <div className="font-semibold text-xs text-purple-600 dark:text-purple-400">Non-Food</div>
-                <div className="text-[10px] text-slate-500">Directions & Safety rules</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setProductCategory("kitchen_items")}
-                className={`p-2.5 rounded-xl border text-left transition-all ${productCategory === "kitchen_items"
+                    }`}
+                >
+                  <div className="font-semibold text-xs text-purple-600 dark:text-purple-400">Non-Food</div>
+                  <div className="text-[10px] text-slate-500">Directions & Safety rules</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProductCategory("kitchen_items")}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${productCategory === "kitchen_items"
                     ? "border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/30"
                     : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-slate-300"
-                  }`}
-              >
-                <div className="font-semibold text-xs text-amber-600 dark:text-amber-400">Kitchen Items</div>
-                <div className="text-[10px] text-slate-500">Cookware, Glass & Metal</div>
-              </button>
-            </div>
-          </div>
-
-          {/* Validation Resolution Dimensions (Fixed Standards) */}
-          <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-white/10 bg-slate-50/50 dark:bg-white/[0.02] space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                <Maximize2 className="w-3.5 h-3.5 text-sky-500" />
-                <span>Validation Resolution Dimensions</span>
-              </label>
-              <span className="text-[10px] text-slate-400 font-medium font-mono">
-                Standard (1500 × 1500 px)
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-500">
-              Minimum required pixel dimensions for image validation (Standard: 1500 × 1500 px).
-            </p>
-            <div className="grid grid-cols-2 gap-3 pt-1">
-              <div>
-                <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
-                  Min Width (px)
-                </label>
-                <input
-                  type="number"
-                  readOnly
-                  disabled
-                  value={targetWidth}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-mono text-xs font-semibold cursor-not-allowed select-none focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
-                  Min Height (px)
-                </label>
-                <input
-                  type="number"
-                  readOnly
-                  disabled
-                  value={targetHeight}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-mono text-xs font-semibold cursor-not-allowed select-none focus:outline-none"
-                />
+                    }`}
+                >
+                  <div className="font-semibold text-xs text-amber-600 dark:text-amber-400">Kitchen Items</div>
+                  <div className="text-[10px] text-slate-500">Cookware, Glass & Metal</div>
+                </button>
               </div>
             </div>
-          </div>
 
-          {/* Dropzone */}
-          {mode === "files" ? (
-            <div className="border-2 border-dashed border-slate-200 dark:border-white/10 rounded-2xl p-6 text-center hover:border-sky-500 transition-colors bg-slate-50/50 dark:bg-slate-900/40">
-              <Upload className="w-8 h-8 text-sky-500 mx-auto mb-2" />
-              <label className="cursor-pointer text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline">
-                Choose Image Files (Select Multiple)
-                <input
-                  type="file"
-                  multiple
-                  accept=".png,.jpg,.jpeg,.webp"
-                  className="hidden"
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files || []);
-                    handleFileSelection(files);
-                  }}
-                />
-              </label>
-              <p className="text-[11px] text-slate-400 mt-1">
-                Supports PNG, JPG, JPEG, and WEBP files
+            {/* Validation Resolution Dimensions (Fixed Standards) */}
+            <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-white/10 bg-slate-50/50 dark:bg-white/[0.02] space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Maximize2 className="w-3.5 h-3.5 text-sky-500" />
+                  <span>Validation Resolution Dimensions</span>
+                </label>
+                <span className="text-[10px] text-slate-400 font-medium font-mono">
+                  Standard (1500 × 1500 px)
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Minimum required pixel dimensions for image validation (Standard: 1500 × 1500 px).
               </p>
-              {imageFiles.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  <div className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center justify-center gap-1.5">
-                    <CheckCircle className="w-4 h-4" />
-                    Selected {imageFiles.length} image file(s) (
-                    {(imageFiles.reduce((acc, f) => acc + f.size, 0) / (1024 * 1024)).toFixed(1)} MB)
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    Min Width (px)
+                  </label>
+                  <input
+                    type="number"
+                    readOnly
+                    disabled
+                    value={targetWidth}
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-mono text-xs font-semibold cursor-not-allowed select-none focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    Min Height (px)
+                  </label>
+                  <input
+                    type="number"
+                    readOnly
+                    disabled
+                    value={targetHeight}
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-mono text-xs font-semibold cursor-not-allowed select-none focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Dropzone */}
+            {mode === "files" ? (
+              <div className="border-2 border-dashed border-slate-200 dark:border-white/10 rounded-2xl p-6 text-center hover:border-sky-500 transition-colors bg-slate-50/50 dark:bg-slate-900/40">
+                <Upload className="w-8 h-8 text-sky-500 mx-auto mb-2" />
+                <label className="cursor-pointer text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline">
+                  Choose Image Files (Select Multiple)
+                  <input
+                    type="file"
+                    multiple
+                    accept=".png,.jpg,.jpeg,.webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      handleFileSelection(files);
+                    }}
+                  />
+                </label>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Supports PNG, JPG, JPEG, and WEBP files
+                </p>
+                {imageFiles.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    <div className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center justify-center gap-1.5">
+                      <CheckCircle className="w-4 h-4" />
+                      Selected {imageFiles.length} image file(s) (
+                      {(imageFiles.reduce((acc, f) => acc + f.size, 0) / (1024 * 1024)).toFixed(1)} MB)
+                    </div>
+                    {clientLowResCount > 0 ? (
+                      <div className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold flex items-center justify-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        {clientLowResCount} image(s) below {targetWidth}×{targetHeight}px threshold (details in inspection report)
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-sky-600 dark:text-sky-400 font-medium flex items-center justify-center gap-1">
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        All selected images meet required quality
+                      </div>
+                    )}
                   </div>
-                  {clientLowResCount > 0 ? (
-                    <div className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold flex items-center justify-center gap-1">
-                      <AlertTriangle className="w-3.5 h-3.5" />
-                      {clientLowResCount} image(s) below {targetWidth}×{targetHeight}px threshold (details in inspection report)
-                    </div>
-                  ) : (
-                    <div className="text-[11px] text-sky-600 dark:text-sky-400 font-medium flex items-center justify-center gap-1">
-                      <CheckCircle className="w-3.5 h-3.5" />
-                      All selected images meet required quality
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="border-2 border-dashed border-slate-200 dark:border-white/10 rounded-2xl p-6 text-center hover:border-sky-500 transition-colors bg-slate-50/50 dark:bg-slate-900/40">
-              <FolderArchive className="w-8 h-8 text-indigo-500 mx-auto mb-2" />
-              <label className="cursor-pointer text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline">
-                Choose ZIP Archive (.zip)
-                <input
-                  type="file"
-                  accept=".zip"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] || null;
-                    setZipFile(file);
-                  }}
-                />
-              </label>
-              <p className="text-[11px] text-slate-400 mt-1">All image files in the archive will be extracted and inspected automatically</p>
-              {zipFile && (
-                <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-2 font-medium flex items-center justify-center gap-1.5">
-                  <CheckCircle className="w-4 h-4" />
-                  Selected: {zipFile.name} ({(zipFile.size / (1024 * 1024)).toFixed(1)} MB)
-                </div>
-              )}
-            </div>
-          )}
+                )}
+              </div>
+            ) : (
+              <div className="border-2 border-dashed border-slate-200 dark:border-white/10 rounded-2xl p-6 text-center hover:border-sky-500 transition-colors bg-slate-50/50 dark:bg-slate-900/40">
+                <FolderArchive className="w-8 h-8 text-indigo-500 mx-auto mb-2" />
+                <label className="cursor-pointer text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline">
+                  Choose ZIP Archive (.zip)
+                  <input
+                    type="file"
+                    accept=".zip"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      setZipFile(file);
+                    }}
+                  />
+                </label>
+                <p className="text-[11px] text-slate-400 mt-1">All image files in the archive will be extracted and inspected automatically</p>
+                {zipFile && (
+                  <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-2 font-medium flex items-center justify-center gap-1.5">
+                    <CheckCircle className="w-4 h-4" />
+                    Selected: {zipFile.name} ({(zipFile.size / (1024 * 1024)).toFixed(1)} MB)
+                  </div>
+                )}
+              </div>
+            )}
 
-          {/* BigBasket SRS Specifications Strip */}
-          <div className="p-3 rounded-xl bg-sky-500/5 dark:bg-white/[0.02] border border-sky-500/15 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
-            <span className="font-semibold text-slate-700 dark:text-slate-300">Automation Preset:</span>
-            <span>2000×2000px · 150 DPI · SRS Padded (180/100)</span>
+            {/* BigBasket SRS Specifications Strip */}
+            <div className="p-3 rounded-xl bg-sky-500/5 dark:bg-white/[0.02] border border-sky-500/15 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
+              <span className="font-semibold text-slate-700 dark:text-slate-300">Automation Preset:</span>
+              <span>2000×2000px · 150 DPI · SRS Padded (180/100)</span>
+            </div>
           </div>
-        </div>
-      </ModalBody>
+        </ModalBody>
 
-      <ModalFooter>
-        <ModalCancelButton onClick={onClose} />
-        <button
-          type="button"
-          onClick={handleLaunchInspection}
-          disabled={inspecting || submitting || (mode === "files" ? imageFiles.length === 0 : !zipFile)}
-          className={PRIMARY_BUTTON}
-        >
-          {inspecting ? (
-            <>
-              <RefreshCw className="w-4 h-4 animate-spin" />
-              <span>Inspecting Image Quality &amp; Claims...</span>
-            </>
-          ) : (
-            <>
-              <Zap className="w-4 h-4" />
-              <span>Inspect &amp; Launch Batch</span>
-            </>
-          )}
-        </button>
-      </ModalFooter>
-    </Modal>
+        <ModalFooter>
+          <ModalCancelButton onClick={onClose} />
+          <button
+            type="button"
+            onClick={handleLaunchInspection}
+            disabled={inspecting || submitting || (mode === "files" ? imageFiles.length === 0 : !zipFile)}
+            className={PRIMARY_BUTTON}
+          >
+            {inspecting ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Inspecting Image Quality &amp; Claims...</span>
+              </>
+            ) : (
+              <>
+                <Zap className="w-4 h-4" />
+                <span>Inspect &amp; Launch Batch</span>
+              </>
+            )}
+          </button>
+        </ModalFooter>
+      </Modal>
 
-    <ImageInspectionModal
-      isOpen={inspectionModalOpen}
-      onClose={() => setInspectionModalOpen(false)}
-      onConfirm={handleConfirmAndUpload}
-      inspectionData={inspectionData}
-      targetWidth={targetWidth}
-      targetHeight={targetHeight}
-      isLoading={inspecting}
-      isUploading={submitting}
-      batchTitle={batchName}
-    />
+      <ImageInspectionModal
+        isOpen={inspectionModalOpen}
+        onClose={() => setInspectionModalOpen(false)}
+        onConfirm={handleConfirmAndUpload}
+        inspectionData={inspectionData}
+        targetWidth={targetWidth}
+        targetHeight={targetHeight}
+        isLoading={inspecting}
+        isUploading={submitting}
+        batchTitle={batchName}
+      />
     </>
   );
 }
@@ -1840,9 +1804,7 @@ function AnalyticsModal({
     >
       <ModalBody>
         {loading ? (
-          <div className="text-center py-10 text-slate-400 text-xs">
-            Loading analytics metrics...
-          </div>
+          <GlobalModalLoader lines={5} />
         ) : summary ? (
           <div className="space-y-4">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

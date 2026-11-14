@@ -18,6 +18,7 @@ import {
   Clock,
 } from "lucide-react";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
+import GlobalPageLoader, { GlobalInlineLoader } from "@/components/GlobalLoader";
 import { SECONDARY_BUTTON } from "@/components/ui";
 import {
   fetchImageDetails,
@@ -34,102 +35,6 @@ import {
   RerunBgRemovalButton,
   RerunLocalModelButton,
 } from "@/components/bigbasket/RerunBgRemovalControls";
-
-function ReviewStudioSkeleton() {
-  return (
-    <PageContainer>
-      {/* Header Skeleton */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-200/70 dark:border-white/10 animate-pulse">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-slate-200 dark:bg-white/10 shrink-0" />
-          <div className="space-y-2">
-            <div className="h-5 w-64 bg-slate-200 dark:bg-white/10 rounded-md" />
-            <div className="h-3 w-80 max-w-full bg-slate-100 dark:bg-white/5 rounded" />
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="h-8 w-32 rounded-xl bg-slate-200 dark:bg-white/10" />
-          <div className="h-8 w-24 rounded-xl bg-slate-200 dark:bg-white/10" />
-        </div>
-      </div>
-
-      {/* Batch Products Quick-Switcher Strip Skeleton */}
-      <div className="glass-card rounded-2xl p-3 border border-slate-200/80 dark:border-white/10 mb-4 flex items-center justify-between gap-3 animate-pulse min-h-[58px]">
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded bg-slate-200 dark:bg-white/10" />
-          <div className="h-3.5 w-32 bg-slate-200 dark:bg-white/10 rounded" />
-          <div className="h-4 w-20 bg-slate-100 dark:bg-white/5 rounded" />
-        </div>
-        <div className="flex items-center gap-2 overflow-hidden">
-          {[0, 1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-8 w-28 rounded-xl bg-slate-200 dark:bg-white/5 shrink-0" />
-          ))}
-        </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <div className="h-7 w-16 rounded-xl bg-slate-200 dark:bg-white/10" />
-          <div className="h-7 w-16 rounded-xl bg-slate-200 dark:bg-white/10" />
-        </div>
-      </div>
-
-      {/* Main Viewport Grid Skeleton */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Left 2 Cols: Canvas Viewport Skeleton */}
-        <div className="lg:col-span-2 flex flex-col space-y-4">
-          <div className="glass-card rounded-2xl p-4 flex flex-col items-center justify-between flex-1 min-h-[580px] lg:min-h-[720px] animate-pulse">
-            <div className="w-full flex items-center justify-between pb-3 border-b border-slate-200/60 dark:border-white/10">
-              <div className="flex items-center gap-2">
-                <div className="h-7 w-24 rounded-lg bg-sky-500/20" />
-                <div className="h-7 w-24 rounded-lg bg-slate-100 dark:bg-white/5" />
-                <div className="h-7 w-24 rounded-lg bg-slate-100 dark:bg-white/5" />
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="h-7 w-16 rounded-lg bg-slate-100 dark:bg-white/5" />
-                <div className="h-7 w-20 rounded-lg bg-slate-100 dark:bg-white/5" />
-              </div>
-            </div>
-
-            {/* Split canvases */}
-            <div className="w-full flex-1 p-4 grid grid-cols-2 gap-4">
-              <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-100/60 dark:bg-slate-900/40 flex items-center justify-center relative overflow-hidden">
-                <div className="w-8 h-8 rounded-full border-2 border-slate-300 dark:border-white/20 border-t-sky-500 animate-spin" />
-              </div>
-              <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] bg-slate-50 dark:bg-slate-950 flex items-center justify-center relative overflow-hidden">
-                <div className="w-8 h-8 rounded-full border-2 border-slate-300 dark:border-white/20 border-t-sky-500 animate-spin" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Col: Details Skeleton */}
-        <div className="space-y-4">
-          <div className="glass-card rounded-2xl p-4 space-y-4 animate-pulse">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-white/5">
-              <div className="h-4 w-40 bg-slate-200 dark:bg-white/10 rounded" />
-              <div className="h-5 w-20 rounded-full bg-slate-200 dark:bg-white/10" />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {[0, 1, 2, 3].map((i) => (
-                <div key={i} className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/5 space-y-2">
-                  <div className="h-2.5 w-16 bg-slate-200 dark:bg-white/10 rounded" />
-                  <div className="h-4 w-24 bg-slate-200 dark:bg-white/10 rounded" />
-                </div>
-              ))}
-            </div>
-            <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] space-y-2">
-              <div className="h-3 w-32 bg-slate-200 dark:bg-white/10 rounded" />
-              <div className="h-3 w-full bg-slate-100 dark:bg-white/5 rounded" />
-            </div>
-            <div className="flex items-center gap-2 pt-2">
-              <div className="h-9 flex-1 rounded-xl bg-slate-200 dark:bg-white/10" />
-              <div className="h-9 flex-1 rounded-xl bg-slate-200 dark:bg-white/10" />
-              <div className="h-9 flex-1 rounded-xl bg-slate-200 dark:bg-white/10" />
-            </div>
-          </div>
-        </div>
-      </div>
-    </PageContainer>
-  );
-}
 
 export default function ReviewStudio() {
   const { imageId: paramId } = useParams();
@@ -440,7 +345,7 @@ export default function ReviewStudio() {
   }, [hasPrev, hasNext, currentIdx, batchSiblings]);
 
   if (initialLoading && !image) {
-    return <ReviewStudioSkeleton />;
+    return <GlobalPageLoader />;
   }
 
   if (!image) {
@@ -533,12 +438,7 @@ export default function ReviewStudio() {
               <span className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-white/5 text-slate-500 font-mono font-medium">
                 {image.batch_code || (image.batch_id ? `Batch #${image.batch_id}` : "")}
               </span>
-              {isSwitching && (
-                <span className="inline-flex items-center gap-1 text-[11px] text-sky-500 font-medium">
-                  <RotateCcw className="w-3 h-3 animate-spin" />
-                  <span className="hidden sm:inline">Loading...</span>
-                </span>
-              )}
+              {isSwitching && <GlobalInlineLoader text="Loading..." className="text-[11px]" />}
             </div>
 
             {/* Quick Item Pills / Thumbnails */}
@@ -1111,12 +1011,12 @@ export default function ReviewStudio() {
 
             {/* Materials & Components compact tags */}
             {(image?.validation_status?.gemini_classification?.materials?.length > 0 || image?.validation_status?.gemini_classification?.components?.length > 0) && (
-              <div className="pt-1 border-t border-slate-100 dark:border-white/5 space-y-1 text-[11px]">
+              <div className="pt-2 pb-1 border-t border-slate-100 dark:border-white/5 space-y-1.5 text-[11px]">
                 {image?.validation_status?.gemini_classification?.materials?.length > 0 && (
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-slate-400 text-[10px]">Materials:</span>
+                    <span className="text-slate-400 text-[10px] font-semibold">Materials:</span>
                     {image.validation_status.gemini_classification.materials.map((m: any, idx: number) => (
-                      <span key={idx} className="px-1.5 py-0.2 rounded bg-slate-100 dark:bg-white/10 text-[9px] text-slate-700 dark:text-slate-300 font-medium">
+                      <span key={idx} className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-white/10 text-[10px] text-slate-700 dark:text-slate-300 font-medium">
                         {m.name || m}
                       </span>
                     ))}
@@ -1124,9 +1024,9 @@ export default function ReviewStudio() {
                 )}
                 {image?.validation_status?.gemini_classification?.components?.length > 0 && (
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-slate-400 text-[10px]">Components:</span>
+                    <span className="text-slate-400 text-[10px] font-semibold">Components:</span>
                     {image.validation_status.gemini_classification.components.map((c: string, idx: number) => (
-                      <span key={idx} className="px-1.5 py-0.2 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[9px] font-medium">
+                      <span key={idx} className="px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[10px] font-medium">
                         {c}
                       </span>
                     ))}
@@ -1135,25 +1035,27 @@ export default function ReviewStudio() {
               </div>
             )}
 
-            {/* Background Removal Reprocessing & Download Actions embedded directly in card */}
-            <div className="pt-3 border-t border-slate-100 dark:border-white/5 flex flex-wrap items-center justify-end gap-2">
-              <RerunLocalModelButton
-                onClick={handleRetryLocal}
-                loading={retryingLocal}
-                disabled={retrying || downloadingSingle}
-                className="justify-center"
-              />
-              <RerunBgRemovalButton
-                onClick={handleRetryPhotoroom}
-                loading={retrying}
-                disabled={retryingLocal || downloadingSingle}
-                className="justify-center"
-              />
+            {/* Background Removal Reprocessing & Download Actions */}
+            <div className="pt-3 border-t border-slate-100 dark:border-white/5 space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <RerunLocalModelButton
+                  onClick={handleRetryLocal}
+                  loading={retryingLocal}
+                  disabled={retrying || downloadingSingle}
+                  className="w-full"
+                />
+                <RerunBgRemovalButton
+                  onClick={handleRetryPhotoroom}
+                  loading={retrying}
+                  disabled={retryingLocal || downloadingSingle}
+                  className="w-full"
+                />
+              </div>
               <DownloadOutputImageButton
                 onClick={handleDownloadIndividualImage}
                 loading={downloadingSingle}
                 disabled={retrying || retryingLocal || (!image?.final_output_path && !image?.status?.includes("approved"))}
-                className="justify-center"
+                className="w-full"
               />
             </div>
           </div>

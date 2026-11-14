@@ -19,7 +19,7 @@ import { fetchWorkflows } from "@/services/workflow";
 import { fetchMenus, type MenuItem } from "@/services/menu";
 import { API_BASE_URL } from "@/lib/constants";
 import PageContainer from "@/components/PageContainer";
-import DashboardSkeleton from "@/components/DashboardSkeleton";
+import GlobalPageLoader from "@/components/GlobalLoader";
 import EmptyState from "@/components/EmptyState";
 import { getScreenIcon } from "@/components/Sidebar";
 import { useLive } from "@/context/LiveContext";
@@ -177,7 +177,7 @@ export default function DashboardPage() {
     setLoading(false);
   }
 
-  if (loading) return <DashboardSkeleton />;
+  if (loading) return <GlobalPageLoader />;
 
   const quickActions: QuickAction[] = [
     ...(isAdmin ? ADMIN_ACTIONS : []),

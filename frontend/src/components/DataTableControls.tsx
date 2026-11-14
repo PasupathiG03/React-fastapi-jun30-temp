@@ -14,19 +14,22 @@ interface SearchInputProps {
 export function TableSearchInput({ query, onQueryChange, placeholder = "Search...", className = "" }: SearchInputProps) {
   return (
     <div className={`relative ${className}`}>
-      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
       <input
+        type="text"
         value={query}
         onChange={(e) => onQueryChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full pl-8 pr-7 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-white/10 glass-field dark:bg-[#0e1a38] text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition"
+        aria-label={placeholder}
+        className="w-full h-9 pl-9 pr-8 text-xs rounded-xl border border-slate-200 dark:border-white/10 bg-white/70 dark:bg-white/5 text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition"
       />
       {query && (
         <button
           type="button"
           onClick={() => onQueryChange("")}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white"
-          title="Clear"
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
+          title="Clear search"
+          aria-label="Clear search"
         >
           <X className="w-3.5 h-3.5" />
         </button>
@@ -48,7 +51,7 @@ export function TableExportButton({ onExport, disabled, className = "" }: Export
       type="button"
       onClick={onExport}
       disabled={disabled}
-      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 glass-btn border border-slate-200 dark:border-white/10 rounded-xl hover:text-sky-600 dark:hover:text-sky-400 disabled:opacity-40 transition-colors shadow-sm ${className}`}
+      className={`h-9 flex items-center gap-1.5 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 glass-btn border border-slate-200 dark:border-white/10 rounded-xl hover:text-sky-600 dark:hover:text-sky-400 disabled:opacity-40 transition-colors shadow-sm ${className}`}
       title="Export to CSV"
     >
       <Download className="w-3.5 h-3.5" />

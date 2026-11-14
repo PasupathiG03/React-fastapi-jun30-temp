@@ -19,6 +19,8 @@ import {
 } from "@/services/apiDashboard";
 import { showError, showSuccess } from "@/lib/toast";
 import { TablePagination, TableSearchInput, TableExportButton } from "@/components/DataTableControls";
+import { CustomSelect } from "@/components/CustomSelect";
+import { GlobalKpiSkeleton, GlobalTableRowSkeleton } from "@/components/GlobalLoader";
 import { useTableData } from "@/hooks/useTableData";
 
 export default function ApiDashboard() {
@@ -26,6 +28,7 @@ export default function ApiDashboard() {
 
   // Overview data state
   const [overview, setOverview] = useState<OverviewData | null>(null);
+  const [loadingOverview, setLoadingOverview] = useState(true);
   const [planMode, setPlanMode] = useState<"free_trial" | "sandbox">("free_trial");
   const [overviewRoleFilter, setOverviewRoleFilter] = useState<string>("all");
 
@@ -35,6 +38,7 @@ export default function ApiDashboard() {
   const [selectedService, setSelectedService] = useState<string>("all");
   const [selectedUser, setSelectedUser] = useState<string>("all");
   const [usage, setUsage] = useState<UsageData | null>(null);
+  const [loadingUsage, setLoadingUsage] = useState(false);
   const [viewMode, setViewMode] = useState<"chart" | "table">("table");
   const [chartType, setChartType] = useState<"line" | "bar">("line");
   const [isChartTypeOpen, setIsChartTypeOpen] = useState(false);
@@ -52,6 +56,7 @@ export default function ApiDashboard() {
   }, [activeTab, days, interval, selectedService, selectedUser]);
 
   async function loadOverview(plan?: string) {
+    setLoadingOverview(true);
     try {
       const data = await fetchApiOverview(plan);
       setOverview(data);
@@ -60,10 +65,13 @@ export default function ApiDashboard() {
       }
     } catch (e: any) {
       showError(e.message || "Failed to load API overview");
+    } finally {
+      setLoadingOverview(false);
     }
   }
 
   async function loadUsage() {
+    setLoadingUsage(true);
     try {
       const data = await fetchApiUsage({
         days,
@@ -74,6 +82,8 @@ export default function ApiDashboard() {
       setUsage(data);
     } catch (e: any) {
       showError(e.message || "Failed to load API usage breakdown");
+    } finally {
+      setLoadingUsage(false);
     }
   }
 
@@ -246,55 +256,59 @@ export default function ApiDashboard() {
               {/* Left Column (8 cols): 3 Stat Cards + API Calls Timeseries Chart */}
               <div className="lg:col-span-8 space-y-6">
                 {/* 3 Metric Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {/* Images used */}
-                  <div className="glass-card rounded-2xl p-5 space-y-1">
-                    <div className="text-xs font-semibold text-sky-500 dark:text-sky-400">
-                      Images used
-                    </div>
-                    <div className="text-3xl font-extrabold text-slate-900 dark:text-white">
-                      {overview?.images_used ?? 0}
-                    </div>
-                    <div className="text-[11px] pt-2 flex items-center justify-between">
-                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                        {overview?.successful_calls ?? 0} successful
-                      </span>
-                      {overview?.failed_calls ? (
-                        <span className="text-rose-500 font-bold">
-                          {overview.failed_calls} failed
+                {loadingOverview ? (
+                  <GlobalKpiSkeleton count={3} />
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {/* Images used */}
+                    <div className="glass-card rounded-2xl p-5 space-y-1">
+                      <div className="text-xs font-semibold text-sky-500 dark:text-sky-400">
+                        Images used
+                      </div>
+                      <div className="text-3xl font-extrabold text-slate-900 dark:text-white">
+                        {overview?.images_used ?? 0}
+                      </div>
+                      <div className="text-[11px] pt-2 flex items-center justify-between">
+                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                          {overview?.successful_calls ?? 0} successful
                         </span>
-                      ) : (
-                        <span className="text-slate-400">0 failed</span>
-                      )}
+                        {overview?.failed_calls ? (
+                          <span className="text-rose-500 font-bold">
+                            {overview.failed_calls} failed
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">0 failed</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Projected this month */}
-                  <div className="glass-card rounded-2xl p-5 space-y-1">
-                    <div className="text-xs font-semibold text-sky-500 dark:text-sky-400">
-                      Projected this month
+                    {/* Projected this month */}
+                    <div className="glass-card rounded-2xl p-5 space-y-1">
+                      <div className="text-xs font-semibold text-sky-500 dark:text-sky-400">
+                        Projected this month
+                      </div>
+                      <div className="text-3xl font-extrabold text-slate-900 dark:text-white">
+                        {overview?.projected_this_month ?? "—"}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 pt-2">
+                        Based on current pace
+                      </div>
                     </div>
-                    <div className="text-3xl font-extrabold text-slate-900 dark:text-white">
-                      {overview?.projected_this_month ?? "—"}
-                    </div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 pt-2">
-                      Based on current pace
-                    </div>
-                  </div>
 
-                  {/* Daily average */}
-                  <div className="glass-card rounded-2xl p-5 space-y-1">
-                    <div className="text-xs font-semibold text-sky-500 dark:text-sky-400">
-                      Daily average
-                    </div>
-                    <div className="text-3xl font-extrabold text-slate-900 dark:text-white">
-                      {overview?.daily_average ? overview.daily_average : "—"}
-                    </div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 pt-2">
-                      Across this billing period
+                    {/* Daily average */}
+                    <div className="glass-card rounded-2xl p-5 space-y-1">
+                      <div className="text-xs font-semibold text-sky-500 dark:text-sky-400">
+                        Daily average
+                      </div>
+                      <div className="text-3xl font-extrabold text-slate-900 dark:text-white">
+                        {overview?.daily_average ? overview.daily_average : "—"}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 pt-2">
+                        Across this billing period
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* API Calls Timeseries Chart Card */}
                 <div className="glass-card rounded-2xl p-6 space-y-4">
@@ -504,18 +518,16 @@ export default function ApiDashboard() {
                   {overviewRoles.length > 0 && (
                     <div className="flex items-center gap-1.5">
                       <span className="text-[11px] font-semibold text-slate-400">Role:</span>
-                      <select
+                      <CustomSelect
                         value={overviewRoleFilter}
-                        onChange={(e) => setOverviewRoleFilter(e.target.value)}
-                        className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 text-xs font-semibold focus:outline-none shadow-2xs"
-                      >
-                        <option value="all">All Roles</option>
-                        {overviewRoles.map((r) => (
-                          <option key={r} value={r}>
-                            {r}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(val) => setOverviewRoleFilter(String(val))}
+                        options={[
+                          { value: "all", label: "All Roles" },
+                          ...overviewRoles.map((r) => ({ value: r, label: r })),
+                        ]}
+                        className="w-36"
+                        size="sm"
+                      />
                     </div>
                   )}
 
@@ -552,7 +564,9 @@ export default function ApiDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-white/5 font-medium">
-                    {overviewTable.paged && overviewTable.paged.length > 0 ? (
+                    {loadingOverview ? (
+                      <GlobalTableRowSkeleton rows={4} cols={8} />
+                    ) : overviewTable.paged && overviewTable.paged.length > 0 ? (
                       overviewTable.paged.map((u) => (
                         <tr key={u.user_id} className="hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors">
                           <td className="py-3 px-4">
@@ -639,55 +653,55 @@ export default function ApiDashboard() {
               {/* Left Filters: Range, Interval, API, User */}
               <div className="flex items-center gap-2 flex-wrap">
                 {/* Date range filter */}
-                <select
+                <CustomSelect<number>
                   value={days}
-                  onChange={(e) => setDays(Number(e.target.value))}
-                  className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-semibold focus:outline-none shadow-2xs"
-                >
-                  <option value={7}>Last 7 days</option>
-                  <option value={14}>Last 14 days</option>
-                  <option value={30}>Last 30 days</option>
-                  <option value={60}>Last 60 days</option>
-                  <option value={90}>Last 90 days</option>
-                </select>
+                  onChange={(val) => setDays(Number(val))}
+                  options={[
+                    { value: 7, label: "Last 7 days" },
+                    { value: 14, label: "Last 14 days" },
+                    { value: 30, label: "Last 30 days" },
+                    { value: 60, label: "Last 60 days" },
+                    { value: 90, label: "Last 90 days" },
+                  ]}
+                  className="w-36"
+                  size="sm"
+                />
 
                 {/* Interval filter */}
-                <select
+                <CustomSelect
                   value={interval}
-                  onChange={(e) => setInterval(e.target.value)}
-                  className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-semibold focus:outline-none shadow-2xs"
-                >
-                  <option value="daily">Daily</option>
-                  <option value="weekly">Weekly</option>
-                </select>
+                  onChange={(val) => setInterval(String(val))}
+                  options={[
+                    { value: "daily", label: "Daily" },
+                    { value: "weekly", label: "Weekly" },
+                  ]}
+                  className="w-28"
+                  size="sm"
+                />
 
                 {/* API Filter */}
-                <select
+                <CustomSelect
                   value={selectedService}
-                  onChange={(e) => setSelectedService(e.target.value)}
-                  className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-semibold focus:outline-none shadow-2xs"
-                >
-                  <option value="all">API: All</option>
-                  {availableServices.map((svc) => (
-                    <option key={svc} value={svc}>
-                      API: {svc}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setSelectedService(String(val))}
+                  options={[
+                    { value: "all", label: "API: All" },
+                    ...availableServices.map((svc) => ({ value: svc, label: `API: ${svc}` })),
+                  ]}
+                  className="w-36"
+                  size="sm"
+                />
 
                 {/* User Filter */}
-                <select
+                <CustomSelect
                   value={selectedUser}
-                  onChange={(e) => setSelectedUser(e.target.value)}
-                  className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-semibold focus:outline-none shadow-2xs"
-                >
-                  <option value="all">User: All Users</option>
-                  {availableUsers.map((u) => (
-                    <option key={u.id} value={String(u.id)}>
-                      User: {u.name} ({u.employee_id})
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setSelectedUser(String(val))}
+                  options={[
+                    { value: "all", label: "User: All Users" },
+                    ...availableUsers.map((u) => ({ value: String(u.id), label: `User: ${u.name} (${u.employee_id})` })),
+                  ]}
+                  className="w-48"
+                  size="sm"
+                />
 
                 {/* Reset button */}
                 {(days !== 7 || interval !== "daily" || selectedService !== "all" || selectedUser !== "all") && (
@@ -891,36 +905,32 @@ export default function ApiDashboard() {
                       {usageUserRoles.length > 0 && (
                         <div className="flex items-center gap-1.5">
                           <span className="text-[11px] font-semibold text-slate-400">Role:</span>
-                          <select
+                          <CustomSelect
                             value={usageUserRoleFilter}
-                            onChange={(e) => setUsageUserRoleFilter(e.target.value)}
-                            className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 text-xs font-semibold focus:outline-none shadow-2xs"
-                          >
-                            <option value="all">All Roles</option>
-                            {usageUserRoles.map((r) => (
-                              <option key={r} value={r}>
-                                {r}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={(val) => setUsageUserRoleFilter(String(val))}
+                            options={[
+                              { value: "all", label: "All Roles" },
+                              ...usageUserRoles.map((r) => ({ value: r, label: r })),
+                            ]}
+                            className="w-36"
+                            size="sm"
+                          />
                         </div>
                       )}
 
                       {availableServices.length > 1 && (
                         <div className="flex items-center gap-1.5">
                           <span className="text-[11px] font-semibold text-slate-400">API:</span>
-                          <select
+                          <CustomSelect
                             value={usageUserServiceFilter}
-                            onChange={(e) => setUsageUserServiceFilter(e.target.value)}
-                            className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 text-xs font-semibold focus:outline-none shadow-2xs"
-                          >
-                            <option value="all">All APIs</option>
-                            {availableServices.map((svc) => (
-                              <option key={svc} value={svc}>
-                                {svc}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={(val) => setUsageUserServiceFilter(String(val))}
+                            options={[
+                              { value: "all", label: "All APIs" },
+                              ...availableServices.map((svc) => ({ value: svc, label: svc })),
+                            ]}
+                            className="w-36"
+                            size="sm"
+                          />
                         </div>
                       )}
 
@@ -956,7 +966,9 @@ export default function ApiDashboard() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-white/5 font-medium">
-                        {usageUserTable.paged && usageUserTable.paged.length > 0 ? (
+                        {loadingUsage ? (
+                          <GlobalTableRowSkeleton rows={5} cols={7} />
+                        ) : usageUserTable.paged && usageUserTable.paged.length > 0 ? (
                           usageUserTable.paged.map((ub, idx) => (
                             <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors">
                               <td className="py-2.5 px-4 font-bold text-slate-900 dark:text-white">

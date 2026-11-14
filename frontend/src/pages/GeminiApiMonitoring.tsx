@@ -11,12 +11,13 @@ import {
   IndianRupee,
   Info,
   RefreshCw,
-  Search,
   Sparkles,
   Zap,
 } from "lucide-react";
 import PageContainer from "@/components/PageContainer";
-import { TablePagination } from "@/components/DataTableControls";
+import { TablePagination, TableSearchInput } from "@/components/DataTableControls";
+import { CustomSelect } from "@/components/CustomSelect";
+import { GlobalTableRowSkeleton } from "@/components/GlobalLoader";
 import Modal, { ModalBody, ModalFooter } from "@/components/Modal";
 import {
   fetchGeminiOverview,
@@ -457,49 +458,57 @@ export default function GeminiApiMonitoring() {
 
         {/* ── FILTER & SEARCH CONTROLS ── */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <form onSubmit={handleSearchSubmit} className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+          <form onSubmit={handleSearchSubmit} className="flex-1 max-w-md">
+            <TableSearchInput
+              query={search}
+              onQueryChange={(val) => {
+                setSearch(val);
+                if (!val) {
+                  setPage(1);
+                  loadLogs();
+                }
+              }}
               placeholder="Search by SKU / BBID, filename, product type..."
-              className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white/70 dark:bg-white/5 text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+              className="w-full"
             />
           </form>
 
           <div className="flex flex-wrap items-center gap-2">
             {/* Status Filter */}
-            <select
+            <CustomSelect
               value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
+              onChange={(val) => {
+                setStatusFilter(String(val));
                 setPage(1);
               }}
-              className="px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white/70 dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-sky-500 cursor-pointer"
-            >
-              <option value="ALL">All Statuses</option>
-              <option value="SUCCESS">Success Only</option>
-              <option value="CACHE_HIT">Cache Hits (Saved)</option>
-              <option value="FALLBACK">Fallback</option>
-              <option value="ERROR">Errors</option>
-            </select>
+              options={[
+                { value: "ALL", label: "All Statuses" },
+                { value: "SUCCESS", label: "Success Only" },
+                { value: "CACHE_HIT", label: "Cache Hits (Saved)" },
+                { value: "FALLBACK", label: "Fallback" },
+                { value: "ERROR", label: "Errors" },
+              ]}
+              className="w-40"
+              size="sm"
+            />
 
             {/* Category Filter */}
-            <select
+            <CustomSelect
               value={categoryFilter}
-              onChange={(e) => {
-                setCategoryFilter(e.target.value);
+              onChange={(val) => {
+                setCategoryFilter(String(val));
                 setPage(1);
               }}
-              className="px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white/70 dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-sky-500 cursor-pointer"
-            >
-              <option value="ALL">All Categories</option>
-              <option value="FOOD">Food Only</option>
-              <option value="NON_FOOD">Non-Food Only</option>
-              <option value="KITCHEN_ITEMS">Kitchen Items Only</option>
-              <option value="UNKNOWN">Unknown / Review</option>
-            </select>
+              options={[
+                { value: "ALL", label: "All Categories" },
+                { value: "FOOD", label: "Food Only" },
+                { value: "NON_FOOD", label: "Non-Food Only" },
+                { value: "KITCHEN_ITEMS", label: "Kitchen Items Only" },
+                { value: "UNKNOWN", label: "Unknown / Review" },
+              ]}
+              className="w-44"
+              size="sm"
+            />
           </div>
         </div>
 
@@ -546,12 +555,7 @@ export default function GeminiApiMonitoring() {
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-white/5">
                 {loadingLogs ? (
-                  <tr>
-                    <td colSpan={13} className="py-12 text-center text-slate-400 text-xs">
-                      <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-sky-500" />
-                      Loading Gemini API logs...
-                    </td>
-                  </tr>
+                  <GlobalTableRowSkeleton rows={5} cols={13} />
                 ) : logs.length === 0 ? (
                   <tr>
                     <td colSpan={13} className="py-12 text-center text-slate-500">

@@ -15,7 +15,6 @@ type Page = PreloadableComponent<React.ComponentType>;
 const lazyPage = (factory: () => Promise<{ default: React.ComponentType }>): Page => lazyWithPreload(factory);
 
 export const Login = lazyPage(() => import("@/pages/Login"));
-export const DashboardLayout = lazyWithPreload(() => import("@/components/DashboardLayout"));
 export const Dashboard = lazyPage(() => import("@/pages/Dashboard"));
 const DashboardGate = lazyPage(() => import("@/pages/DashboardGate"));
 
@@ -79,7 +78,6 @@ export function hasPageRoute(pathname: string) {
 export function preloadRoute(pathname: string) {
   const path = normalize(pathname);
   if (path === "/login") return void Login.preload();
-  DashboardLayout.preload();
   const route = ROUTE_BY_PATH.get(path);
   route?.page.preload();
   route?.alsoPreload?.forEach((p) => p.preload());

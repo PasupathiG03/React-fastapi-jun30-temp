@@ -4,6 +4,7 @@ import { showError, showSuccess, showDelete } from "../lib/toast";
 import { Plus, Trash2, Edit2, Cog, GripVertical, Layers, Search } from "lucide-react";
 import { TablePagination, TableToolbar } from "@/components/DataTableControls";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
+import { GlobalPageLoader, GlobalTableRowSkeleton } from "@/components/GlobalLoader";
 import { getProcessIcon, getScreenIcon } from "@/components/Sidebar";
 import { useTableData } from "@/hooks/useTableData";
 import Modal, { ConfirmDialog, ModalCancelButton, ModalFooter } from "@/components/Modal";
@@ -446,6 +447,10 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
 
   const selectedProcess = processes.find((p) => p.id === selectedProcessId) ?? null;
 
+  if (loadingProcesses) {
+    return <GlobalPageLoader cardsCount={0} rowsCount={6} />;
+  }
+
   return (
     <PageContainer>
       <PageHeader
@@ -458,7 +463,6 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
               ? "Create the processes that group your screens in the sidebar"
               : "Add and organize the screens inside each process"
         }
-        loading={loadingProcesses}
       />
 
       <div className="flex flex-col lg:flex-row gap-5 items-stretch lg:items-start">
@@ -466,63 +470,29 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
         <div className={`${isProcessMode ? "flex-1 min-w-0" : "w-full lg:w-80 lg:shrink-0"} glass-card rounded-[22px] overflow-hidden`}>
           <div className="px-4 py-3.5 border-b border-slate-100 dark:border-white/[0.06] flex items-center justify-between bg-white/30 dark:bg-white/[0.02]">
             <div className="flex items-center gap-2">
-              {loadingProcesses ? (
-                <>
-                  <span className="w-4 h-4 rounded bg-slate-200 dark:bg-white/10 animate-pulse" />
-                  <span className="h-3.5 w-16 rounded bg-slate-200 dark:bg-white/10 animate-pulse" />
-                  <span className="w-5 h-4 rounded-full bg-slate-100 dark:bg-white/10 animate-pulse" />
-                </>
-              ) : (
-                <>
-                  <Layers className="w-4 h-4 text-sky-500" />
-                  <h2 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">Processes</h2>
-                  <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300">
-                    {processes.length}
-                  </span>
-                </>
-              )}
+              <Layers className="w-4 h-4 text-sky-500" />
+              <h2 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">Processes</h2>
+              <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300">
+                {processes.length}
+              </span>
             </div>
             {canManageProcesses && (
-              loadingProcesses ? (
-                <div className="h-6 w-16 rounded-lg bg-slate-100 dark:bg-white/10 animate-pulse" />
-              ) : (
-                <button
-                  onClick={() => {
-                    setEditingProcess(null);
-                    setProcessModalOpen(true);
-                  }}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-sm hover:shadow-[0_2px_10px_rgba(14,165,233,0.3)] transition-all cursor-pointer"
-                  title="Add process"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add</span>
-                </button>
-              )
+              <button
+                onClick={() => {
+                  setEditingProcess(null);
+                  setProcessModalOpen(true);
+                }}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 shadow-sm hover:shadow-[0_2px_10px_rgba(14,165,233,0.3)] transition-all cursor-pointer"
+                title="Add process"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add</span>
+              </button>
             )}
           </div>
 
           <div className="p-2 space-y-1.5">
-            {loadingProcesses ? (
-              <div className="space-y-1.5 animate-pulse">
-                {[1, 2, 3, 4].map((i) => (
-                  <div
-                    key={i}
-                    className="p-2.5 rounded-xl border border-transparent flex items-center justify-between gap-3 bg-white/30 dark:bg-white/[0.02]"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                      <div className="w-9 h-9 rounded-xl bg-slate-200 dark:bg-white/10 shrink-0" />
-                      <div className="space-y-1.5 flex-1">
-                        <div
-                          className="h-3.5 bg-slate-200 dark:bg-white/10 rounded"
-                          style={{ width: `${45 + ((i * 20) % 30)}%` }}
-                        />
-                        <div className="h-2.5 w-16 bg-slate-100 dark:bg-white/5 rounded" />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : processes.length === 0 ? (
+            {processes.length === 0 ? (
               <EmptyState compact icon={Layers} title="No processes yet" description="Add one with the + button above." />
             ) : (
               processes.map((process) => {
@@ -615,21 +585,12 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
           <div className="flex-1 min-w-0 glass-card rounded-[22px] overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.06] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
-                {loadingProcesses ? (
-                  <div className="space-y-2 animate-pulse" aria-hidden="true">
-                    <div className="h-5 w-52 bg-slate-200 dark:bg-white/10 rounded" />
-                    <div className="h-3 w-36 bg-slate-100 dark:bg-white/5 rounded" />
-                  </div>
-                ) : (
-                  <>
-                    <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                      {selectedProcess ? `Screens in ${selectedProcess.name}` : "Screens"}
-                    </h2>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                      {screens.length} {screens.length === 1 ? "screen" : "screens"}
-                    </p>
-                  </>
-                )}
+                <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                  {selectedProcess ? `Screens in ${selectedProcess.name}` : "Screens"}
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {screens.length} {screens.length === 1 ? "screen" : "screens"}
+                </p>
               </div>
               {selectedProcess && (
                 <div className="flex flex-wrap items-center gap-2">
@@ -669,7 +630,7 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
               )}
             </div>
 
-            {!selectedProcess && !loadingProcesses ? (
+            {!selectedProcess ? (
               <div className="flex flex-col items-center justify-center py-16 text-gray-400">
                 <Layers className="w-8 h-8 mb-2 opacity-30" />
                 <p className="text-sm">Select or create a process to manage its screens</p>
@@ -677,70 +638,28 @@ export default function MenuManagementPage({ mode }: { mode?: "process" | "scree
             ) : (
               <>
                 <div className="px-6 py-3 border-b border-slate-100 dark:border-white/[0.06] flex justify-end">
-                  {loadingProcesses ? (
-                    <div className="flex items-center gap-2">
-                      <div className="h-8 w-48 rounded-lg bg-slate-100 dark:bg-white/5 animate-pulse" />
-                      <div className="h-8 w-20 rounded-lg bg-slate-100 dark:bg-white/5 animate-pulse" />
-                    </div>
-                  ) : (
-                    <TableToolbar
-                      query={table.query}
-                      onQueryChange={table.setQuery}
-                      onExport={handleExport}
-                      exportDisabled={table.filtered.length === 0}
-                      placeholder="Search screens..."
-                    />
-                  )}
+                  <TableToolbar
+                    query={table.query}
+                    onQueryChange={table.setQuery}
+                    onExport={handleExport}
+                    exportDisabled={table.filtered.length === 0}
+                    placeholder="Search screens..."
+                  />
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-left text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide border-b border-slate-100 dark:border-white/[0.06]">
-                        {loadingProcesses ? (
-                          <th className="px-6 py-3" colSpan={5}>
-                            <div className="h-3 w-full max-w-md bg-slate-100 dark:bg-white/5 rounded animate-pulse" />
-                          </th>
-                        ) : (
-                          <>
-                            <th className="px-6 py-3">Screen</th>
-                            <th className="px-6 py-3">Route</th>
-                            <th className="px-6 py-3">Order</th>
-                            <th className="px-6 py-3">Status</th>
-                            <th className="px-6 py-3 text-right">Actions</th>
-                          </>
-                        )}
+                        <th className="px-6 py-3">Screen</th>
+                        <th className="px-6 py-3">Route</th>
+                        <th className="px-6 py-3">Order</th>
+                        <th className="px-6 py-3">Status</th>
+                        <th className="px-6 py-3 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
-                      {loadingScreens || loadingProcesses ? (
-                        [1, 2, 3, 4, 5].map((i) => (
-                          <tr key={i} className="animate-pulse">
-                            <td className="px-6 py-3.5">
-                              <div
-                                className="h-3.5 bg-slate-200 dark:bg-white/10 rounded"
-                                style={{ width: `${50 + ((i * 18) % 35)}%` }}
-                              />
-                            </td>
-                            <td className="px-6 py-3.5">
-                              <div
-                                className="h-3 bg-slate-100 dark:bg-white/5 rounded font-mono"
-                                style={{ width: `${60 + ((i * 15) % 25)}%` }}
-                              />
-                            </td>
-                            <td className="px-6 py-3.5">
-                              <div className="h-3 w-5 bg-slate-100 dark:bg-white/5 rounded" />
-                            </td>
-                            <td className="px-6 py-3.5">
-                              <div className="h-5 w-14 bg-slate-100 dark:bg-white/5 rounded-full" />
-                            </td>
-                            <td className="px-6 py-3.5 text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <div className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-white/5" />
-                                <div className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-white/5" />
-                              </div>
-                            </td>
-                          </tr>
-                        ))
+                      {loadingScreens ? (
+                        <GlobalTableRowSkeleton rows={5} cols={5} />
                       ) : table.filtered.length === 0 ? (
                         <tr>
                           <td colSpan={5}>

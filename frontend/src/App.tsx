@@ -3,11 +3,12 @@ import { Toaster } from "react-hot-toast";
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import AccessGuard from "./components/AccessGuard";
+import DashboardLayout from "./components/DashboardLayout";
 import RouteLoader from "./components/RouteLoader";
 import TopProgressBar from "./components/TopProgressBar";
 import { ThemeProvider } from "./context/ThemeContext";
 
-import { DashboardLayout, Login, PAGE_ROUTES } from "./lib/lazyPages";
+import { Login, PAGE_ROUTES } from "./lib/lazyPages";
 
 // The layout is a parent route, so the sidebar, top bar and live connection stay mounted while the
 // user moves between pages (only the page content changes) instead of loading again every time.
@@ -42,9 +43,15 @@ export default function App() {
       <Toaster position="top-right" />
       <BrowserRouter>
         <TopProgressBar />
-        <Suspense fallback={<RouteLoader />}>
         <Routes>
-          <Route path="/login" element={<Login />} />
+          <Route
+            path="/login"
+            element={
+              <Suspense fallback={null}>
+                <Login />
+              </Suspense>
+            }
+          />
 
           <Route element={<AppLayout />}>
             {/* Every screen comes from PAGE_ROUTES (src/lib/lazyPages.ts), so each one is lazy-loaded.
@@ -71,8 +78,7 @@ export default function App() {
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
-      </Suspense>
-    </BrowserRouter>
-  </ThemeProvider>
+      </BrowserRouter>
+    </ThemeProvider>
   );
 }

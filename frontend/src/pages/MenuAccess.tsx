@@ -15,6 +15,7 @@ import { fetchWorkflows, type WorkflowDetail } from "@/services/workflow";
 import PageContainer, { PageHeader } from "@/components/PageContainer";
 import { CustomSelect } from "@/components/CustomSelect";
 import { CustomCheckbox } from "@/components/CustomCheckbox";
+import { GlobalPageLoader, GlobalTableRowSkeleton } from "@/components/GlobalLoader";
 import { isDeveloperRoleName } from "@/lib/access";
 import EmptyState from "@/components/EmptyState";
 
@@ -134,33 +135,25 @@ export default function MenuAccessPage() {
   const screenAllGranted = (menuId: number) =>
     orderedRoles.length > 0 && orderedRoles.every((r) => granted.has(key(r.id, menuId)));
 
+  if (booting) {
+    return <GlobalPageLoader cardsCount={0} rowsCount={6} />;
+  }
+
   return (
     <PageContainer>
       <PageHeader
         icon={ShieldCheck}
         title="Menu Access"
         subtitle="Choose which roles can see each screen and workflow stage in the sidebar"
-        loading={booting}
       />
 
       {/* ── Main Content Card ── */}
       <div className="glass-card rounded-[22px] overflow-hidden">
         {/* Card Header: Screens & Process Select */}
         <div className="relative z-20 px-6 py-4 border-b border-slate-100 dark:border-white/[0.06] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-          {booting ? (
-            <div className="h-5 w-24 bg-slate-200 dark:bg-white/10 rounded-md animate-pulse" />
-          ) : (
-            <h2 className="text-base font-bold text-slate-900 dark:text-white">{isWorkflow ? "Stages" : "Screens"}</h2>
-          )}
-          <div className="flex items-center gap-2.5">
-            {booting ? (
-              <div className="h-3.5 w-28 bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
-            ) : (
-              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 shrink-0">Process / Workflow</label>
-            )}
-            {booting ? (
-              <div className="h-8 w-full sm:w-64 bg-slate-200 dark:bg-white/10 rounded-xl animate-pulse" />
-            ) : (
+          <h2 className="text-base font-bold text-slate-900 dark:text-white">{isWorkflow ? "Stages" : "Screens"}</h2>
+          <div className="flex items-center gap-3">
+            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 shrink-0">Process / Workflow</label>
             <CustomSelect
               value={target ?? undefined}
               onChange={(val) => setTarget(String(val))}
@@ -169,10 +162,9 @@ export default function MenuAccessPage() {
                 ...workflows.map((w) => ({ value: `w:${w.id}`, label: `Workflow: ${w.name}` })),
               ]}
               placeholder={loading && !target ? "Loading..." : processes.length + workflows.length === 0 ? "Nothing to show" : "Select"}
-              className="w-full sm:w-64"
-              size="sm"
+              className="w-full sm:w-72"
+              size="md"
             />
-            )}
           </div>
         </div>
 
@@ -182,42 +174,26 @@ export default function MenuAccessPage() {
             <thead>
               <tr className="text-left text-xs font-semibold text-slate-500 dark:text-slate-400 border-b border-slate-200/90 dark:border-white/[0.08] bg-white/45 dark:bg-white/[0.02]">
                 <th className="px-6 py-3.5 font-semibold border-r border-slate-200/90 dark:border-white/[0.08]">
-                  {booting ? (
-                    <div className="h-3.5 w-12 bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
-                  ) : isWorkflow ? (
-                    "Stage"
-                  ) : (
-                    "Screen"
-                  )}
+                  {isWorkflow ? "Stage" : "Screen"}
                 </th>
-                {orderedRoles.length > 0
-                  ? orderedRoles.map((r, idx) => (
-                    <th
-                      key={r.id}
-                      className={`px-6 py-3.5 text-center font-semibold whitespace-nowrap border-r border-slate-200/90 dark:border-white/[0.08] ${idx === orderedRoles.length - 1 ? "border-r-0" : ""
-                        }`}
-                    >
-                      <div className="flex items-center justify-center gap-2">
-                        <CustomCheckbox
-                          checked={roleAllGranted(r.id)}
-                          onChange={(v) => bulkSet(screens.map((s) => ({ roleId: r.id, menuId: s.id })), v)}
-                          title={`Select all for ${r.name}`}
-                          size="sm"
-                          disabled={loading || screens.length === 0}
-                        />
-                        {r.name}
-                      </div>
-                    </th>
-                  ))
-                  : [1, 2, 3, 4].map((i, idx) => (
-                    <th
-                      key={i}
-                      className={`px-6 py-3.5 text-center font-semibold whitespace-nowrap border-r border-slate-200/90 dark:border-white/[0.08] ${idx === 3 ? "border-r-0" : ""
-                        }`}
-                    >
-                      <div className="h-3.5 w-16 mx-auto bg-slate-200 dark:bg-white/10 rounded animate-pulse" />
-                    </th>
-                  ))}
+                {orderedRoles.map((r, idx) => (
+                  <th
+                    key={r.id}
+                    className={`px-6 py-3.5 text-center font-semibold whitespace-nowrap border-r border-slate-200/90 dark:border-white/[0.08] ${idx === orderedRoles.length - 1 ? "border-r-0" : ""
+                      }`}
+                  >
+                    <div className="flex items-center justify-center gap-2">
+                      <CustomCheckbox
+                        checked={roleAllGranted(r.id)}
+                        onChange={(v) => bulkSet(screens.map((s) => ({ roleId: r.id, menuId: s.id })), v)}
+                        title={`Select all for ${r.name}`}
+                        size="sm"
+                        disabled={loading || screens.length === 0}
+                      />
+                      {r.name}
+                    </div>
+                  </th>
+                ))}
                 {orderedRoles.length > 0 && (
                   <th className="px-6 py-3.5 text-center font-semibold whitespace-nowrap border-l border-slate-200/90 dark:border-white/[0.08]">
                     All roles
@@ -227,25 +203,7 @@ export default function MenuAccessPage() {
             </thead>
             <tbody className="divide-y divide-slate-200/90 dark:divide-white/[0.06]">
               {loading ? (
-                [1, 2, 3, 4, 5].map((i) => (
-                  <tr key={i} className="animate-pulse">
-                    <td className="px-6 py-4 border-r border-slate-200/90 dark:border-white/[0.08]">
-                      <div
-                        className="h-4 bg-slate-200 dark:bg-white/10 rounded-md"
-                        style={{ width: `${55 + ((i * 19) % 35)}%` }}
-                      />
-                    </td>
-                    {(orderedRoles.length > 0 ? orderedRoles : [1, 2, 3, 4]).map((item, idx, arr) => (
-                      <td
-                        key={typeof item === "number" ? item : item.id}
-                        className={`px-6 py-4 text-center border-r border-slate-200/90 dark:border-white/[0.08] ${idx === arr.length - 1 ? "border-r-0" : ""
-                          }`}
-                      >
-                        <div className="w-4 h-4 mx-auto bg-slate-200 dark:bg-white/10 rounded" />
-                      </td>
-                    ))}
-                  </tr>
-                ))
+                <GlobalTableRowSkeleton rows={5} cols={1 + (orderedRoles.length || 4)} />
               ) : !matrix || matrix.screens.length === 0 ? (
                 <tr>
                   {/* Role columns plus the screen-name and "all roles" columns */}

@@ -139,7 +139,7 @@ export default function SearchBar({ isDeveloper }: Props) {
         onKeyDown={onKeyDown}
         placeholder="Search screens…  (Ctrl+K)"
         aria-label="Search screens"
-        className="w-full h-9 pl-9 pr-8 rounded-xl text-[13px] text-slate-700 dark:text-slate-200 placeholder:text-slate-400 bg-white/60 dark:bg-white/5 border border-slate-200/80 dark:border-white/10 outline-none focus:border-[#0084ff]/60 focus:ring-2 focus:ring-[#0084ff]/20 transition"
+        className="w-full h-9 pl-9 pr-8 rounded-xl text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 bg-white/70 dark:bg-white/5 border border-slate-200 dark:border-white/10 outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition"
       />
       {query && (
         <button
@@ -149,7 +149,7 @@ export default function SearchBar({ isDeveloper }: Props) {
             inputRef.current?.focus();
           }}
           aria-label="Clear search"
-          className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10"
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
         >
           <X className="w-3.5 h-3.5" />
         </button>
