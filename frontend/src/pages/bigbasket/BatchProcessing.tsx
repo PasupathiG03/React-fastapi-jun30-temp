@@ -1008,9 +1008,9 @@ function BatchTableRow({
             <button
               type="button"
               onClick={onDelete}
-              disabled={actionLoading}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
-              title="Permanently delete batch"
+              disabled={actionLoading || batch.status === "processing"}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              title={batch.status === "processing" ? "Cannot delete while processing. Please cancel or pause first." : "Permanently delete batch"}
             >
               <Trash2 className="w-4 h-4" />
             </button>

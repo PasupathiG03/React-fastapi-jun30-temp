@@ -21,7 +21,8 @@ class RMBG2Service:
     fails so the UI can surface the error and let the user click "Rerun Background Removal".
     """
 
-    DEFAULT_MODEL_ID = "briaai/RMBG-2.0"
+    # Default to MIT-licensed BiRefNet (ZhengPeng7/BiRefNet) for royalty-free commercial compliance
+    DEFAULT_MODEL_ID = "ZhengPeng7/BiRefNet"
     DEFAULT_ONNX_FILE = "onnx/model.onnx"
     INPUT_SIZE = (1024, 1024)
 
@@ -147,6 +148,8 @@ class RMBG2Service:
                     category=FutureWarning,
                 )
                 model = AutoModelForImageSegmentation.from_pretrained(model_id, **load_kwargs)
+            if device == "cpu":
+                model = model.float()
             model.to(device)
             model.eval()
 

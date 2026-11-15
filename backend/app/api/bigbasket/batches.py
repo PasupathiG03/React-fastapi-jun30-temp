@@ -207,6 +207,13 @@ def delete_batch(
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
 
+    if batch.status == "processing":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete a batch that is currently processing. Please cancel or pause it first.",
+        )
+
+    BatchProcessor.request_cancel(batch_id)
     BigBasketStorage.clean_batch(batch.batch_code)
     db.delete(batch)
     db.commit()

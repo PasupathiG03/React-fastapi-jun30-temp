@@ -183,13 +183,21 @@ class DynamicInpaintService:
             return img_arr
 
         # 2. Learn the stamp background colour from inside the box
+        # Per BigBasket SRS Section 5 (MRP and Expiry Information Removal):
+        # A stamp zone can sit on packaging foil, inside a white/light stamp window, or span both.
+        # Major color surfaces (>= 15% of box pixels) are valid background surfaces.
+        # Text strokes are the fine minority cluster (< 15% of pixels).
         k = 3 if len(box_px) >= 64 else 2
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0)
         _, labels, centers = cv2.kmeans(box_px, k, None, criteria, 3, cv2.KMEANS_PP_CENTERS)
         counts = np.bincount(labels.ravel(), minlength=k)
+        total_box_px = len(box_px)
         dom = int(np.argmax(counts))
-        # Clusters close to the dominant one are the same surface (gradient / shading)
-        bg_clusters = [c for c in range(k) if np.linalg.norm(centers[c] - centers[dom]) < 45.0]
+        # Clusters close to the dominant one OR representing a major background surface (e.g. white stamp window)
+        bg_clusters = [
+            c for c in range(k)
+            if (counts[c] / max(1, total_box_px) >= 0.15) or (np.linalg.norm(centers[c] - centers[dom]) < 45.0)
+        ]
 
         flat = patch_rgb.reshape(-1, 3).astype(np.float32)
         dists = np.linalg.norm(flat[:, None, :] - centers[None, :, :], axis=2)

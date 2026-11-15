@@ -161,8 +161,25 @@ class BatchProcessor:
                     })
                     await asyncio.sleep(2.0)
 
+                # Check if batch record was removed from DB mid-processing
+                batch_check = db.query(ImageBatch.id).filter(ImageBatch.id == batch_id).first()
+                if not batch_check:
+                    logger.warning(f"Batch {batch_id} was removed from database during execution. Halting processing worker.")
+                    db.rollback()
+                    return
+
                 # Process single image item
                 await cls._process_single_image(db, img, batch, ai_manager, cfg)
+
+                # Check if batch or image still exists before updating progress counters
+                batch_check = db.query(ImageBatch.id).filter(ImageBatch.id == batch_id).first()
+                img_check = db.query(BatchImage.id).filter(BatchImage.id == img.id).first()
+                if not batch_check or not img_check:
+                    logger.warning(f"Batch {batch_id} or image {img.id} was deleted during processing. Skipping DB commit.")
+                    db.rollback()
+                    if not batch_check:
+                        return
+                    continue
 
                 # Update batch progress counters
                 batch.processed_images = db.query(BatchImage).filter(
@@ -181,7 +198,16 @@ class BatchProcessor:
                     BatchImage.batch_id == batch_id,
                     BatchImage.status == "failed",
                 ).count()
-                db.commit()
+                try:
+                    db.commit()
+                except Exception as commit_err:
+                    db.rollback()
+                    if "StaleDataError" in type(commit_err).__name__:
+                        logger.warning(f"StaleDataError updating batch {batch_id} / image {img.id}. Record was deleted concurrently.")
+                        if not db.query(ImageBatch.id).filter(ImageBatch.id == batch_id).first():
+                            return
+                        continue
+                    raise
 
                 # Broadcast live progress
                 pct = int((idx / total) * 100) if total > 0 else 100
@@ -231,13 +257,19 @@ class BatchProcessor:
                 "progress_pct": 100,
             })
         except Exception as e:
-            logger.exception(f"Error processing batch {batch_id}")
+            if "StaleDataError" in type(e).__name__:
+                logger.warning(f"Batch {batch_id} processing halted due to StaleDataError (record deleted concurrently).")
+            else:
+                logger.exception(f"Error processing batch {batch_id}")
             db.rollback()
-            b = db.query(ImageBatch).filter(ImageBatch.id == batch_id).first()
-            if b:
-                b.status = "failed"
-                cls._log_event(db, batch_id, "failed", f"Batch processing failed: {str(e)}")
-                db.commit()
+            try:
+                b = db.query(ImageBatch).filter(ImageBatch.id == batch_id).first()
+                if b:
+                    b.status = "failed"
+                    cls._log_event(db, batch_id, "failed", f"Batch processing failed: {str(e)}")
+                    db.commit()
+            except Exception:
+                db.rollback()
         finally:
             cls._PAUSE_REQUESTS.discard(batch_id)
             cls._CANCEL_REQUESTS.discard(batch_id)

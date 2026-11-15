@@ -143,20 +143,30 @@ class GeminiClassificationService:
             try:
                 # If user_id is not passed, resolve automatically from batch or image
                 effective_user_id = user_id
-                if not effective_user_id and batch_id:
-                    batch_obj = db.query(ImageBatch.created_by_id).filter(ImageBatch.id == batch_id).first()
-                    if batch_obj and batch_obj[0]:
-                        effective_user_id = batch_obj[0]
-                if not effective_user_id and image_id:
-                    img_obj = db.query(BatchImage.created_by_id, BatchImage.batch_id).filter(BatchImage.id == image_id).first()
-                    if img_obj:
-                        if img_obj[0]:
-                            effective_user_id = img_obj[0]
-                        elif not batch_id and img_obj[1]:
-                            batch_id = img_obj[1]
-                            b_rec = db.query(ImageBatch.created_by_id).filter(ImageBatch.id == batch_id).first()
-                            if b_rec and b_rec[0]:
-                                effective_user_id = b_rec[0]
+                effective_batch_id = batch_id
+                effective_image_id = image_id
+
+                if effective_batch_id:
+                    batch_exists = db.query(ImageBatch.id, ImageBatch.created_by_id).filter(ImageBatch.id == effective_batch_id).first()
+                    if batch_exists:
+                        if not effective_user_id and batch_exists[1]:
+                            effective_user_id = batch_exists[1]
+                    else:
+                        effective_batch_id = None
+
+                if effective_image_id:
+                    img_exists = db.query(BatchImage.id, BatchImage.created_by_id, BatchImage.batch_id).filter(BatchImage.id == effective_image_id).first()
+                    if img_exists:
+                        if not effective_user_id and img_exists[1]:
+                            effective_user_id = img_exists[1]
+                        if not effective_batch_id and img_exists[2]:
+                            b_rec = db.query(ImageBatch.id, ImageBatch.created_by_id).filter(ImageBatch.id == img_exists[2]).first()
+                            if b_rec:
+                                effective_batch_id = b_rec[0]
+                                if not effective_user_id and b_rec[1]:
+                                    effective_user_id = b_rec[1]
+                    else:
+                        effective_image_id = None
 
                 meta = dict(metadata_payload or {})
                 if classification and classification.is_multi_product_image:
@@ -178,8 +188,8 @@ class GeminiClassificationService:
                     latency_ms=round(latency_ms, 2),
                     bbid=bbid,
                     filename=filename,
-                    batch_id=batch_id,
-                    image_id=image_id,
+                    batch_id=effective_batch_id,
+                    image_id=effective_image_id,
                     user_id=effective_user_id,
                     primary_category=classification.primary_category if classification else None,
                     subcategory=classification.subcategory if classification else None,
@@ -195,10 +205,13 @@ class GeminiClassificationService:
                 )
                 db.add(log_entry)
                 db.commit()
+            except Exception as commit_err:
+                db.rollback()
+                logger.warning(f"Could not persist Gemini usage log: {commit_err}")
             finally:
                 db.close()
         except Exception as log_err:
-            logger.warning(f"Could not persist Gemini usage log: {log_err}")
+            logger.warning(f"Could not process Gemini usage log: {log_err}")
 
     @classmethod
     def get_image_hash(cls, image_bytes: bytes) -> str:
@@ -560,7 +573,7 @@ class GeminiClassificationService:
                     endpoint,
                     headers={"Content-Type": "application/json"},
                     json=payload,
-                    timeout=35.0
+                    timeout=(30.0, 90.0)
                 )
                 latency = (time.perf_counter() - t0) * 1000
 
@@ -660,7 +673,6 @@ class GeminiClassificationService:
         # Preserve 100% original image quality without any downscaling or lossy compression
         send_bytes = image_bytes
         mime_type = "image/png" if image_bytes[:8] == b"\x89PNG\r\n\x1a\n" else "image/jpeg"
-
         b64_data = base64.b64encode(send_bytes).decode("utf-8")
         user_prompt = build_gemini_mrp_expiry_prompt(
             bbid=bbid,
@@ -703,7 +715,7 @@ class GeminiClassificationService:
                     endpoint,
                     headers={"Content-Type": "application/json"},
                     json=payload,
-                    timeout=35.0
+                    timeout=(30.0, 90.0)
                 )
                 latency = (time.perf_counter() - t0) * 1000
 
