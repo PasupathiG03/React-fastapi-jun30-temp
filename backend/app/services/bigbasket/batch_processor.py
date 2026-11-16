@@ -19,6 +19,7 @@ from app.models.bigbasket import (
     ImageBatch,
 )
 from app.services.bigbasket.ai_provider import HybridAiManager
+from app.services.bigbasket.classification_guard import ConsensusAiManager
 from app.services.bigbasket.events import (
     REDIS_CONNECT_TIMEOUT,
     REDIS_URL,
@@ -165,7 +166,7 @@ class BatchProcessor:
                 "progress_pct": 0,
             })
 
-            ai_manager = HybridAiManager()
+            ai_manager = ConsensusAiManager()
             cfg = batch.config or {}
 
             # Query all pending or failed images
@@ -861,7 +862,7 @@ class BatchProcessor:
         if not batch:
             raise ValueError(f"Batch {img.batch_id} not found")
 
-        ai_manager = HybridAiManager()
+        ai_manager = ConsensusAiManager(fresh=True)
         cfg = {**(batch.config or {}), "bg_removal_provider": provider}
 
         # Reset status to processing temporarily
@@ -902,7 +903,7 @@ class BatchProcessor:
             BatchImage.status.in_(["needs_review", "failed"]),
         ).all()
 
-        ai_manager = HybridAiManager()
+        ai_manager = ConsensusAiManager(fresh=True)
         cfg = {**(batch.config or {}), "bg_removal_provider": "photoroom"}
 
         for img in images:

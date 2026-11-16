@@ -35,6 +35,8 @@ import {
   RerunBgRemovalButton,
   RerunLocalModelButton,
 } from "@/components/bigbasket/RerunBgRemovalControls";
+import SkipClassificationCheckbox from "@/components/bigbasket/SkipClassificationCheckbox";
+import { useBgRemoveRun } from "@/hooks/useBgRemoveRun";
 
 export default function ReviewStudio() {
   const { imageId: paramId } = useParams();
@@ -227,6 +229,21 @@ export default function ReviewStudio() {
   }, [activeImageId, image?.id]);
 
   const [retryingLocal, setRetryingLocal] = useState(false);
+  // "Force background removal" checkbox. Stored per image id so it never carries over to the next image.
+  const [skipClassificationFor, setSkipClassificationFor] = useState<number | null>(null);
+  const skipClassification = image?.id != null && skipClassificationFor === image.id;
+  const bgRemoveRun = useBgRemoveRun((updated) => {
+    setImage(updated);
+    setCacheBuster(Date.now());
+    if (updated?.batch_id) {
+      fetchBatchImages(updated.batch_id, 1, 100)
+        .then((siblings) => setBatchSiblings(siblings.items || []))
+        .catch(() => {});
+    }
+  });
+  const bgRemoving = bgRemoveRun.running !== null;
+  // Image is still queued or being standardized: every action button stays disabled until it finishes.
+  const isImageProcessing = image?.status === "processing" || image?.status === "pending";
 
   async function handleRetryPhotoroom() {
     if (!image) return;
@@ -1042,24 +1059,29 @@ export default function ReviewStudio() {
 
             {/* Background Removal Reprocessing & Download Actions */}
             <div className="pt-3 border-t border-slate-100 dark:border-white/5 space-y-2">
+              <SkipClassificationCheckbox
+                checked={skipClassification}
+                onChange={(checked) => setSkipClassificationFor(checked ? image?.id ?? null : null)}
+                disabled={retrying || retryingLocal || bgRemoving || isImageProcessing}
+              />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <RerunLocalModelButton
-                  onClick={handleRetryLocal}
-                  loading={retryingLocal}
-                  disabled={retrying || downloadingSingle}
+                  onClick={skipClassification ? () => bgRemoveRun.run(image?.id, "birefnet") : handleRetryLocal}
+                  loading={retryingLocal || bgRemoveRun.running === "birefnet"}
+                  disabled={retrying || downloadingSingle || bgRemoveRun.running === "photoroom" || isImageProcessing}
                   className="w-full"
                 />
                 <RerunBgRemovalButton
-                  onClick={handleRetryPhotoroom}
-                  loading={retrying}
-                  disabled={retryingLocal || downloadingSingle}
+                  onClick={skipClassification ? () => bgRemoveRun.run(image?.id, "photoroom") : handleRetryPhotoroom}
+                  loading={retrying || bgRemoveRun.running === "photoroom"}
+                  disabled={retryingLocal || downloadingSingle || bgRemoveRun.running === "birefnet" || isImageProcessing}
                   className="w-full"
                 />
               </div>
               <DownloadOutputImageButton
                 onClick={handleDownloadIndividualImage}
                 loading={downloadingSingle}
-                disabled={retrying || retryingLocal || (!image?.final_output_path && !image?.status?.includes("approved"))}
+                disabled={retrying || retryingLocal || bgRemoving || isImageProcessing || (!image?.final_output_path && !image?.status?.includes("approved"))}
                 className="w-full"
               />
             </div>

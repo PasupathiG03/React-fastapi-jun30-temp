@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.bigbasket import (
     batches,
+    bg_remove,
     events,
     google_drive,
     images,
@@ -21,4 +22,5 @@ bigbasket_router.include_router(reviews.router, prefix="/reviews", tags=["BigBas
 bigbasket_router.include_router(reports.router, prefix="/reports", tags=["BigBasket Reports"])
 bigbasket_router.include_router(events.router, prefix="/events", tags=["BigBasket Events"])
 bigbasket_router.include_router(google_drive.router, prefix="/google-drive", tags=["BigBasket Google Drive"])
+bigbasket_router.include_router(bg_remove.router, prefix="/images", tags=["BigBasket Images"])
 
