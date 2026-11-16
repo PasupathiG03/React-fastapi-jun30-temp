@@ -140,6 +140,35 @@ class SubRegionExtractor:
         return None
 
     @classmethod
+    def _find_vertical_line(
+        cls,
+        gray: np.ndarray,
+        y1: int,
+        y2: int,
+        x_anchor: int,
+        search_range: Tuple[int, int] = (-30, 30),
+    ) -> Optional[int]:
+        """Vertical counterpart of _find_horizontal_line: a physical border running most of the block's height."""
+        h, w = gray.shape[:2]
+        x_start = max(0, x_anchor + search_range[0])
+        x_end = min(w, x_anchor + search_range[1])
+        sy1, sy2 = max(0, y1), min(h, y2)
+        min_line_h = max(30, int(0.5 * (sy2 - sy1)))
+        if x_end <= x_start or sy2 - sy1 < min_line_h:
+            return None
+        roi = gray[sy1:sy2, x_start:x_end]
+        if roi.size == 0:
+            return None
+        thresh = cv2.adaptiveThreshold(~roi, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 15, -2)
+        vert_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, min_line_h))
+        vert = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, vert_kernel)
+        col_scores = np.sum(vert > 0, axis=0)
+        best_col = int(np.argmax(col_scores))
+        if col_scores[best_col] >= min_line_h:
+            return x_start + best_col
+        return None
+
+    @classmethod
     def _clamp_to_panel_or_card(
         cls,
         arr: np.ndarray,
@@ -424,6 +453,7 @@ class SubRegionExtractor:
         other_boxes: List[Tuple[int, int, int, int]],
         gray: Optional[np.ndarray] = None,
         tighten_x: bool = False,
+        color: Optional[np.ndarray] = None,
     ) -> Optional[Tuple[int, int, int, int]]:
         """
         Geometry-only refinement of a text-block crop (no keywords, no pack-specific values).
@@ -498,7 +528,8 @@ class SubRegionExtractor:
         # outside belong to whatever follows (another section, or text beyond a card border).
         free = [
             l for l in foreign
-            if 0 < frac_inside(l, box) < 0.7 and not any(frac_inside(l, b) >= 0.5 for b in smaller)
+            if 0 < frac_inside(l, box) < 0.7 and v_frac(l, box) >= 0.5
+            and not any(frac_inside(l, b) >= 0.5 for b in smaller)
         ]
         grew = True
         while grew:
@@ -551,20 +582,114 @@ class SubRegionExtractor:
 
         # Snap to a physical table / box border right next to the text, as long as it stays inside the limits set
         # by the neighbouring text, so a frame is kept whole instead of being cut through.
+        has_hframe = False
         if gray is not None:
             reach = int(1.5 * line_h)
             top_rule = cls._find_horizontal_line(gray, ox1, ox2, oy1, search_range=(-reach, 0))
             if top_rule is not None and top_limit <= top_rule - 3 < oy1:
                 ny1 = min(ny1, top_rule - 3)
+                has_hframe = True
             bot_rule = cls._find_horizontal_line(gray, ox1, ox2, oy2, search_range=(0, reach))
             if bot_rule is not None and oy2 < bot_rule + 3 <= bottom_limit:
                 ny2 = max(ny2, bot_rule + 3)
+                has_hframe = True
 
         if tighten_x:
             margin = max(4, line_h // 2)
             px1, px2 = max(px1, ox1 - margin), min(px2, ox2 + margin)
-        # Never slice one of our own lines sideways (Gemini's left/right edge can cut through a line).
-        px1, px2 = min(px1, ox1), max(px2, ox2)
+        # Never slice one of our own lines sideways (Gemini's left/right edge can cut through a line). OCR boxes
+        # can stop short of the first / last glyph, so keep a small margin, but never past the midpoint to text in
+        # a neighbouring column on the same rows.
+        side = [l for l in foreign if l["y2"] > ny1 and l["y1"] < ny2]
+        left_text = [l["x2"] for l in side if l["x2"] <= ox1]
+        right_text = [l["x1"] for l in side if l["x1"] >= ox2]
+        img_w = gray.shape[1] if gray is not None else max(px2, ox2)
+        left_limit = (max(left_text) + ox1) // 2 if left_text else 0
+        right_limit = (min(right_text) + ox2) // 2 if right_text else img_w
+        pad = max(4, line_h // 3)
+        px1 = min(px1, max(left_limit, ox1 - pad))
+        px2 = max(px2, min(right_limit, ox2 + pad))
+
+        # Keep a vertical table / card border just outside the text whole (same idea as the horizontal rules), but
+        # only when the crop also holds that frame's top or bottom edge. A one-line crop out of a bordered card
+        # would otherwise show a lone vertical bar.
+        if gray is not None and has_hframe:
+            reach = int(1.5 * line_h)
+            left_rule = cls._find_vertical_line(gray, ny1, ny2, ox1, search_range=(-reach, 0))
+            if left_rule is not None and left_limit <= left_rule - 1 < ox1:
+                px1 = min(px1, left_rule - 1)
+            right_rule = cls._find_vertical_line(gray, ny1, ny2, ox2, search_range=(0, reach))
+            if right_rule is not None and ox2 < right_rule + 1 <= right_limit:
+                px2 = max(px2, right_rule + 1)
+        px1, px2 = max(0, px1), min(img_w, px2)
+
+        # Drop outer columns that are packaging rather than this block's own background: the block background is
+        # the median colour around its text; a column belongs to the block when most of it is that colour or dark
+        # ink / border line. Columns are only trimmed from the outside in and never past the text, so logos or
+        # frames inside the block are untouched.
+        if color is not None and color.ndim == 3 and ny2 > ny1:
+            band = color[max(0, oy1):max(oy1 + 1, oy2), max(0, ox1):max(ox1 + 1, ox2), :3].reshape(-1, 3).astype(float)
+            if band.size:
+                bg = np.median(band, axis=0)
+                bg_chroma = float(bg.max() - bg.min())
+
+                def col_ok(x: int) -> bool:
+                    col = color[ny1:ny2, x, :3].astype(float)
+                    if col.size == 0:
+                        return True
+                    # background-like: close to the block colour AND not more colourful than it (a faint packaging
+                    # tint on a white card is close in distance but clearly more saturated)
+                    pix_chroma = col.max(axis=1) - col.min(axis=1)
+                    near_bg = (np.linalg.norm(col - bg, axis=1) < 45) & (pix_chroma < bg_chroma + 20)
+                    dark = col.mean(axis=1) < 100
+                    # outside the text there should be nothing but background or a frame line; a column that is
+                    # packaging colour in even part of its height (e.g. the bag edge at one corner) is trimmed
+                    return float(np.mean(near_bg | dark)) >= 0.9
+
+                def run_ok(xs: List[int]) -> bool:
+                    return all(0 <= x < color.shape[1] and col_ok(x) for x in xs)
+
+                x = px1
+                while x < ox1 - 2 and not run_ok([x, x + 1, x + 2]):
+                    x += 1
+                px1 = x
+                x = px2 - 1
+                while x > ox2 + 2 and not run_ok([x, x - 1, x - 2]):
+                    x -= 1
+                px2 = x + 1
+
+                # A thin frame line just outside the trimmed edge is part of the block: keep it. It must be clearly
+                # darker than the block background and colourless (grey/black), so coloured packaging never counts.
+                bg_lum = float(bg.mean())
+                k = max(3, line_h // 4)
+
+                def is_frame(xc: int) -> bool:
+                    if not (0 <= xc < color.shape[1]):
+                        return False
+                    col = color[ny1:ny2, xc, :3].astype(float)
+                    if col.size == 0 or cls._get_chroma(col) >= 30:
+                        return False
+                    # an unbroken vertical line: darker than the background in (almost) every row. Glyph strokes
+                    # never span the full height of the crop, so first letters are not mistaken for a frame.
+                    return float(np.mean(col.mean(axis=1) < bg_lum - 40)) >= 0.85
+
+                if has_hframe:
+                    left = [xc for xc in range(px1 - 1, px1 - 1 - k, -1) if is_frame(xc)]
+                    if left:
+                        px1 = max(0, min(left) - 1)
+                    right = [xc for xc in range(px2, px2 + k) if is_frame(xc)]
+                    if right:
+                        px2 = min(color.shape[1], max(right) + 2)
+                else:
+                    # No horizontal frame edge in the crop: a vertical bar between the edge and the text is a piece
+                    # of a larger box, so start the crop just inside it.
+                    left = [xc for xc in range(px1, ox1 - 2) if is_frame(xc)]
+                    if left:
+                        px1 = max(left) + 2
+                    right = [xc for xc in range(ox2 + 3, px2) if is_frame(xc)]
+                    if right:
+                        px2 = min(right) - 1
+
         if ny2 <= ny1 + 10:
             return None
         return (px1, ny1, px2, ny2)
@@ -638,7 +763,7 @@ class SubRegionExtractor:
                 # Fully geometric, no keywords: see _refine_text_block_box.
                 refined = cls._refine_text_block_box(
                     (px1, py1, px2, py2), ocr_lines, other_boxes_px,
-                    gray=gray, tighten_x=(cat_lower == "ingredient"),
+                    gray=gray, tighten_x=(cat_lower == "ingredient"), color=arr,
                 )
                 if refined:
                     px1, py1, px2, py2 = refined
@@ -672,7 +797,7 @@ class SubRegionExtractor:
         if py2 <= py1 + 10:
             py2 = py1 + 20
 
-        if arr is not None:
+        if arr is not None and not block_refined:
             fx1, fx2 = cls._clamp_to_panel_or_card(arr, px1, py1, px2, py2)
         else:
             fx1, fx2 = px1, px2
