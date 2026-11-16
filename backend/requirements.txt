@@ -22,7 +22,7 @@ rembg>=2.0.69
 # OCR: RapidOCR is the single OCR engine (PP-OCR models on onnxruntime, CPU; models ship with the package).
 rapidocr==3.10.0
 
-# Local Background Removal (BRIA RMBG-2.0)
+# Local Background Removal (BiRefNet)
 torch>=2.0.0
 torchvision>=0.15.0
 transformers>=4.40.0

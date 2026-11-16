@@ -7,7 +7,6 @@ and micro-texture synthesis to perfectly match any packaging color, material, or
 
 import io
 import logging
-import time
 from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
@@ -33,11 +32,14 @@ class DynamicInpaintService:
         neighbor_exclusion_boxes: Optional[List[List[int]]] = None,
         batch_id: Optional[int] = None,
         image_id: Optional[int] = None,
+        status_out: Optional[Dict[str, Any]] = None,
     ) -> Tuple[bytes, bool, List[Dict[str, Any]]]:
         """
         Executes dynamic Gemini stamp localization followed by surgical color-adaptive inpainting.
         Returns:
             (processed_png_bytes, inpaint_applied_bool, list_of_removed_stamps)
+        If status_out is given, status_out["detection_ok"] tells whether Gemini actually answered (True) or the
+        call failed / was not configured (False), so callers can tell "no stamps" from "could not check".
         """
         from pathlib import Path
         if isinstance(image_bytes, (str, Path)):
@@ -56,6 +58,9 @@ class DynamicInpaintService:
             batch_id=batch_id,
             image_id=image_id,
         )
+
+        if status_out is not None:
+            status_out["detection_ok"] = bool(stamp_data.get("detection_ok", True))
 
         stamps = stamp_data.get("stamps", [])
         if not stamps or not stamp_data.get("has_removable_stamps"):
@@ -127,6 +132,41 @@ class DynamicInpaintService:
         logger.info(f"Successfully inpainted {len(applied_stamps)} stamp(s) on {filename} (BBID {bbid}) with adaptive color blending.")
         return buf.getvalue(), True, applied_stamps
 
+    @staticmethod
+    def _fit_surface_fill(
+        patch_rgb: np.ndarray,
+        sample: np.ndarray,
+        max_resid: float = 7.0,
+    ) -> Optional[np.ndarray]:
+        """Least-squares quadratic surface per colour channel over the sampled clean-background pixels.
+
+        Returns an image of the fitted surface (same size as patch_rgb), or None when there are too few samples
+        or the background is not smooth enough for a surface to describe it (RMS residual above max_resid).
+        """
+        ys, xs = np.nonzero(sample)
+        if len(xs) < 150:
+            return None
+        if len(xs) > 6000:
+            pick = np.random.default_rng(0).choice(len(xs), 6000, replace=False)
+            ys, xs = ys[pick], xs[pick]
+        h, w = patch_rgb.shape[:2]
+
+        def design(px, py):
+            u = px / max(w - 1, 1) - 0.5
+            v = py / max(h - 1, 1) - 0.5
+            return np.stack([np.ones_like(u), u, v, u * u, u * v, v * v], axis=1)
+
+        X = design(xs.astype(np.float64), ys.astype(np.float64))
+        vals = patch_rgb[ys, xs].astype(np.float64)
+        coef, *_ = np.linalg.lstsq(X, vals, rcond=None)
+        resid = vals - X @ coef
+        if float(np.sqrt(np.mean(resid ** 2))) > max_resid:
+            return None
+
+        gy, gx = np.mgrid[0:h, 0:w]
+        G = design(gx.ravel().astype(np.float64), gy.ravel().astype(np.float64))
+        return np.clip(G @ coef, 0, 255).reshape(h, w, 3).astype(np.uint8)
+
     @classmethod
     def _inpaint_stamp_region(
         cls,
@@ -162,9 +202,12 @@ class DynamicInpaintService:
         sx2, sy2 = min(w_img, x2 + pad_x), min(h_img, y2 + pad_y)
 
         # Context band around the box (lets us tell "outside surface" from "stamp text")
-        band = max(4, min(12, int(min(box_w, box_h) * 0.15)))
-        ox1, oy1 = max(0, sx1 - band), max(0, sy1 - band)
-        ox2, oy2 = min(w_img, sx2 + band), min(h_img, sy2 + band)
+        # Gemini boxes are often loose or shifted, clipping the first/last characters of the stamp. The window must
+        # reach far enough past the box to hold those characters whole, so they are not mistaken for the outside.
+        band_x = max(8, int(box_h * 0.8))
+        band_y = max(4, int(box_h * 0.25))
+        ox1, oy1 = max(0, sx1 - band_x), max(0, sy1 - band_y)
+        ox2, oy2 = min(w_img, sx2 + band_x), min(h_img, sy2 + band_y)
 
         patch = img_arr[oy1:oy2, ox1:ox2].copy()
         patch_h, patch_w = patch.shape[:2]
@@ -193,10 +236,14 @@ class DynamicInpaintService:
         counts = np.bincount(labels.ravel(), minlength=k)
         total_box_px = len(box_px)
         dom = int(np.argmax(counts))
-        # Clusters close to the dominant one OR representing a major background surface (e.g. white stamp window)
+        # Background clusters: the dominant cluster, plus any subtle gradient/shading clusters
+        # close to it (< 50.0 distance). Never classify high-contrast text strokes as background.
+        # Major secondary background surfaces (e.g. split panels) must be >= 35% of box and moderately close (< 120.0).
         bg_clusters = [
             c for c in range(k)
-            if (counts[c] / max(1, total_box_px) >= 0.15) or (np.linalg.norm(centers[c] - centers[dom]) < 45.0)
+            if (c == dom)
+            or (np.linalg.norm(centers[c] - centers[dom]) < 50.0)
+            or (counts[c] / max(1, total_box_px) >= 0.35 and np.linalg.norm(centers[c] - centers[dom]) < 120.0)
         ]
 
         flat = patch_rgb.reshape(-1, 3).astype(np.float32)
@@ -205,30 +252,92 @@ class DynamicInpaintService:
         is_bg = np.isin(nearest, bg_clusters) & opaque
         bg_color = np.median(patch_rgb[is_bg & in_box], axis=0) if np.any(is_bg & in_box) else centers[dom]
 
-        # 3. Protect contrasting surfaces that continue outside the patch (bottle, other panels)
+        # 3. Decide, per connected component of non-background pixels, whether it is stamp text.
+        #    - Large / long components (bottle, borders, neighbouring panels) that run off the window are protected.
+        #    - A glyph with at least 35% of its area inside the box is part of the stamp: erase the WHOLE glyph.
+        #    - Boxes often cut through the first/last characters (less than 35% inside) or stop short of the end of
+        #      the line. So the erased text is grown along the same text line, glyph by glyph, while the gap to the
+        #      next glyph stays letter-sized. Glyphs on other lines are never touched.
         foreign = (~is_bg).astype(np.uint8)
-        n_comp, comp = cv2.connectedComponents(foreign, connectivity=8)
-        edge_ids = np.unique(np.concatenate([comp[0, :], comp[-1, :], comp[:, 0], comp[:, -1]]))
-        protected = np.isin(comp, edge_ids[edge_ids > 0]) | ~opaque
+        n_comp, comp, cstats, _ = cv2.connectedComponentsWithStats(foreign, connectivity=8)
+        edge_ids = set(
+            int(i) for i in np.unique(np.concatenate([comp[0, :], comp[-1, :], comp[:, 0], comp[:, -1]])) if i > 0
+        )
+        in_box_ids = np.unique(comp[in_box & foreign.astype(bool)])
+        in_box_ids = in_box_ids[in_box_ids > 0]
 
-        # 4. Glyph completion: Gemini boxes often clip the first/last character (e.g. a
-        #    trailing currency symbol). Each glyph is its own connected component, so:
-        #    - mostly inside the box  -> part of the stamp, erase the WHOLE glyph
-        #    - barely inside the box  -> a neighbouring permanent glyph, protect it entirely
-        work_area = in_box.copy()
-        cand_ids = np.unique(comp[in_box & foreign.astype(bool) & ~protected])
-        cand_ids = cand_ids[cand_ids > 0]
-        if cand_ids.size:
-            total = np.bincount(comp.ravel(), minlength=n_comp)
-            inside = np.bincount(comp[in_box].ravel(), minlength=n_comp)
-            frac = inside[cand_ids] / np.maximum(total[cand_ids], 1)
-            completed = np.isin(comp, cand_ids[frac >= 0.35])
-            protected |= np.isin(comp, cand_ids[frac < 0.35])
-            grown = cv2.dilate(completed.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)))
-            work_area |= grown.astype(bool) & ~protected
+        heights = [int(cstats[i, cv2.CC_STAT_HEIGHT]) for i in in_box_ids if cstats[i, cv2.CC_STAT_AREA] >= 6]
+        glyph_h = float(np.median(heights)) if heights else float(box_h)
+        glyph_h = max(glyph_h, 4.0)
+
+        def glyph_like(i: int) -> bool:
+            x0, y0 = int(cstats[i, cv2.CC_STAT_LEFT]), int(cstats[i, cv2.CC_STAT_TOP])
+            gw, gh = int(cstats[i, cv2.CC_STAT_WIDTH]), int(cstats[i, cv2.CC_STAT_HEIGHT])
+            # Printed structure is never a glyph: anything spanning the whole window (a box edge, a table rule),
+            # or a long thin line much taller than the text.
+            if (y0 <= 0 and y0 + gh >= patch_h) or (x0 <= 0 and x0 + gw >= patch_w):
+                return False
+            if gh > 1.4 * glyph_h and gw < 0.3 * gh:
+                return False
+            return gh <= max(2.2 * glyph_h, 8) and gw <= 12 * glyph_h
+
+        total = np.bincount(comp.ravel(), minlength=n_comp)
+        inside = np.bincount(comp[in_box].ravel(), minlength=n_comp)
+        erase_ids = set()
+        for i in in_box_ids:
+            i = int(i)
+            if i in edge_ids and not glyph_like(i):
+                continue  # a surface that continues outside the window
+            if inside[i] / max(total[i], 1) >= 0.35:
+                erase_ids.add(i)
+
+        # Grow along the text line: same rows as the box, next glyph within letter spacing of the erased text.
+        # Only glyphs at letter-spacing distance are pulled in. A word gap or more means a different word, which
+        # is usually the field label standing next to the value ("Date of Packaging :"), and the label must stay.
+        gap_thr = max(0.3 * glyph_h, 2.0)
+        # Slivers of a glyph (a box that stops a hair short of the last character leaves just the tail of it)
+        # may attach from a little further away; whole glyphs of the next word may not.
+        areas = [int(cstats[i, cv2.CC_STAT_AREA]) for i in in_box_ids if cstats[i, cv2.CC_STAT_AREA] >= 6]
+        sliver_area = 0.15 * float(np.median(areas)) if areas else 0.0
+        sliver_gap_thr = max(0.8 * glyph_h, 4.0)
+        row_lo, row_hi = iy1, iy2
+        others = [
+            i for i in range(1, n_comp)
+            if i not in erase_ids and glyph_like(i)
+        ]
+        grew = True
+        while grew and erase_ids and others:
+            grew = False
+            boxes = [
+                (cstats[i, cv2.CC_STAT_LEFT], cstats[i, cv2.CC_STAT_LEFT] + cstats[i, cv2.CC_STAT_WIDTH])
+                for i in erase_ids
+                if cstats[i, cv2.CC_STAT_TOP] < row_hi and cstats[i, cv2.CC_STAT_TOP] + cstats[i, cv2.CC_STAT_HEIGHT] > row_lo
+            ]
+            if not boxes:
+                break
+            for i in list(others):
+                top = int(cstats[i, cv2.CC_STAT_TOP])
+                hgt = int(cstats[i, cv2.CC_STAT_HEIGHT])
+                overlap = min(top + hgt, row_hi) - max(top, row_lo)
+                if overlap < 0.6 * hgt:
+                    continue  # a different text line
+                left = int(cstats[i, cv2.CC_STAT_LEFT])
+                right = left + int(cstats[i, cv2.CC_STAT_WIDTH])
+                gap = min(max(0, left - bx_r, bx_l - right) for bx_l, bx_r in boxes)
+                limit = sliver_gap_thr if cstats[i, cv2.CC_STAT_AREA] <= sliver_area else gap_thr
+                if gap <= limit:
+                    erase_ids.add(i)
+                    others.remove(i)
+                    grew = True
+
+        erase_mask = np.isin(comp, list(erase_ids)) if erase_ids else np.zeros((patch_h, patch_w), dtype=bool)
+        # Everything that is not stamp text stays untouched and is never sampled.
+        protected = (foreign.astype(bool) & ~erase_mask) | ~opaque
+        grown = cv2.dilate(erase_mask.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)))
+        work_area = in_box | (grown.astype(bool) & ~protected)
 
         # 5. Target = stamp strokes + anti-alias halo, never protected pixels
-        strokes = foreign.astype(bool) & ~protected & work_area
+        strokes = erase_mask.copy()
 
         # JPEG ringing / chroma fringes around the text sit close enough to the background
         # to be clustered with it, but leave a visible "ghost" of the digits if kept.
@@ -251,6 +360,11 @@ class DynamicInpaintService:
                 cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9)),
             ).astype(bool)
             strokes |= (deviation > ring_thr) & near_text & work_area & ~protected & (weight > 0.05)
+            # The box is the model's statement of where the value is: whatever inside it is clearly darker or
+            # lighter than the surrounding background is part of the value (pieces of thick strokes that the
+            # glyph pass missed), except printed structure that runs on outside the window.
+            structure = np.isin(comp, [i for i in edge_ids if not glyph_like(i)]) if edge_ids else np.zeros_like(in_box)
+            strokes |= (deviation > ring_thr) & in_box & ~structure & opaque & (weight > 0.05)
 
         strokes = strokes.astype(np.uint8)
         if not strokes.any():
@@ -273,6 +387,17 @@ class DynamicInpaintService:
             ),
             cv2.COLOR_BGR2RGB,
         )
+
+        # 6b. On a smooth label (flat or gently graded paper) Telea diffusion leaves soft, slightly off-tone
+        #     smudges where the text was. Fit a smooth surface to the surrounding clean background and paint with
+        #     that instead, so the fill continues the exact tone and gradient. Textured backgrounds (foil,
+        #     photos) fail the fit test and keep the Telea result.
+        surface = cls._fit_surface_fill(
+            patch_rgb,
+            sample=is_bg & ~protected & opaque & ~cv2.dilate(target.astype(np.uint8), np.ones((5, 5), np.uint8)).astype(bool),
+        )
+        if surface is not None:
+            inpainted[target] = surface[target]
 
         # 7. Match local grain (matte / JPEG texture) so the fill doesn't look airbrushed
         bg_ref = is_bg & in_box & ~target

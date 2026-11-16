@@ -11,8 +11,8 @@ from typing import Optional
 
 
 MRP_EXPIRY_SYSTEM_PROMPT = """You are an expert multimodal computer vision and FMCG retail packaging graphics analyst.
-Your objective is to locate every VARIABLE packaging marking - retail price, unit price, expiry/best-before date, manufacturing/packing date, and batch/lot code - on packaging from any country, with tight, pixel-accurate bounding boxes.
-A marking is variable when its value changes between production runs or price revisions. Permanent artwork that is identical on every unit of the product is never a target, even when it mentions price, dates, or batches.
+Your objective is to locate the VARIABLE VALUES printed on packaging - the price amount, unit price amount, expiry/best-before date, manufacturing/packing date, and batch/lot code - on packaging from any country, with tight, pixel-accurate bounding boxes around the VALUE ONLY.
+A value is variable when it changes between production runs or price revisions. Permanent artwork that is identical on every unit of the product is never a target, and neither is the printed wording that names a field (its label) or qualifies it: every label and qualifier stays on the pack and must never be inside a box.
 You must return only valid JSON conforming strictly to the provided output schema."""
 
 
@@ -58,9 +58,10 @@ def build_gemini_mrp_expiry_prompt(
         "- Placed in a reserved print zone or directly next to a field label that names it.\n"
         "- A short alphanumeric string printed beside a 2D / Data Matrix / QR code: these codes are normally "
         "printed per production run, so the human-readable string next to them is a run/batch code.\n"
-        "FIELD HEADERS ARE TARGETS: a short label or stacked list of labels that names a price, unit price, batch, "
-        "manufacturing or expiry field (with a value next to it OR an empty slot left for stamping) exists only "
-        "to carry variable data - return each label line, together with its value when present.\n"
+        "FIELD LABELS ARE NEVER TARGETS: any label, or stacked list of labels, that names a price, unit price, "
+        "batch, manufacturing or expiry field - and any qualifier text printed with such a field - is permanent "
+        "printing, in whatever language or script it is written. Return only the VALUE printed next to or under "
+        "it. If a label has no value yet (an empty slot), return nothing for it.\n"
         "Permanent artwork - NEVER return these, even if they contain digits, dates or the words price/batch/date:\n"
         "- Running sentences inside paragraphs that only REFER to these fields (e.g. saying the batch number, "
         "dates or price are printed elsewhere on the pack), and shelf life expressed only as a duration from "
@@ -74,30 +75,36 @@ def build_gemini_mrp_expiry_prompt(
         "Set 'confidence' honestly for every returned item.\n\n"
 
         "STEP 3 - CATEGORIZE each variable marking by function (any language, script, currency or date notation):\n"
-        "1. 'mrp': retail / maximum / consumer price, unit sale price (per weight, volume or unit), the currency "
-        "symbol or code attached to it, and a tax-inclusion qualifier only when it is printed as part of that "
-        "same price declaration. Include a price field label even if its value area is still blank.\n"
-        "2. 'expiry_date': expiry, best-before, use-by or similar date, with its label.\n"
-        "3. 'mfg_date': manufacturing, packing or production date, with its label.\n"
-        "4. 'batch_code': batch / lot / control number with its label, OR an unlabeled run code - a short "
+        "1. 'mrp': the retail / maximum / consumer price AMOUNT or unit sale price amount (per weight, volume or "
+        "unit). A currency symbol or code belongs to the value only when it is attached to the amount itself as "
+        "part of the same printed figure; a symbol or code that sits with the field label, and any qualifier "
+        "text, are labels, not values.\n"
+        "2. 'expiry_date': the expiry, best-before or use-by DATE only, without its label.\n"
+        "3. 'mfg_date': the manufacturing, packing or production DATE only, without its label.\n"
+        "4. 'batch_code': the batch / lot / control number only (without its label), OR an unlabeled run code - a short "
         "alphanumeric string printed by the variable print process, typically beside a 2D / QR / Data Matrix "
         "code or in the reserved print zone. Do not confuse it with barcode/GTIN digits or permanent codes.\n\n"
 
         "STEP 4 - BOX PRECISELY:\n"
         "- Return normalized boxes [ymin, xmin, ymax, xmax] on a 0-1000 scale, relative to the full image.\n"
-        "- Box tightly around the characters of that one marking, with only a hairline margin. The box MUST "
-        "fully contain the first and last character, including leading/trailing currency symbols, units, "
-        "separators and punctuation - never cut a glyph in half.\n"
-        "- Use one box per marking. When separate fields sit on separate lines, return separate boxes; when "
-        "a label and its variable value form a single line, return a single box for both.\n"
-        "- Dedicated stamp zones: When variable values are printed inside a dedicated window, patch, sticker, "
-        "or stamp zone adjacent to pre-printed field labels, ensure the bounding box fully encompasses the entire "
-        "value string from the first glyph to the final digit, punctuation, separator, or currency symbol without clipping.\n"
+        "- ROW ALIGNMENT: Each box [ymin, xmin, ymax, xmax] must tightly enclose the VISIBLY printed characters "
+        "on their actual row. When values appear next to a stacked list of labels, each value box must align to "
+        "the exact vertical row and baseline of that specific value. If an intermediate label is empty or has "
+        "no value, NEVER shift lower rows into its place.\n"
+        "- Box tightly around the characters of the VALUE only, with only a hairline margin. The box MUST fully "
+        "contain the first and last character of the value, including any separators and punctuation inside "
+        "it - never cut a glyph in half - and MUST NOT touch the label next to it.\n"
+        "- Use one box per value. When a label and its value share a line, the box starts where the value "
+        "starts, after the label and any separator that follows it. A value printed under its label gets a box "
+        "around just that value line; never include the label line or any qualifier line.\n"
+        "- Dedicated stamp zones: when values are printed inside a dedicated window, patch, sticker or stamp zone "
+        "next to pre-printed field labels, box only the value strings, from their first glyph to their final "
+        "digit or punctuation, leaving every pre-printed label outside the boxes.\n"
         "- NEVER include any part of a machine-readable code (linear barcode, QR code, Data Matrix, other 2D "
         "codes) - even when it encodes batch data. End the box at the gap between the code and the text.\n"
-        "- NEVER extend a box over neighbouring permanent text or graphics; if a variable marking shares a "
-        "container with permanent content (e.g. net quantity in the same strip), box only the variable part.\n"
-        "- 'text_content' must be the exact characters inside the box.\n\n"
+        "- NEVER extend a box over neighbouring permanent text or graphics (including labels); if a variable value shares a "
+        "container with permanent content (e.g. net quantity in the same strip), box only the variable value.\n"
+        "- 'text_content' must be the exact characters inside the box (the value only, never the label).\n\n"
 
         "If the image has no variable markings (e.g. a clean front-of-pack hero shot, or only permanent "
         "references to these fields), set 'has_removable_stamps' to false and return an empty 'stamps' array.\n"

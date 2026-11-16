@@ -1,15 +1,35 @@
 import asyncio
 import json
-import os
+import time
 from typing import AsyncGenerator, Dict, Any
 from app.core.config import settings
-from app.core.logger import logger
 
 REDIS_URL = settings.REDIS_URL
 BIGBASKET_EVENT_CHANNEL = "bigbasket:events"
 
 # Local fallback queue if Redis server is unreachable
 _FALLBACK_SUBSCRIBERS = set()
+
+# Circuit breaker: a refused connection to a local port can take ~2 s on Windows. When Redis is down, every
+# pause/cancel check and every progress event used to pay that price (several seconds per image), so after a
+# failure Redis is not retried for REDIS_RETRY_SECS and connects fail fast.
+REDIS_RETRY_SECS = 30.0
+REDIS_CONNECT_TIMEOUT = 0.3
+_redis_down_until = 0.0
+
+
+def redis_usable() -> bool:
+    return time.monotonic() >= _redis_down_until
+
+
+def mark_redis_down() -> None:
+    global _redis_down_until
+    _redis_down_until = time.monotonic() + REDIS_RETRY_SECS
+
+
+def mark_redis_up() -> None:
+    global _redis_down_until
+    _redis_down_until = 0.0
 
 
 class BigBasketEventBroadcaster:
@@ -18,16 +38,23 @@ class BigBasketEventBroadcaster:
     @classmethod
     async def publish_event(cls, event_data: Dict[str, Any]):
         payload = json.dumps(event_data)
-        redis_published = False
 
-        try:
-            import redis.asyncio as aioredis
-            r = aioredis.from_url(REDIS_URL, decode_responses=True)
-            await r.publish(BIGBASKET_EVENT_CHANNEL, payload)
-            await r.aclose()
-            redis_published = True
-        except Exception:
-            pass
+        if redis_usable():
+            try:
+                import redis.asyncio as aioredis
+                r = aioredis.from_url(
+                    REDIS_URL,
+                    decode_responses=True,
+                    socket_connect_timeout=REDIS_CONNECT_TIMEOUT,
+                    socket_timeout=2.0,
+                )
+                try:
+                    await r.publish(BIGBASKET_EVENT_CHANNEL, payload)
+                finally:
+                    await r.aclose()
+                mark_redis_up()
+            except Exception:
+                mark_redis_down()
 
         # Also push to local in-memory fallback subscribers
         dead = []

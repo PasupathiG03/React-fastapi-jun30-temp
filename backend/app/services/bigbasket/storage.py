@@ -1,9 +1,8 @@
-import os
 import re
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 # Root directories for uploads and exports directly under backend/
 BACKEND_DIR = Path(__file__).resolve().parent.parent.parent.parent
@@ -17,10 +16,8 @@ class BigBasketStorage:
     and batch name with ID: <uploads/exports>/<dd-mm-yyyy>/<batch_name>_<batch_id>/
     """
 
-    @staticmethod
-    def ensure_dirs():
-        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-        EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    # batch_code -> upload folder (see get_batch_dir)
+    _BATCH_DIR_CACHE: dict[str, Path] = {}
 
     @staticmethod
     def sanitize_name(name: str) -> str:
@@ -85,11 +82,18 @@ class BigBasketStorage:
     ) -> Path:
         """Returns batch storage directory under uploads/<dd-mm-yyyy>/<batch_name>_<batch_id>/"""
         code = getattr(batch_or_code, "batch_code", str(batch_or_code))
+        # Resolving the folder scans every date folder under uploads/, and it is called several times per
+        # processed image. The folder of a batch never moves, so remember it (re-checked with is_dir()).
+        cached = cls._BATCH_DIR_CACHE.get(code)
+        if cached is not None and cached.is_dir():
+            return cached
+
         existing = cls._find_existing_dir(UPLOAD_DIR, code)
         if existing:
             (existing / "original").mkdir(exist_ok=True)
             (existing / "cache").mkdir(exist_ok=True)
             (existing / "processed").mkdir(exist_ok=True)
+            cls._BATCH_DIR_CACHE[code] = existing
             return existing
 
         date_str, folder_name, _ = cls.resolve_batch_info(batch_or_code, batch_name, created_at)
@@ -98,6 +102,7 @@ class BigBasketStorage:
         (b_dir / "original").mkdir(exist_ok=True)
         (b_dir / "cache").mkdir(exist_ok=True)
         (b_dir / "processed").mkdir(exist_ok=True)
+        cls._BATCH_DIR_CACHE[code] = b_dir
         return b_dir
 
     @classmethod
@@ -117,15 +122,6 @@ class BigBasketStorage:
         e_dir = EXPORT_DIR / date_str / folder_name
         e_dir.mkdir(parents=True, exist_ok=True)
         return e_dir
-
-    @classmethod
-    def save_original_file(cls, batch_or_code: Any, filename: str, content: bytes) -> str:
-        b_dir = cls.get_batch_dir(batch_or_code)
-        safe_name = Path(filename).name
-        target_path = b_dir / "original" / safe_name
-        with open(target_path, "wb") as f:
-            f.write(content)
-        return str(target_path)
 
     @classmethod
     def save_version_file(
@@ -157,6 +153,7 @@ class BigBasketStorage:
     @classmethod
     def clean_batch(cls, batch_or_code: Any):
         code = getattr(batch_or_code, "batch_code", str(batch_or_code))
+        cls._BATCH_DIR_CACHE.pop(code, None)
         u_dir = cls._find_existing_dir(UPLOAD_DIR, code)
         if u_dir and u_dir.exists():
             shutil.rmtree(u_dir, ignore_errors=True)

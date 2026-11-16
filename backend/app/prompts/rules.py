@@ -114,37 +114,53 @@ you must detect the exact 2D bounding boxes normalized strictly from 0 to 1000: 
      Information panels may appear in any column, orientation, or panel position. Locate the true visual semantic cluster wherever it physically sits.
    - Zero-Clipping & Visual Completeness: Bounding boxes must self-contain the entire semantic section without cutting any character ascenders,
      descenders, outer enclosing border lines, graphics, logos, or trailing footnotes.
-   - Natural Margin: Provide a clean 2-3% natural margin (20-30 units) within the normalized coordinate box so text is never flush to the edge.
-   - Visual Disambiguation: Detect the visual separator gap between vertically or horizontally adjacent sections (e.g. manufacturer address vs licensing).
-     Never let the top or bottom of a box slice horizontally through adjacent unrelated text.
+   - Tight Visual Boundaries & Clean Inter-Section Separation: Every bounding box must tightly enclose ONLY the content belonging to that specific sub-region.
+     NEVER add artificial margin that encroaches into neighboring sections. Position ymin and ymax precisely in the clean whitespace gap or dividing border between adjacent sections.
+     Never let the top or bottom of a box slice horizontally through or capture unrelated lines of text from the section above or below it.
 
 2. "ingredient" (COMPLETE INGREDIENTS & ALLERGEN DECLARATION):
    - Semantic Scope: From the starting section header (e.g., ingredients, composition, active ingredients) through the entire formula breakdown,
      percentages, additives, and complete allergen advisory statement.
-   - Dynamic Requirement: Encompass the full continuous visual text block from header to closing period/disclaimer without clipping top or bottom lines.
+   - Boundary Anchors:
+     * ymin: Position precisely in the whitespace gap separating the 'Ingredients:' header from any table or text above.
+       NEVER capture footnote disclaimers, % RDA lines, or table borders from the nutrition table above.
+     * ymax: Position precisely in the whitespace gap right after the closing ingredient/allergen period.
+       NEVER capture price stamps, MRP, date of packaging, expiry dates, batch stamps, or net weight lines below.
 
 3. "nutritional" (COMPLETE NUTRITION FACTS PANEL / TABLE):
    - Semantic Scope: The entire nutritional information panel or table in its entirety.
-   - Dynamic Requirement: Must encompass outer bounding borders, title header, serving metrics, column headers (per 100g/per serve/% RDA),
-     all nutrient rows, and all footnote reference disclaimers. Preserve outer table frame lines with clean padding.
+   - Boundary Anchors:
+     * ymin: Position precisely at the top enclosing frame/border line of the table or the 'Nutritional Information' header.
+       NEVER include packaging artwork, illustrations, product packets, recipes, or marketing claims appearing above the table.
+     * ymax: Position precisely at the bottom enclosing frame/border line of the table (including footnotes).
+       NEVER include the 'Ingredients:' header or any text below the bottom border line.
 
 4. "manufactured_by" (COMPLETE ENTITY, MANUFACTURING & CUSTOMER SUPPORT CLUSTER):
    - Semantic Scope: The complete legal entity and corporate hierarchy declared on the packaging.
-   - Dynamic Requirement: Encompasses all entity titles (Manufacturer, Marketer, Packer, Importer, Distributor), corporate registered offices,
-     manufacturing unit/factory addresses, postal codes, country of origin, and consumer care / customer support contact channels
-     (helpline telephone, email, web portal, postal grievance address). Never clip the opening entity title or the closing contact details.
+   - Boundary Anchors:
+     * ymin: Position precisely in the whitespace gap right above the opening entity title (e.g. 'Marketed by:', 'Manufactured by:', 'Consumer Care').
+       NEVER include storage guidelines (e.g. 'Store in a cool, dry & hygienic place...'), usage directions, or recipes above it.
+     * ymax: Position precisely after the entity addresses, consumer care contact details (phone, email, web portal), or manufacturing unit QR code.
+       NEVER include barcode zebra lines, price stamps, or bottom packaging crimp seams below it.
 
-5. "fssai" (COMPLETE STATUTORY FOOD SAFETY REGULATORY BLOCK):
+5. "fssai" (COMPLETE STATUTORY FOOD SAFETY REGULATORY BLOCK - EMBLEM + ALL LICENSES):
    - Semantic Scope: The entire statutory food safety regulatory block as a unified visual cluster.
-   - Dynamic Requirement:
-     a) Logo Emblem: Fully frame the official FSSAI emblem (including the upper swirl/leaf graphic above the text).
-     b) Wordmark & All Licenses: Include the wordmark and EVERY statutory license number printed in that block (single-license,
-        dual-license such as Marketer + Manufacturer, or multi-unit license lines). Never slice horizontally through secondary license lines.
-     c) Preceding Separation: Position ymin strictly in the visual gap below any preceding text block so preceding text is never truncated into the crop.
+   - CRITICAL REQUIREMENT (NEVER EMBLEM-ONLY):
+     The FSSAI sub-region is NEVER just the logo or wordmark alone! Whenever statutory license numbers
+     ('Lic. No.', 'License No.', 'Mfg by Lic. No.', or 14-digit numbers) are printed below or alongside the FSSAI emblem,
+     the bounding box [ymin, xmin, ymax, xmax] MUST extend down to cover the entire license block.
+     Boxing only the logo icon (e.g. height < 50 units) while cutting off the license numbers below is strictly prohibited.
+   - Boundary Anchors:
+     * ymin: Position in the whitespace gap directly above the topmost FSSAI element (the upper swirl/leaf graphic).
+       NEVER include storage instructions or manufacturer entity titles above it.
+     * ymax: Position in the whitespace gap directly below the lowest statutory license line in that block.
+       NEVER include company street address lines, corporate office text, or plastic recycling disclaimers below it.
+     * xmin / xmax: Fully frame the widest element in the cluster (emblem or license lines). Position xmin and xmax with clean lateral whitespace so the opening prefix ('Lic. No.') and ending digits are NEVER sliced vertically through characters.
 
 6. "barcode" (MACHINE-READABLE IDENTIFIER):
    - Semantic Scope: 1D linear barcode (EAN, UPC, Code 128) or 2D matrix code.
    - Dynamic Requirement: Fully encompass the zebra bars, human-readable numeric digits beneath, and clear lateral quiet zone margins.
+     NEVER overlap into price boxes, MRP stamps, or recycling icons.
 
 7. "directions", "caution", "storage":
    - Dynamic Requirement: Identify and self-contain preparation/usage steps, safety/warning alerts, or storage guidelines where present.

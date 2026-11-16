@@ -1,8 +1,6 @@
 import io
 import re
 import threading
-import time
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
@@ -17,6 +15,8 @@ OCR_ENGINE = "rapidocr"
 _OCR_ENGINE = None
 _OCR_INIT_ERROR: Optional[str] = None
 _OCR_LOCK = threading.Lock()
+# Images are processed in parallel threads; OCR inference is serialised (it is a CPU-bound fallback path).
+_OCR_RUN_LOCK = threading.Lock()
 
 
 class OcrError(RuntimeError):
@@ -57,7 +57,8 @@ def read_text(img_arr: np.ndarray) -> List[List[Any]]:
     """
     engine = get_ocr_reader()
     try:
-        result = engine(img_arr)
+        with _OCR_RUN_LOCK:
+            result = engine(img_arr)
     except Exception as e:
         logger.error("RapidOCR text detection failed: %s: %s", type(e).__name__, e)
         raise OcrError(f"OCR failed during text detection: {type(e).__name__}: {e}") from e
@@ -97,6 +98,478 @@ class SubRegionExtractor:
     """
 
     @classmethod
+    def _get_chroma(cls, bgr_strip: np.ndarray) -> float:
+        """Calculates color saturation / chromaticity to distinguish packaging background from neutral cards."""
+        if bgr_strip.size == 0:
+            return 0.0
+        b = bgr_strip[..., 0].astype(float)
+        g = bgr_strip[..., 1].astype(float)
+        r = bgr_strip[..., 2].astype(float)
+        return float(np.mean(np.maximum(np.abs(b - g), np.maximum(np.abs(g - r), np.abs(r - b)))))
+
+    @classmethod
+    def _find_horizontal_line(
+        cls,
+        gray: np.ndarray,
+        x1: int,
+        x2: int,
+        y_anchor: int,
+        search_range: Tuple[int, int] = (-30, 30),
+        min_line_w: int = 45,
+    ) -> Optional[int]:
+        """Detects physical horizontal table/box border lines using morphological opening."""
+        h, w = gray.shape[:2]
+        y_start = max(0, y_anchor + search_range[0])
+        y_end = min(h, y_anchor + search_range[1])
+        if y_end <= y_start:
+            return None
+        sx1 = max(0, min(x1, w - 1))
+        sx2 = max(0, min(x2, w))
+        if sx2 - sx1 < min_line_w:
+            return None
+        roi = gray[y_start:y_end, sx1:sx2]
+        if roi.size == 0:
+            return None
+        thresh = cv2.adaptiveThreshold(~roi, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 15, -2)
+        horiz_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (min_line_w, 1))
+        horiz = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, horiz_kernel)
+        line_scores = np.sum(horiz > 0, axis=1)
+        best_row = int(np.argmax(line_scores))
+        if line_scores[best_row] >= min_line_w:
+            return y_start + best_row
+        return None
+
+    @classmethod
+    def _clamp_to_panel_or_card(
+        cls,
+        arr: np.ndarray,
+        px1: int,
+        py1: int,
+        px2: int,
+        py2: int,
+        max_pad_x: int = 18,
+    ) -> Tuple[int, int]:
+        """
+        Adaptively expands horizontal boundaries (px1, px2) up to max_pad_x,
+        stopping strictly before crossing physical panel borders, color transitions, or seam edges.
+        Prevents white slivers on colored panels and background bleed on white cards.
+        """
+        h, w = arr.shape[:2]
+        cx1 = min(w - 1, max(0, px1 + 10))
+        cx2 = min(w - 1, max(0, px2 - 10))
+        cy1 = min(h - 1, max(0, py1 + 10))
+        cy2 = min(h - 1, max(0, py2 - 10))
+        if cx2 > cx1 and cy2 > cy1:
+            roi = arr[cy1:cy2, cx1:cx2]
+            med_bgr = np.median(roi.reshape(-1, 3), axis=0)
+        else:
+            med_bgr = arr[py1:py2, px1:px2].mean(axis=(0, 1))
+
+        med_chroma = cls._get_chroma(med_bgr.reshape(1, 3))
+
+        fx1 = px1
+        for step in range(1, max_pad_x + 1):
+            x = px1 - step
+            if x < 0:
+                break
+            col = arr[py1:py2, x]
+            col_chroma = cls._get_chroma(col)
+            color_diff = np.mean(np.linalg.norm(col.astype(float) - med_bgr, axis=1))
+            if med_chroma > 35:
+                if col_chroma < med_chroma * 0.70:
+                    break
+            else:
+                if col_chroma > 30 or color_diff > 35:
+                    break
+            fx1 = x
+
+        fx2 = px2
+        for step in range(1, max_pad_x + 1):
+            x = px2 + step
+            if x >= w:
+                break
+            col = arr[py1:py2, x]
+            col_chroma = cls._get_chroma(col)
+            color_diff = np.mean(np.linalg.norm(col.astype(float) - med_bgr, axis=1))
+            if med_chroma > 35:
+                if col_chroma < med_chroma * 0.70:
+                    break
+            else:
+                if col_chroma > 30 or color_diff > 35:
+                    break
+            fx2 = x
+
+        return fx1, fx2
+
+    @staticmethod
+    def _is_barcode_digit_text(text: str) -> bool:
+        """Barcode human-readable digits: (almost) only digits, optionally guard marks. Letters (a licence line,
+        phone numbers with words, dates with units) make a line ineligible, so no keyword list is needed."""
+        t = re.sub(r"[\s<>\"']", "", text)
+        if not t:
+            return False
+        digits = sum(ch.isdigit() for ch in t)
+        return digits >= 1 and digits / len(t) >= 0.85 and (digits >= 6 or len(t) <= 2)
+
+    @classmethod
+    def _refine_barcode_boundary(
+        cls,
+        arr: np.ndarray,
+        px1: int,
+        py1: int,
+        px2: int,
+        py2: int,
+        ocr_lines: Optional[List[Dict[str, Any]]] = None,
+    ) -> Tuple[int, int, int, int]:
+        """
+        Dynamically refines 1D/2D barcode boundaries:
+        1. Encloses dark zebra bars and numeric digits detected via connected components and OCR lines.
+        2. Preserves quiet zone margins (10-25px) on neutral cards.
+        3. Strictly halts and clamps boundaries BEFORE crossing into chromatic packaging backgrounds
+           (e.g. orange bottom folds or colored panel margins) or dark boundary seams.
+        """
+        h, w = arr.shape[:2]
+        sx1 = max(0, px1 - 35)
+        sy1 = max(0, py1 - 35)
+        sx2 = min(w, px2 + 35)
+        sy2 = min(h, py2 + 35)
+        roi = arr[sy1:sy2, sx1:sx2]
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY) if roi.ndim == 3 else roi
+        full_gray = cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY) if arr.ndim == 3 else arr
+
+        bar_text_lines = []
+        if ocr_lines:
+            bar_text_lines = [
+                l for l in ocr_lines
+                if max(sx1, l["x1"]) < min(sx2, l["x2"])
+                and max(sy1, l["y1"]) < min(sy2, l["y2"])
+                and not bool(re.search(r'[/:\-]', l["text"]))
+                and cls._is_barcode_digit_text(l["text"])
+            ]
+
+        dark_mask = (gray < 115).astype(np.uint8)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 5))
+        closed = cv2.morphologyEx(dark_mask, cv2.MORPH_CLOSE, kernel)
+        contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        valid_c = []
+        for c in contours:
+            bx, by, bw, bh = cv2.boundingRect(c)
+            if bh > 25 and bw > 25 and (bw / max(1, bh)) < 3.5:
+                c_crop = roi[by:by+bh, bx:bx+bw]
+                if cls._get_chroma(c_crop) < 30:
+                    valid_c.append((bx, by, bw, bh))
+
+        if valid_c:
+            if bar_text_lines:
+                dt_x1 = min(l["x1"] for l in bar_text_lines)
+                dt_x2 = max(l["x2"] for l in bar_text_lines)
+                aligned_c = [
+                    (bx, by, bw, bh) for (bx, by, bw, bh) in valid_c
+                    if max(sx1 + bx, dt_x1) < min(sx1 + bx + bw, dt_x2)
+                ]
+                if aligned_c:
+                    valid_c = aligned_c
+
+            bx1 = min(b[0] for b in valid_c)
+            by1 = min(b[1] for b in valid_c)
+            bx2 = max(b[0] + b[2] for b in valid_c)
+            by2 = max(b[1] + b[3] for b in valid_c)
+            gbx1, gby1, gbx2, gby2 = sx1 + bx1, sy1 + by1, sx1 + bx2, sy1 + by2
+        else:
+            gbx1, gby1, gbx2, gby2 = px1, py1, px2, py2
+
+        if bar_text_lines:
+            gbx1 = min(gbx1, min(l["x1"] for l in bar_text_lines))
+            gby1 = min(gby1, min(l["y1"] for l in bar_text_lines))
+            gbx2 = max(gbx2, max(l["x2"] for l in bar_text_lines))
+            gby2 = max(gby2, max(l["y2"] for l in bar_text_lines))
+
+        fx1 = gbx1
+        for s in range(1, 35):
+            x = gbx1 - s
+            if x < 0:
+                break
+            strip = arr[gby1:gby2, x]
+            if cls._get_chroma(strip) > 22 or full_gray[gby1:gby2, x].mean() < 120:
+                break
+            fx1 = x
+
+        fx2 = gbx2
+        for s in range(1, 35):
+            x = gbx2 + s
+            if x >= w:
+                break
+            strip = arr[gby1:gby2, x]
+            if cls._get_chroma(strip) > 22 or full_gray[gby1:gby2, x].mean() < 120:
+                break
+            fx2 = x
+
+        fy1 = gby1
+        for s in range(1, 25):
+            y = gby1 - s
+            if y < 0:
+                break
+            strip = arr[y, fx1:fx2]
+            if cls._get_chroma(strip) > 22 or full_gray[y, fx1:fx2].mean() < 120:
+                break
+            fy1 = y
+
+        fy2 = gby2
+        for s in range(1, 20):
+            y = gby2 + s
+            if y >= h:
+                break
+            strip = arr[y, fx1:fx2]
+            if cls._get_chroma(strip) > 22 or full_gray[y, fx1:fx2].mean() < 120:
+                break
+            fy2 = y
+
+        while fy2 > gby1 + 25:
+            strip = arr[fy2, fx1:fx2]
+            if cls._get_chroma(strip) > 22 or full_gray[fy2, fx1:fx2].mean() < 120:
+                fy2 -= 1
+            else:
+                break
+
+        while fy1 < fy2 - 25:
+            strip = arr[fy1, fx1:fx2]
+            if cls._get_chroma(strip) > 22 or full_gray[fy1, fx1:fx2].mean() < 120:
+                fy1 += 1
+            else:
+                break
+
+        return fx1, fy1, fx2, fy2
+
+    @classmethod
+    def _find_clean_boundary_y(
+        cls,
+        gray: np.ndarray,
+        x1: int,
+        x2: int,
+        y_anchor: int,
+        min_allowed_y: int,
+        max_allowed_y: int,
+        ocr_lines: Optional[List[Dict[str, Any]]] = None,
+    ) -> int:
+        """
+        Dynamically finds the row with minimum edge activity strictly bounded by [min_allowed_y, max_allowed_y].
+        Enforces the Zero-Slicing Invariant: Never picks a row that cuts through any detected OCR text line.
+        """
+        h = gray.shape[0]
+        y_min = max(0, min(min_allowed_y, max_allowed_y))
+        y_max = min(h - 1, max(min_allowed_y, max_allowed_y))
+        if y_max <= y_min:
+            return y_min
+
+        sx1 = max(0, min(x1, gray.shape[1] - 1))
+        sx2 = max(0, min(x2, gray.shape[1]))
+        if sx2 <= sx1:
+            return y_anchor
+
+        sub = gray[y_min:y_max + 1, sx1:sx2]
+        if sub.size == 0:
+            return y_anchor
+
+        sob_y = cv2.Sobel(sub, cv2.CV_64F, 0, 1, ksize=3)
+        grad_mag = np.mean(np.abs(sob_y), axis=1)
+        row_var = np.var(sub, axis=1)
+        metric = grad_mag + 0.1 * np.sqrt(row_var)
+
+        if ocr_lines:
+            for idx in range(len(metric)):
+                row_y = y_min + idx
+                for l in ocr_lines:
+                    if max(sx1, l["x1"]) < min(sx2, l["x2"]):
+                        if l["y1"] <= row_y <= l["y2"]:
+                            metric[idx] += 10000.0
+                            break
+
+        dist_from_anchor = np.abs(np.arange(y_min, y_max + 1) - y_anchor)
+        metric += 0.05 * dist_from_anchor
+
+        best_idx = int(np.argmin(metric))
+        return y_min + best_idx
+
+    @classmethod
+    def _extract_ocr_lines(cls, arr: np.ndarray) -> List[Dict[str, Any]]:
+        """Extracts cleaned bounding boxes and text from the image for boundary refinement."""
+        lines = []
+        try:
+            raw_ocr = read_text(arr)
+            for bbox, text, conf in raw_ocr:
+                if conf < 0.20:
+                    continue
+                tl, tr, br, bl = bbox
+                c_text = text.strip()
+                if not c_text:
+                    continue
+                lines.append({
+                    "x1": int(min(tl[0], bl[0])),
+                    "y1": int(min(tl[1], tr[1])),
+                    "x2": int(max(tr[0], br[0])),
+                    "y2": int(max(bl[1], br[1])),
+                    "text": c_text,
+                    "conf": conf,
+                })
+        except Exception as err:
+            logger.debug(f"Optional OCR line extraction skipped: {err}")
+        return lines
+
+    @classmethod
+    def _refine_text_block_box(
+        cls,
+        box: Tuple[int, int, int, int],
+        ocr_lines: List[Dict[str, Any]],
+        other_boxes: List[Tuple[int, int, int, int]],
+        gray: Optional[np.ndarray] = None,
+        tighten_x: bool = False,
+    ) -> Optional[Tuple[int, int, int, int]]:
+        """
+        Geometry-only refinement of a text-block crop (no keywords, no pack-specific values).
+
+        1. Ownership: an OCR line belongs to this region if (almost) all of it lies inside Gemini's box and it is
+           not claimed by a smaller, more specific region inside this one (e.g. an FSSAI mark overlapping a
+           manufacturer box).
+        2. Growth: an unclaimed line that Gemini's edge cut through (partly inside) and that directly adjoins the
+           block (gap well under one line height, same column) is pulled in whole.
+        3. Extent: Gemini's box is kept for non-text graphics (logos, QR frame) but is cut in the middle of the gap
+           before the nearest foreign text line above / below the block, so neither a neighbour's text nor this
+           block's own text is sliced. Foreign lines beside the block (same rows) never clamp it, so a logo or
+           licence mark next to an address is harmless.
+        """
+        px1, py1, px2, py2 = box
+
+        def frac_inside(l: Dict[str, Any], b: Tuple[int, int, int, int]) -> float:
+            ix = max(0, min(l["x2"], b[2]) - max(l["x1"], b[0]))
+            iy = max(0, min(l["y2"], b[3]) - max(l["y1"], b[1]))
+            area = max(1, (l["x2"] - l["x1"]) * (l["y2"] - l["y1"]))
+            return ix * iy / area
+
+        def area(b: Tuple[int, int, int, int]) -> int:
+            return max(0, b[2] - b[0]) * max(0, b[3] - b[1])
+
+        def v_frac(l: Dict[str, Any], b: Tuple[int, int, int, int]) -> float:
+            return max(0, min(l["y2"], b[3]) - max(l["y1"], b[1])) / max(1, l["y2"] - l["y1"])
+
+        def h_frac(l: Dict[str, Any], b: Tuple[int, int, int, int]) -> float:
+            return max(0, min(l["x2"], b[2]) - max(l["x1"], b[0])) / max(1, l["x2"] - l["x1"])
+
+        smaller = [b for b in other_boxes if area(b) < area(box)]
+        own: List[Dict[str, Any]] = []
+        foreign: List[Dict[str, Any]] = []
+        for l in ocr_lines:
+            # Rows inside the box and a real share of the line horizontally inside: Gemini's side edge may cut a
+            # long line (e.g. a wide licence line under a narrow logo box); the line is still ours, kept whole.
+            covered = v_frac(l, box) >= 0.7 and h_frac(l, box) >= 0.4
+            if covered and not any(frac_inside(l, b) >= 0.5 for b in smaller):
+                own.append(l)
+            else:
+                foreign.append(l)
+        if not own:
+            return None
+
+        heights = sorted(l["y2"] - l["y1"] for l in own)
+        line_h = max(8, heights[len(heights) // 2])
+
+        def same_column(l: Dict[str, Any], x1: int, x2: int) -> bool:
+            return min(x2, l["x2"]) - max(x1, l["x1"]) > 0.3 * min(x2 - x1, l["x2"] - l["x1"])
+
+        # Split: if another region's text sits between two groups of our lines (Gemini's box over-extended past a
+        # neighbouring section), keep only the largest group, ties to the top-most.
+        own.sort(key=lambda l: l["y1"])
+        groups: List[List[Dict[str, Any]]] = [[own[0]]]
+        for l in own[1:]:
+            prev_bottom = max(x["y2"] for x in groups[-1])
+            blocked = any(
+                prev_bottom - 2 <= (f["y1"] + f["y2"]) / 2 <= l["y1"] + 2 and same_column(f, l["x1"], l["x2"])
+                for f in foreign
+            )
+            if l["y1"] - prev_bottom > 1.5 * line_h and blocked:
+                groups.append([l])
+            else:
+                groups[-1].append(l)
+        if len(groups) > 1:
+            kept = max(groups, key=lambda g: (len(g), -g[0]["y1"]))
+            foreign.extend(l for l in own if l not in kept)
+            own = kept
+
+        # Only lines that Gemini's edge actually cut through (partly inside the box) may be adopted; lines wholly
+        # outside belong to whatever follows (another section, or text beyond a card border).
+        free = [
+            l for l in foreign
+            if 0 < frac_inside(l, box) < 0.7 and not any(frac_inside(l, b) >= 0.5 for b in smaller)
+        ]
+        grew = True
+        while grew:
+            grew = False
+            bx1, bx2 = min(l["x1"] for l in own), max(l["x2"] for l in own)
+            by1, by2 = min(l["y1"] for l in own), max(l["y2"] for l in own)
+            for l in list(free):
+                row_mate = any(
+                    min(l["y2"], o["y2"]) - max(l["y1"], o["y1"]) >= 0.5 * min(l["y2"] - l["y1"], o["y2"] - o["y1"])
+                    and max(l["x1"] - o["x2"], o["x1"] - l["x2"]) <= 3 * line_h
+                    for o in own
+                )
+                if row_mate:
+                    own.append(l)
+                    free.remove(l)
+                    foreign.remove(l)
+                    grew = True
+                    continue
+                if not same_column(l, bx1, bx2):
+                    continue
+                below_block = l["y1"] >= by2 - 0.25 * line_h
+                above_block = l["y2"] <= by1 + 0.25 * line_h
+                gap = (l["y1"] - by2) if below_block else (by1 - l["y2"])
+                if (below_block or above_block) and gap <= 0.25 * line_h:
+                    own.append(l)
+                    free.remove(l)
+                    foreign.remove(l)
+                    grew = True
+
+        ox1, ox2 = min(l["x1"] for l in own), max(l["x2"] for l in own)
+        first = min(own, key=lambda l: l["y1"])
+        last = max(own, key=lambda l: l["y2"])
+        oy1, oy2 = first["y1"], last["y2"]
+        first_cy, last_cy = (first["y1"] + first["y2"]) / 2, (last["y1"] + last["y2"]) / 2
+
+        above = [l for l in foreign if (l["y1"] + l["y2"]) / 2 < first_cy and same_column(l, ox1, ox2)]
+        below = [l for l in foreign if (l["y1"] + l["y2"]) / 2 > last_cy and same_column(l, ox1, ox2)]
+
+        ny1, ny2 = min(py1, oy1), max(py2, oy2)
+        top_limit, bottom_limit = 0, (gray.shape[0] if gray is not None else max(py2, oy2))
+        if above:
+            nearest = max(above, key=lambda l: l["y2"])
+            top_limit = (nearest["y2"] + oy1) // 2
+            ny1 = max(ny1, top_limit)
+        if below:
+            nearest = min(below, key=lambda l: l["y1"])
+            bottom_limit = (oy2 + nearest["y1"]) // 2 + 1
+            ny2 = min(ny2, bottom_limit)
+        ny1, ny2 = min(ny1, oy1 + line_h // 4), max(ny2, oy2 - line_h // 4)
+
+        # Snap to a physical table / box border right next to the text, as long as it stays inside the limits set
+        # by the neighbouring text, so a frame is kept whole instead of being cut through.
+        if gray is not None:
+            reach = int(1.5 * line_h)
+            top_rule = cls._find_horizontal_line(gray, ox1, ox2, oy1, search_range=(-reach, 0))
+            if top_rule is not None and top_limit <= top_rule - 3 < oy1:
+                ny1 = min(ny1, top_rule - 3)
+            bot_rule = cls._find_horizontal_line(gray, ox1, ox2, oy2, search_range=(0, reach))
+            if bot_rule is not None and oy2 < bot_rule + 3 <= bottom_limit:
+                ny2 = max(ny2, bot_rule + 3)
+
+        if tighten_x:
+            margin = max(4, line_h // 2)
+            px1, px2 = max(px1, ox1 - margin), min(px2, ox2 + margin)
+        # Never slice one of our own lines sideways (Gemini's left/right edge can cut through a line).
+        px1, px2 = min(px1, ox1), max(px2, ox2)
+        if ny2 <= ny1 + 10:
+            return None
+        return (px1, ny1, px2, ny2)
+
+    @classmethod
     def validate_and_refine_crop_box(
         cls,
         box: Any,
@@ -105,15 +578,15 @@ class SubRegionExtractor:
         orig_h: int,
         all_regions: Optional[List[Dict[str, Any]]] = None,
         arr: Optional[np.ndarray] = None,
+        ocr_lines: Optional[List[Dict[str, Any]]] = None,
     ) -> Optional[Tuple[int, int, int, int]]:
         """
-        Rigorous 'Check Before Crop' coordinate verification and adaptive boundary refinement.
+        Rigorous 'Check Before Crop' dynamic coordinate verification and adaptive boundary refinement.
         1. Validates normalized coordinate bounds [0 <= ymin < ymax <= 1000, 0 <= xmin < xmax <= 1000].
         2. Rejects degenerate or inverted bounding boxes.
-        3. Computes section-specific adaptive padding based on actual package resolution
-           (preventing static 10px padding from slicing ascenders/descenders on 2000px images).
-        4. Isolates sections that touch (e.g. separates FSSAI top from preceding Manufacturer address,
-           and protects multiple statutory license lines).
+        3. Enforces the Zero-Slicing Invariant: Never cuts through text lines, wordmarks, emblems, or footnotes.
+        4. Dynamically clamps to container cards/panels using chromaticity and background color gradients,
+           preventing white slivers and outer background bleeding across arbitrary packaging designs.
         5. Returns clamped pixel coordinates (fx1, fy1, fx2, fy2) or None if invalid.
         """
         if not box or not isinstance(box, (list, tuple)) or len(box) != 4:
@@ -126,85 +599,86 @@ class SubRegionExtractor:
             logger.warning(f"Non-numeric coordinates for category {cat}: {box}")
             return None
 
-        # Sanity check normalized coordinates
         if not (0 <= ymin < ymax <= 1000 and 0 <= xmin < xmax <= 1000):
             logger.warning(f"Coordinates out of bounds [0, 1000] for category {cat}: {box}")
             return None
 
-        # Minimum viable extent (reject slivers smaller than 0.8% of image dimension)
         if (ymax - ymin) < 8 or (xmax - xmin) < 8:
             logger.warning(f"Degenerate box dimensions for category {cat}: {box}")
             return None
 
-        # Convert to pixel space
         py1 = int(round(ymin * orig_h / 1000.0))
         px1 = int(round(xmin * orig_w / 1000.0))
         py2 = int(round(ymax * orig_h / 1000.0))
         px2 = int(round(xmax * orig_w / 1000.0))
 
-        bw = max(1, px2 - px1)
-        bh = max(1, py2 - py1)
-
-        # Proportional, resolution-aware adaptive margins
         cat_lower = cat.lower().strip()
+        gray = cv2.cvtColor(arr[:, :, :3], cv2.COLOR_BGR2GRAY) if (arr is not None and arr.ndim >= 2) else None
 
-        if cat_lower == "fssai":
-            # FSSAI block: Needs top room for the swirl/leaf emblem, bottom room for 14-digit license numbers
-            # and horizontal room for wide license strings.
-            pad_top = max(18, int(0.12 * bh), int(0.015 * orig_h))
-            pad_bottom = max(24, int(0.18 * bh), int(0.022 * orig_h))
-            pad_x = max(24, int(0.08 * bw), int(0.020 * orig_w))
+        if cat_lower == "barcode" and arr is not None:
+            return cls._refine_barcode_boundary(arr, px1, py1, px2, py2, ocr_lines=ocr_lines)
 
-            # Check if there is an adjacent manufacturer address directly above
-            if all_regions:
-                mfg_reg = next(
-                    (r for r in all_regions if (r.get("region_type") or "").lower() == "manufactured_by" and r.get("box_2d")),
-                    None
+        # Pixel boxes of every OTHER Gemini region (used to decide which OCR lines belong to this one).
+        other_boxes_px: List[Tuple[int, int, int, int]] = []
+        for other_reg in (all_regions or []):
+            if (other_reg.get("region_type") or "").lower().strip() == cat_lower or not other_reg.get("box_2d"):
+                continue
+            try:
+                a, b, c, d = [float(v) for v in other_reg["box_2d"]]
+                other_boxes_px.append((
+                    int(round(b * orig_w / 1000.0)), int(round(a * orig_h / 1000.0)),
+                    int(round(d * orig_w / 1000.0)), int(round(c * orig_h / 1000.0)),
+                ))
+            except Exception:
+                continue
+        block_refined = False
+
+        if ocr_lines:
+            if cat_lower in ("fssai", "nutritional", "ingredient", "manufactured_by"):
+                # Fully geometric, no keywords: see _refine_text_block_box.
+                refined = cls._refine_text_block_box(
+                    (px1, py1, px2, py2), ocr_lines, other_boxes_px,
+                    gray=gray, tighten_x=(cat_lower == "ingredient"),
                 )
-                if mfg_reg:
-                    mfg_box = mfg_reg["box_2d"]
-                    mfg_py2 = int(round(mfg_box[2] * orig_h / 1000.0))
-                    # If FSSAI starts directly below manufacturer address, ensure pad_top doesn't clip into address
-                    if 0 <= (py1 - mfg_py2) < pad_top * 2:
-                        split_y = (mfg_py2 + py1) // 2
-                        py1 = max(split_y + 2, py1 - 6)
-                        pad_top = 0  # Already cleanly positioned
+                if refined:
+                    px1, py1, px2, py2 = refined
+                    block_refined = True
 
-        elif cat_lower == "nutritional":
-            # Complete table: Needs uniform margin around outer border lines and footnotes
-            pad_top = max(20, int(0.04 * bh), int(0.012 * orig_h))
-            pad_bottom = max(24, int(0.05 * bh), int(0.016 * orig_h))
-            pad_x = max(22, int(0.04 * bw), int(0.015 * orig_w))
+        if all_regions and not block_refined:
+            for other_reg in all_regions:
+                other_type = (other_reg.get("region_type") or "").lower().strip()
+                if other_type == cat_lower or not other_reg.get("box_2d"):
+                    continue
+                try:
+                    oy1, ox1, oy2, ox2 = [float(v) for v in other_reg["box_2d"]]
+                    opy1 = int(round(oy1 * orig_h / 1000.0))
+                    opx1 = int(round(ox1 * orig_w / 1000.0))
+                    opy2 = int(round(oy2 * orig_h / 1000.0))
+                    opx2 = int(round(ox2 * orig_w / 1000.0))
+                except Exception:
+                    continue
 
-        elif cat_lower == "ingredient":
-            # Ingredients block: Needs clean header room and bottom allergen room
-            pad_top = max(18, int(0.05 * bh), int(0.012 * orig_h))
-            pad_bottom = max(20, int(0.05 * bh), int(0.014 * orig_h))
-            pad_x = max(20, int(0.04 * bw), int(0.015 * orig_w))
+                if max(px1, opx1) < min(px2, opx2):
+                    if 0 < opy2 - py1 < 35 and opy1 < py1:
+                        if other_type in ("storage", "nutritional"):
+                            py1 = max(py1, opy2 + 2)
+                    elif 0 < py2 - opy1 < 35 and opy2 > py2:
+                        if other_type in ("ingredient", "barcode"):
+                            py2 = min(py2, opy1 - 2)
+                    elif py1 < opy1 < py2:
+                        if other_type in ("ingredient", "barcode"):
+                            py2 = min(py2, opy1 - 2)
 
-        elif cat_lower == "manufactured_by":
-            # Manufacturer & Marketer: Clean header and bottom customer support details
-            pad_top = max(16, int(0.04 * bh), int(0.012 * orig_h))
-            pad_bottom = max(18, int(0.04 * bh), int(0.014 * orig_h))
-            pad_x = max(20, int(0.04 * bw), int(0.015 * orig_w))
+        if py2 <= py1 + 10:
+            py2 = py1 + 20
 
-        elif cat_lower == "barcode":
-            # Barcode: Generous horizontal quiet zone margins (GS1 specification)
-            pad_top = max(12, int(0.03 * bh))
-            pad_bottom = max(14, int(0.04 * bh))
-            pad_x = max(28, int(0.10 * bw), int(0.025 * orig_w))
-
+        if arr is not None:
+            fx1, fx2 = cls._clamp_to_panel_or_card(arr, px1, py1, px2, py2)
         else:
-            pad_top = max(14, int(0.03 * bh))
-            pad_bottom = max(14, int(0.03 * bh))
-            pad_x = max(16, int(0.03 * bw))
+            fx1, fx2 = px1, px2
 
-        fx1 = max(0, px1 - pad_x)
-        fy1 = max(0, py1 - pad_top)
-        fx2 = min(orig_w, px2 + pad_x)
-        fy2 = min(orig_h, py2 + pad_bottom)
+        fy1, fy2 = py1, py2
 
-        # Final verification: crop must be at least 35px wide and 25px tall
         final_w = fx2 - fx1
         final_h = fy2 - fy1
         if final_w < 35 or final_h < 25:
@@ -253,6 +727,7 @@ class SubRegionExtractor:
                 )
 
                 current_seq = 1
+                ocr_lines = cls._extract_ocr_lines(arr)
                 for reg in sorted_regions:
                     cat = (reg.get("region_type") or "").lower().strip()
                     disp = reg.get("display_name") or cat.replace("_", " ").title()
@@ -264,6 +739,19 @@ class SubRegionExtractor:
                         orig_h=orig_h,
                         all_regions=gemini_regions,
                         arr=arr,
+                        ocr_lines=ocr_lines,
+                    )
+                    try:
+                        gy1, gx1, gy2, gx2 = [float(v) for v in box]
+                        raw_px = (
+                            round(gx1 * orig_w / 1000), round(gy1 * orig_h / 1000),
+                            round(gx2 * orig_w / 1000), round(gy2 * orig_h / 1000),
+                        )
+                    except Exception:
+                        raw_px = None
+                    logger.info(
+                        f"[SubRegion] {bbid} {cat}: image={orig_w}x{orig_h} gemini_box_2d={box} "
+                        f"gemini_px(x1,y1,x2,y2)={raw_px} refined_px={refined_coords}"
                     )
                     if not refined_coords:
                         continue
@@ -411,9 +899,6 @@ class SubRegionExtractor:
             return None
 
         kinds = [heading_type(l) for l in text_lines]
-        print("DEBUG price_boxes:", [b["text"] for b in price_boxes], "mrp_top:", mrp_top)
-        print("DEBUG category passed:", category, "is_known_non_food:", is_known_non_food)
-        print("DEBUG kinds count:", {k: kinds.count(k) for k in set(kinds)})
 
         def grow_block(start: int, kind: str) -> List[Dict[str, Any]]:
             """Heading line + following same-column lines until another heading or a large gap."""
@@ -474,10 +959,16 @@ class SubRegionExtractor:
                     overlaps = l["x2"] > lic["x1"] - line_h and l["x1"] < lic["x2"] + line_h
                     if l is not lic and near_above and overlaps and "fssai" in l["text"].lower():
                         fssai_group.append(l)
+                    # Include multi-line statutory licenses (e.g. Mfg by / Mktd by Lic. No. lines below primary license)
+                    near_below = 0 <= l["y1"] - lic["y2"] <= 3 * line_h
+                    if l is not lic and near_below and overlaps and (
+                        bool(re.search(r"(?<!\d)\d{14}(?!\d)", l["text"].replace(" ", "")))
+                        or any(k in l["text"].lower() for k in ["lic", "mfg by", "mktd by", "license"])
+                    ):
+                        fssai_group.append(l)
                 sections.append(("fssai", "FSSAI", fssai_group))
 
 
-        print(f"DEBUG: sections found = {[s[0] for s in sections]}")
 
         # 6. Cut the crops. CAUTION is never extracted (it stays part of the complete BOP per the SRS).
         extracted_results = []
@@ -601,7 +1092,7 @@ class SubRegionExtractor:
                 if mrp_top and fy2 > mrp_top:
                     fy2 = mrp_top - 5
 
-                return (fx1, fy1, fx2, fy2)
+                return cls._refine_barcode_boundary(arr, fx1, fy1, fx2, fy2, ocr_lines=text_lines)
         except Exception as e:
             logger.warning(f"Barcode detection error: {e}")
 
@@ -636,7 +1127,7 @@ class SubRegionExtractor:
                     fy2 = min(h_img, by2 + 10)
                     if mrp_top and fy2 > mrp_top:
                         fy2 = mrp_top - 5
-                    return (fx1, fy1, fx2, fy2)
+                    return cls._refine_barcode_boundary(arr, fx1, fy1, fx2, fy2, ocr_lines=text_lines)
         except Exception as e:
             logger.warning(f"OCR Barcode fallback error: {e}")
 

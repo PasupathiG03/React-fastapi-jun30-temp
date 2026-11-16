@@ -1,6 +1,5 @@
 import asyncio
 import secrets
-from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -66,7 +65,6 @@ def create_batch(
         "extract_sub_regions": True,
         "auto_inpaint_mrp": True,
         "max_workers": 4,
-        "chunk_size": 10,
     }
 
     # 1. Allocate batch in DB with temporary code to obtain auto-increment primary key ID

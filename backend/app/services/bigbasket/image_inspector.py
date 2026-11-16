@@ -1,7 +1,7 @@
 import io
 import re
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 import numpy as np
 from PIL import Image
 

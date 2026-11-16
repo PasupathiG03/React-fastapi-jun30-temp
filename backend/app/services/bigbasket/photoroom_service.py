@@ -2,7 +2,7 @@ import logging
 import os
 import io
 import requests
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional
 from PIL import Image
 
 logger = logging.getLogger(__name__)
@@ -15,11 +15,9 @@ class PhotoroomService:
 
     Endpoints:
     - Background Removal (Segment): POST https://sdk.photoroom.com/v1/segment
-    - Account Credits & Status:     GET  https://image-api.photoroom.com/v2/account
     """
 
     SEGMENT_URL = "https://sdk.photoroom.com/v1/segment"
-    ACCOUNT_URL = "https://image-api.photoroom.com/v2/account"
 
     @classmethod
     def get_api_key(cls) -> str:
@@ -30,70 +28,6 @@ class PhotoroomService:
         except Exception:
             key = os.getenv("PHOTOROOM_API_KEY", "")
         return (key or "").strip()
-
-    @classmethod
-    def is_configured(cls) -> bool:
-        """Returns True if a non-empty Photoroom API key is set."""
-        return bool(cls.get_api_key())
-
-    @classmethod
-    def check_account_status(cls, api_key: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Queries Photoroom account API to verify API key validity and remaining quota.
-        Does not consume any image credits.
-        """
-        key = (api_key or cls.get_api_key()).strip()
-        if not key:
-            return {
-                "configured": False,
-                "valid": False,
-                "message": "PHOTOROOM_API_KEY is not set in backend/.env",
-            }
-
-        headers = {
-            "x-api-key": key,
-            "Accept": "application/json",
-        }
-
-        try:
-            resp = requests.get(cls.ACCOUNT_URL, headers=headers, timeout=10)
-            if resp.status_code == 200:
-                data = resp.json()
-                return {
-                    "configured": True,
-                    "valid": True,
-                    "status_code": 200,
-                    "data": data,
-                    "message": "Photoroom API key is active and valid.",
-                }
-            elif resp.status_code in (401, 403):
-                return {
-                    "configured": True,
-                    "valid": False,
-                    "status_code": resp.status_code,
-                    "message": "Invalid Photoroom API key or unauthorized access.",
-                }
-            elif resp.status_code == 402:
-                return {
-                    "configured": True,
-                    "valid": False,
-                    "status_code": 402,
-                    "message": "Photoroom account has insufficient credits / payment required.",
-                }
-            else:
-                return {
-                    "configured": True,
-                    "valid": False,
-                    "status_code": resp.status_code,
-                    "message": f"Photoroom returned HTTP {resp.status_code}: {resp.text[:200]}",
-                }
-        except Exception as e:
-            logger.warning(f"[Photoroom] Account check failed: {e}")
-            return {
-                "configured": True,
-                "valid": False,
-                "message": f"Network or connection error while contacting Photoroom: {str(e)}",
-            }
 
     @classmethod
     def remove_background(

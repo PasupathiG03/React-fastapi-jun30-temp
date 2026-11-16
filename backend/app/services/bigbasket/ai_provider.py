@@ -1,4 +1,3 @@
-import abc
 import time
 from typing import Any, Dict, Optional
 
@@ -6,26 +5,14 @@ from app.services.bigbasket.gemini_service import GeminiClassificationService
 from app.services.bigbasket.rules_engine import DynamicRulesEngine
 
 
-class BaseAiProvider(abc.ABC):
-    @abc.abstractmethod
-    async def classify_and_analyze(
-        self,
-        image_bytes: bytes,
-        filename: str,
-        bbid: str = "",
-    ) -> Dict[str, Any]:
-        """Returns dict with predicted_category, confidence_score, and metadata."""
-        pass
-
-
-class GeminiAiProvider(BaseAiProvider):
+class GeminiAiProvider:
     """
     Unified Google Gemini Vision AI Provider.
     Classifies BigBasket catalog images into FOOD, NON_FOOD, or KITCHEN_ITEMS,
     extracts materials, components, and resolves category-specific rules.
     """
 
-    async def classify_and_analyze(
+    def classify_and_analyze_sync(
         self,
         image_bytes: bytes,
         filename: str,
@@ -92,27 +79,22 @@ class GeminiAiProvider(BaseAiProvider):
         }
 
 
-class LocalCpuAiProvider(GeminiAiProvider):
-    """Backward compatibility alias for GeminiAiProvider."""
-    pass
-
-
 class HybridAiManager:
     """Coordinates Gemini multimodal image classification and rule resolution."""
 
     def __init__(self):
         self.provider = GeminiAiProvider()
 
-    async def analyze_image(
+    def analyze_image_sync(
         self,
         image_bytes: bytes,
         filename: str,
         bbid: str = "",
-        threshold: float = 0.95,
         batch_id: Optional[int] = None,
         image_id: Optional[int] = None,
     ) -> Dict[str, Any]:
-        return await self.provider.classify_and_analyze(
+        """Blocking variant for worker threads (batch processing runs images in a thread pool)."""
+        return self.provider.classify_and_analyze_sync(
             image_bytes,
             filename,
             bbid=bbid,

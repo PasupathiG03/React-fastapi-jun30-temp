@@ -30,7 +30,6 @@ class BatchProcessConfig(BaseModel):
     extract_sub_regions: bool = True
     auto_inpaint_mrp: bool = True
     max_workers: int = 4
-    chunk_size: int = 10
 
 
 # ─────────────────────────────────────────────────────────────────────────────

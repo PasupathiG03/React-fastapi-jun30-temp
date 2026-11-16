@@ -6,9 +6,8 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from app.core.config import settings
 from app.services.bigbasket.photoroom_service import PhotoroomService
-from app.services.bigbasket.rmbg2_service import RMBG2Service
+from app.services.bigbasket.birefnet_service import BiRefNetService
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +18,9 @@ class ImageProcessingPipeline:
     Uses Photoroom AI exclusively for cloud background removal and transparency, with deterministic
     framing, padding enforcement (Table 3), MRP inpainting, and automated quality validation.
     """
+
+    # Marker returned by _safe_inpaint_mrp when the stamp check itself failed (as opposed to "no stamps found").
+    STAMP_DETECTION_FAILED = "stamp_detection_failed"
 
     @classmethod
     def process_image(
@@ -55,10 +57,6 @@ class ImageProcessingPipeline:
         # STRICT WHITELIST: Only genuine front or back product pack shots can EVER invoke Photoroom
         is_fop_bop = img_type_lower in ("fop", "bop", "front", "back", "front of pack", "back of pack")
         is_lifestyle_or_infographic = any(k in img_type_lower for k in ("lifestyle", "infographic"))
-        is_flat_panel = (not is_fop_bop) or is_lifestyle_or_infographic or any(k in img_type_lower for k in (
-            "nutrition", "ingredient", "manufacture", "marketed", "mfg",
-            "fssai", "barcode", "license", "table", "cert", "caution", "direction", "storage"
-        ))
 
         # Only invoke Photoroom when image classification explicitly confirms FOP or BOP product shot:
         # 1. STRICT WHITELIST: is_fop_bop must be True.
@@ -77,7 +75,7 @@ class ImageProcessingPipeline:
         has_transparency = False
         photoroom_called = False
         use_photoroom = cfg.get("bg_removal_provider") == "photoroom"
-        bg_provider = ("photoroom" if use_photoroom else "rmbg2") if requires_bg_removal else ("passthrough_lifestyle" if is_lifestyle_or_infographic else "passthrough")
+        bg_provider = ("photoroom" if use_photoroom else "birefnet") if requires_bg_removal else ("passthrough_lifestyle" if is_lifestyle_or_infographic else "passthrough")
         error_notes = []
 
         inpaint_applied = False
@@ -108,11 +106,11 @@ class ImageProcessingPipeline:
                     logger.info(f"[Pipeline] Processing FOP/BOP image through Photoroom AI ({orig_w}x{orig_h})...")
                     segmented_png_bytes = PhotoroomService.remove_background(image_bytes, crop=False, size="full")
                     photoroom_called = True
-                    rmbg_error = None
+                    bg_error = None
                 else:
-                    # Step 1 (Primary): Local RMBG-2.0 Background Removal (no automatic Photoroom fallback)
-                    logger.info(f"[Pipeline] Processing FOP/BOP image locally through RMBG-2.0 ({orig_w}x{orig_h})...")
-                    segmented_png_bytes, rmbg_error = RMBG2Service.remove_background_with_status(image_bytes)
+                    # Step 1 (Primary): Local BiRefNet Background Removal (no automatic Photoroom fallback)
+                    logger.info(f"[Pipeline] Processing FOP/BOP image locally through BiRefNet ({orig_w}x{orig_h})...")
+                    segmented_png_bytes, bg_error = BiRefNetService.remove_background_with_status(image_bytes)
 
                 if segmented_png_bytes:
                     clean_rgba = Image.open(io.BytesIO(segmented_png_bytes)).convert("RGBA")
@@ -135,7 +133,7 @@ class ImageProcessingPipeline:
                         logger.error("[Pipeline] Photoroom background removal unavailable or failed. Preserving original.")
                         err_msg = "Photoroom background removal unavailable or failed (check PHOTOROOM_API_KEY in .env)"
                     else:
-                        err_msg = rmbg_error or "Local RMBG-2.0 background removal failed. Click 'Rerun Background Removal' to use Photoroom."
+                        err_msg = bg_error or "Local BiRefNet background removal failed. Click 'Rerun Cloud AI' to use Photoroom."
                         logger.error(f"[Pipeline] {err_msg}")
                     clean_rgba = raw_img.convert("RGBA")
                     seg_buf = io.BytesIO()
@@ -264,8 +262,17 @@ class ImageProcessingPipeline:
                 canvas.paste(resized_panel, (offset_x, offset_y), resized_panel)
                 has_transparency = True
 
-        # Step 4: MRP / Expiry Removal fallback if not already applied on subject (SRS Section 5)
-        if not inpaint_applied and auto_inpaint_mrp and is_fop_bop:
+        # Step 4: MRP / Expiry Removal fallback if not already applied on subject (SRS Section 5).
+        # Only worth a second Gemini round trip when the first check could not run (API error / timeout). When
+        # the first pass got an answer ("no stamps"), asking again on the downscaled canvas only doubled the
+        # latency and cost of every product shot. Set config "mrp_second_pass": true to restore the old behaviour.
+        first_pass_failed = cls.STAMP_DETECTION_FAILED in (inpaint_reasons or [])
+        if (
+            not inpaint_applied
+            and auto_inpaint_mrp
+            and is_fop_bop
+            and (first_pass_failed or bool(cfg.get("mrp_second_pass", False)))
+        ):
             canvas, inpaint_applied, inpaint_reasons = cls._safe_inpaint_mrp(
                 canvas,
                 bbid=sku_bbid,
@@ -336,7 +343,6 @@ class ImageProcessingPipeline:
             "bg_removal_error": error_notes[0] if (requires_bg_removal and not has_transparency and error_notes) else None,
             "product_category": product_category,
             "validation": val_result,
-            "five_dimensional_audit": val_result.get("five_point_audit"),
             "inpaint_applied": inpaint_applied,
             "inpaint_notes": inpaint_reasons,
             "execution_time_ms": round(exec_time_ms, 2),
@@ -454,6 +460,7 @@ class ImageProcessingPipeline:
             from app.services.bigbasket.inpaint_service import DynamicInpaintService
             buf = io.BytesIO()
             img.save(buf, format="PNG")
+            status: Dict[str, Any] = {}
             inpainted_bytes, applied, stamp_details = DynamicInpaintService.detect_and_inpaint_stamps(
                 image_bytes=buf.getvalue(),
                 bbid=bbid,
@@ -461,13 +468,17 @@ class ImageProcessingPipeline:
                 category=category,
                 batch_id=batch_id,
                 image_id=image_id,
+                status_out=status,
             )
             if applied:
                 res_img = Image.open(io.BytesIO(inpainted_bytes))
                 notes = [f"Removed {s.get('type')}: '{s.get('text')}'" for s in stamp_details]
                 return res_img, True, notes
+            if not status.get("detection_ok", True):
+                return img, False, [cls.STAMP_DETECTION_FAILED]
         except Exception as inpaint_err:
             logger.warning(f"Dynamic MRP/Expiry inpainting error: {inpaint_err}")
+            return img, False, [cls.STAMP_DETECTION_FAILED]
 
         return img, False, ["no_unwanted_text_detected"]
 

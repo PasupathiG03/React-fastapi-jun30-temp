@@ -166,7 +166,7 @@ async def retry_image_processing(
 ):
     """
     Retries background removal and standardization for an individual image
-    using the specified provider ('photoroom' or 'rmbg2').
+    using the specified provider ('photoroom' or 'birefnet').
     """
     try:
         from app.services.bigbasket.batch_processor import BatchProcessor

@@ -88,11 +88,3 @@ class ForexService:
             "source": cls._source,
             "is_live": cls._is_live,
         }
-
-    @classmethod
-    def convert_usd_to_inr(cls, amount_usd: float) -> float:
-        """Converts USD amount to INR using the current live rate."""
-        rate_info = cls.get_usd_to_inr()
-        rate = rate_info["rate"]
-        return round(amount_usd * rate, 5)
-

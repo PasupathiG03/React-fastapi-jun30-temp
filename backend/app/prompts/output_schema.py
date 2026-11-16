@@ -189,7 +189,11 @@ PACKAGING_SUBREGIONS_SCHEMA = {
                     "box_2d": {
                         "type": "ARRAY",
                         "items": {"type": "INTEGER"},
-                        "description": "[ymin, xmin, ymax, xmax] normalized strictly from 0 to 1000."
+                        "description": (
+                            "[ymin, xmin, ymax, xmax] normalized strictly from 0 to 1000. "
+                            "For FSSAI, MUST enclose BOTH the logo emblem AND all statutory license numbers below it. "
+                            "For tables/panels, ymin and ymax must strictly align with the outer boundaries/whitespace without capturing adjacent sections."
+                        )
                     },
                     "confidence": {
                         "type": "NUMBER",

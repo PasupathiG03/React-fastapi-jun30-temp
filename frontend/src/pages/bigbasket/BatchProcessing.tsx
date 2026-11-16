@@ -32,7 +32,7 @@ import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/components/ui";
 import { TablePagination, TableSearchInput } from "@/components/DataTableControls";
 import Modal, { ModalBody, ModalFooter, ModalCancelButton, ConfirmDialog } from "@/components/Modal";
 import { CustomSelect } from "@/components/CustomSelect";
-import { GlobalModalLoader, GlobalInlineLoader, GlobalKpiSkeleton, GlobalTableRowSkeleton } from "@/components/GlobalLoader";
+import { GlobalModalLoader, GlobalKpiSkeleton, GlobalTableRowSkeleton } from "@/components/GlobalLoader";
 import {
   fetchBatches,
   fetchBatchImages,
@@ -1030,13 +1030,11 @@ function BatchTableRow({
                   <h4 className="text-xs font-bold text-slate-900 dark:text-white">
                     Processed Images: Batch {batch.batch_code}
                   </h4>
-                  <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                    {effectiveLoading ? (
-                      <GlobalInlineLoader text="Loading items..." className="text-xs font-semibold" />
-                    ) : (
-                      `(${images.length} items loaded)`
-                    )}
-                  </span>
+                  {!effectiveLoading && (
+                    <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                      ({images.length} items loaded)
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2.5">

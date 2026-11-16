@@ -76,10 +76,6 @@ class DetectedPackagingRegion(BaseModel):
     text_summary: Optional[str] = None
 
 
-class GeminiPackagingRegionsResponse(BaseModel):
-    detected_regions: List[DetectedPackagingRegion] = Field(default_factory=list)
-
-
 class GeminiClassificationService:
     """
     Google Gemini AI Multimodal Image Classification Client.
@@ -363,7 +359,11 @@ class GeminiClassificationService:
             }
         }
 
-        max_attempts = int(getattr(settings, "GEMINI_MAX_ATTEMPTS", 3) or os.getenv("GEMINI_MAX_ATTEMPTS", 3))
+        thinking_level = (getattr(settings, "GEMINI_THINKING_LEVEL", "") or "").strip().lower()
+        if thinking_level:
+            payload["generationConfig"]["thinkingConfig"] = {"thinkingLevel": thinking_level}
+
+        max_attempts = max(1, settings.GEMINI_MAX_ATTEMPTS)
         for attempt in range(1, max_attempts + 1):
             try:
                 t0 = time.perf_counter()
@@ -565,7 +565,7 @@ class GeminiClassificationService:
 
         endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
 
-        max_attempts = int(getattr(settings, "GEMINI_MAX_ATTEMPTS", 3) or os.getenv("GEMINI_MAX_ATTEMPTS", 3))
+        max_attempts = max(1, settings.GEMINI_MAX_ATTEMPTS)
         for attempt in range(1, max_attempts + 1):
             try:
                 t0 = time.perf_counter()
@@ -668,7 +668,7 @@ class GeminiClassificationService:
 
         if not model_name or not api_key:
             logger.warning("Gemini model or API key not configured; skipping AI stamp detection.")
-            return {"has_removable_stamps": False, "stamps": []}
+            return {"has_removable_stamps": False, "stamps": [], "detection_ok": False}
 
         # Preserve 100% original image quality without any downscaling or lossy compression
         send_bytes = image_bytes
@@ -707,7 +707,7 @@ class GeminiClassificationService:
 
         endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
 
-        max_attempts = int(getattr(settings, "GEMINI_MAX_ATTEMPTS", 3) or os.getenv("GEMINI_MAX_ATTEMPTS", 3))
+        max_attempts = max(1, settings.GEMINI_MAX_ATTEMPTS)
         for attempt in range(1, max_attempts + 1):
             try:
                 t0 = time.perf_counter()
@@ -739,7 +739,7 @@ class GeminiClassificationService:
                                 f"Gemini AI localized {len(stamps_list)} price/date stamp(s) for {filename} (BBID {bbid}) in {latency:.1f}ms | "
                                 f"Tokens: {total_tok} | Cost: ${cost_usd:.6f}"
                             )
-                            result = {"has_removable_stamps": has_stamps, "stamps": stamps_list}
+                            result = {"has_removable_stamps": has_stamps, "stamps": stamps_list, "detection_ok": True}
 
                             if len(cls._MRP_EXPIRY_CACHE) >= cls._MAX_CACHE_ITEMS:
                                 cls._MRP_EXPIRY_CACHE.clear()
@@ -779,4 +779,4 @@ class GeminiClassificationService:
                     continue
                 logger.warning(f"Gemini stamp detection error: {e}")
 
-        return {"has_removable_stamps": False, "stamps": []}
+        return {"has_removable_stamps": False, "stamps": [], "detection_ok": False}

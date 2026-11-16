@@ -235,7 +235,7 @@ export async function fetchImageDetails(imageId: number): Promise<any> {
 
 export async function retryImageProcessing(
   imageId: number,
-  provider: "photoroom" | "rmbg2" = "photoroom"
+  provider: "photoroom" | "birefnet" = "photoroom"
 ): Promise<any> {
   return request(`/api/image-studio/images/${imageId}/retry?provider=${provider}`, {
     method: "POST",

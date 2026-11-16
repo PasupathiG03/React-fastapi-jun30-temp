@@ -42,12 +42,15 @@ class Settings(BaseSettings):
 
     # Photoroom AI Background Removal configuration (https://docs.photoroom.com/)
     PHOTOROOM_API_KEY: str = ""
-    BG_REMOVAL_PROVIDER: str = "photoroom"  # "photoroom", "local", or "hybrid"
+    BG_REMOVAL_PROVIDER: str  # "photoroom", "local", or "hybrid". Required, fetched from .env only
 
     # Google Gemini AI Vision & Classification configuration (https://ai.google.dev/gemini-api/docs/models)
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = ""  # Configured strictly in .env (e.g. GEMINI_MODEL=gemini-3.5-flash-lite)
-    GEMINI_MAX_ATTEMPTS: int = 3
+    GEMINI_MAX_ATTEMPTS: int  # Required, fetched from .env only
+    # Optional speed-up for the classification call only (e.g. "low" or "minimal" on Gemini 3). Empty = model default.
+    # Compare results on your own images before enabling: less thinking can change classification accuracy.
+    GEMINI_THINKING_LEVEL: str = ""
 
     # Redis & Celery Distributed Task Queue configuration (configured strictly in .env)
     REDIS_URL: str

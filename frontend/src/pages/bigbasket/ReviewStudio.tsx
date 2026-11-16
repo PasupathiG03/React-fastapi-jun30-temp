@@ -256,7 +256,7 @@ export default function ReviewStudio() {
     if (!image) return;
     setRetryingLocal(true);
     try {
-      const updated = await retryImageProcessing(image.id, "rmbg2");
+      const updated = await retryImageProcessing(image.id, "birefnet");
       setImage(updated);
       setCacheBuster(Date.now());
       if (image.batch_id) {
@@ -267,12 +267,12 @@ export default function ReviewStudio() {
       if (updated.error_message) {
         showError(updated.error_message);
       } else if (updated.status === "auto_approved" || (updated.confidence_score && updated.confidence_score >= 0.95)) {
-        showSuccess(`Local RMBG-2.0 background removal succeeded! SKU ${updated.bbid} is auto-approved.`);
+        showSuccess(`Local BiRefNet background removal succeeded! SKU ${updated.bbid} is auto-approved.`);
       } else {
-        showSuccess(`Local RMBG-2.0 re-processed SKU ${updated.bbid} (Confidence: ${Math.round((updated.confidence_score || 0) * 100)}%).`);
+        showSuccess(`Local BiRefNet re-processed SKU ${updated.bbid} (Confidence: ${Math.round((updated.confidence_score || 0) * 100)}%).`);
       }
     } catch (e: any) {
-      showError(e.message || "Failed to run local RMBG-2.0 background removal");
+      showError(e.message || "Failed to run local BiRefNet background removal");
     } finally {
       setRetryingLocal(false);
     }
@@ -420,11 +420,16 @@ export default function ReviewStudio() {
           errorMessage={
             image.error_message ||
             image.validation_status?.failure_reasons?.find(
-              (r: string) => r.toLowerCase().includes("rmbg") || r.toLowerCase().includes("background removal")
+              (r: string) =>
+                r.toLowerCase().includes("birefnet") ||
+                r.toLowerCase().includes("background removal") ||
+                r.toLowerCase().includes("photoroom")
             )
           }
-          onRerun={handleRetryPhotoroom}
-          loading={retrying}
+          onRerunCloud={handleRetryPhotoroom}
+          onRerunLocal={handleRetryLocal}
+          loadingCloud={retrying}
+          loadingLocal={retryingLocal}
         />
 
         {/* Batch Products Quick-Switcher Strip */}

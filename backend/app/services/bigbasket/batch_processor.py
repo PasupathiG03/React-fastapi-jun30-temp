@@ -1,10 +1,14 @@
 import asyncio
+import os
 import time
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from types import SimpleNamespace
+from typing import Any, Dict, List, Optional, Tuple
 import openpyxl
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
@@ -15,10 +19,25 @@ from app.models.bigbasket import (
     ImageBatch,
 )
 from app.services.bigbasket.ai_provider import HybridAiManager
-from app.services.bigbasket.events import BigBasketEventBroadcaster, REDIS_URL
+from app.services.bigbasket.events import (
+    REDIS_CONNECT_TIMEOUT,
+    REDIS_URL,
+    BigBasketEventBroadcaster,
+    mark_redis_down,
+    mark_redis_up,
+    redis_usable,
+)
 from app.services.bigbasket.pipeline import ImageProcessingPipeline
 from app.services.bigbasket.storage import BigBasketStorage
 from app.services.bigbasket.sub_region_extractor import OcrError, SubRegionExtractor
+
+# Statuses that count as "processed" / "approved" in the batch progress counters.
+_PROCESSED_STATUSES = ("auto_approved", "needs_review", "manually_approved", "rejected")
+_APPROVED_STATUSES = ("auto_approved", "manually_approved")
+
+# Hard ceiling for parallel image workers regardless of config (memory: each in-flight image holds several
+# full-resolution arrays).
+_MAX_PARALLEL_IMAGES = 8
 
 
 class BatchProcessor:
@@ -28,72 +47,106 @@ class BatchProcessor:
     _PAUSE_REQUESTS = set()
     _CANCEL_REQUESTS = set()
 
+    # ── Redis control flags ────────────────────────────────────────────────────────────────────────────────
+    # All Redis access is fail-fast (short connect timeout + circuit breaker in events.py) so an offline Redis
+    # never stalls image processing.
+
+    @staticmethod
+    def _redis_call(fn, force: bool = False):
+        """Runs fn(redis_client) and returns its result, or None if Redis is down/unreachable.
+
+        force=True ignores the circuit breaker; used for pause/cancel/resume writes, which must never be dropped
+        just because an earlier check failed.
+        """
+        if not force and not redis_usable():
+            return None
+        try:
+            import redis
+            r = redis.from_url(REDIS_URL, socket_connect_timeout=REDIS_CONNECT_TIMEOUT, socket_timeout=1.0)
+            try:
+                res = fn(r)
+            finally:
+                r.close()
+            mark_redis_up()
+            return res
+        except Exception:
+            mark_redis_down()
+            return None
+
     @classmethod
     def request_pause(cls, batch_id: int):
         cls._PAUSE_REQUESTS.add(batch_id)
-        try:
-            import redis
-            r = redis.from_url(REDIS_URL)
-            r.set(f"batch:pause:{batch_id}", "1", ex=86400)
-            r.close()
-        except Exception:
-            pass
+        cls._redis_call(lambda r: r.set(f"batch:pause:{batch_id}", "1", ex=86400), force=True)
 
     @classmethod
     def request_cancel(cls, batch_id: int):
         cls._CANCEL_REQUESTS.add(batch_id)
-        try:
-            import redis
-            r = redis.from_url(REDIS_URL)
+
+        def _set(r):
             r.set(f"batch:cancel:{batch_id}", "1", ex=86400)
             r.delete(f"batch:pause:{batch_id}")
-            r.close()
-        except Exception:
-            pass
+
+        cls._redis_call(_set, force=True)
 
     @classmethod
     def resume(cls, batch_id: int):
         cls._PAUSE_REQUESTS.discard(batch_id)
         cls._CANCEL_REQUESTS.discard(batch_id)
-        try:
-            import redis
-            r = redis.from_url(REDIS_URL)
-            r.delete(f"batch:pause:{batch_id}")
-            r.delete(f"batch:cancel:{batch_id}")
-            r.close()
-        except Exception:
-            pass
+        cls._redis_call(lambda r: r.delete(f"batch:pause:{batch_id}", f"batch:cancel:{batch_id}"), force=True)
 
     @classmethod
-    def is_cancelled(cls, batch_id: int) -> bool:
-        if batch_id in cls._CANCEL_REQUESTS:
-            return True
-        try:
-            import redis
-            r = redis.from_url(REDIS_URL)
-            res = bool(r.exists(f"batch:cancel:{batch_id}"))
-            r.close()
-            return res
-        except Exception:
-            return False
+    def control_state(cls, batch_id: int) -> Tuple[bool, bool]:
+        """Returns (cancelled, paused) from local memory and Redis in a single round trip."""
+        cancelled = batch_id in cls._CANCEL_REQUESTS
+        paused = batch_id in cls._PAUSE_REQUESTS
+        if not (cancelled and paused):
+            vals = cls._redis_call(
+                lambda r: r.mget(f"batch:cancel:{batch_id}", f"batch:pause:{batch_id}")
+            )
+            if vals:
+                cancelled = cancelled or bool(vals[0])
+                paused = paused or bool(vals[1])
+        return cancelled, paused
 
-    @classmethod
-    def is_paused(cls, batch_id: int) -> bool:
-        if batch_id in cls._PAUSE_REQUESTS:
-            return True
+    # ── Counters ───────────────────────────────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _refresh_batch_counters(db: Session, batch: ImageBatch, include_total: bool = False) -> None:
+        """Recomputes the batch progress counters with ONE grouped query (was four COUNT queries)."""
+        rows = (
+            db.query(BatchImage.status, func.count(BatchImage.id))
+            .filter(BatchImage.batch_id == batch.id)
+            .group_by(BatchImage.status)
+            .all()
+        )
+        by_status = {status: count for status, count in rows}
+        batch.processed_images = sum(by_status.get(s, 0) for s in _PROCESSED_STATUSES)
+        batch.approved_images = sum(by_status.get(s, 0) for s in _APPROVED_STATUSES)
+        batch.review_needed_images = by_status.get("needs_review", 0)
+        batch.failed_images = by_status.get("failed", 0)
+        if include_total:
+            batch.total_images = sum(by_status.values())
+
+    @staticmethod
+    def _resolve_workers(cfg: Dict[str, Any]) -> int:
         try:
-            import redis
-            r = redis.from_url(REDIS_URL)
-            res = bool(r.exists(f"batch:pause:{batch_id}"))
-            r.close()
-            return res
-        except Exception:
-            return False
+            requested = int(cfg.get("max_workers") or 4)
+        except (TypeError, ValueError):
+            requested = 4
+        return max(1, min(requested, _MAX_PARALLEL_IMAGES, os.cpu_count() or 4))
+
+    # ── Batch execution ────────────────────────────────────────────────────────────────────────────────────
 
     @classmethod
     async def process_batch_background(cls, batch_id: int):
-        """Asynchronous execution worker for an image batch."""
+        """Asynchronous execution worker for an image batch.
+
+        Images are processed by a small pool of worker threads (config ``max_workers``). The workers only do
+        the slow, database-free work (Gemini calls, background removal, framing, validation, file writes); every
+        database read/write stays on this coroutine, so the SQLAlchemy session is never shared between threads.
+        """
         db: Session = SessionLocal()
+        executor: Optional[ThreadPoolExecutor] = None
         try:
             batch = db.query(ImageBatch).filter(ImageBatch.id == batch_id).first()
             if not batch:
@@ -114,7 +167,6 @@ class BatchProcessor:
 
             ai_manager = HybridAiManager()
             cfg = batch.config or {}
-            chunk_size = cfg.get("chunk_size", 10)
 
             # Query all pending or failed images
             images = (
@@ -128,121 +180,109 @@ class BatchProcessor:
             )
 
             total = len(images)
-            for idx, img in enumerate(images, start=1):
-                # Check pause / cancel requests (cross-process via Redis + local memory)
-                if cls.is_cancelled(batch_id):
-                    batch.status = "cancelled"
-                    cls._log_event(db, batch_id, "cancelled", "Batch processing was cancelled by user.")
-                    db.commit()
-                    await BigBasketEventBroadcaster.publish_event({
-                        "type": "batch_status",
-                        "batch_id": batch_id,
-                        "status": "cancelled",
-                    })
-                    return
+            workers = cls._resolve_workers(cfg)
+            executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix=f"batch{batch_id}")
+            loop = asyncio.get_running_loop()
+            logger.info(f"[Batch {batch_id}] processing {total} image(s) with {workers} parallel worker(s).")
 
-                while cls.is_paused(batch_id):
-                    if cls.is_cancelled(batch_id):
-                        batch.status = "cancelled"
-                        cls._log_event(db, batch_id, "cancelled", "Batch processing was cancelled by user while paused.")
+            pending: Dict[asyncio.Future, Tuple[BatchImage, int]] = {}
+            next_idx = 0
+            done = 0
+            cancelled = False
+
+            while True:
+                # 1) Keep the worker pool full (unless cancelled / paused).
+                paused = False
+                while not cancelled and next_idx < total and len(pending) < workers:
+                    cancelled, paused = cls.control_state(batch_id)
+                    if cancelled or paused:
+                        break
+
+                    # Check if batch record was removed from DB mid-processing
+                    if not db.query(ImageBatch.id).filter(ImageBatch.id == batch_id).first():
+                        logger.warning(f"Batch {batch_id} was removed from database during execution. Halting processing worker.")
+                        db.rollback()
+                        return
+
+                    img = images[next_idx]
+                    next_idx += 1
+                    job = cls._make_job(img, batch)
+                    fut = loop.run_in_executor(executor, cls._compute_image, job, cfg, ai_manager)
+                    # keep the id: reading it later from a row deleted meanwhile would raise
+                    pending[fut] = (img, job.image_id)
+
+                # 2) Nothing running: finished, cancelled, or paused.
+                if not pending:
+                    if cancelled:
+                        break
+                    if paused:
+                        batch.status = "paused"
                         db.commit()
                         await BigBasketEventBroadcaster.publish_event({
                             "type": "batch_status",
                             "batch_id": batch_id,
-                            "status": "cancelled",
+                            "status": "paused",
                         })
-                        return
-                    batch.status = "paused"
-                    db.commit()
-                    await BigBasketEventBroadcaster.publish_event({
-                        "type": "batch_status",
-                        "batch_id": batch_id,
-                        "status": "paused",
-                    })
-                    await asyncio.sleep(2.0)
+                        await asyncio.sleep(2.0)
+                        continue
+                    break  # all images done
 
-                # Check if batch record was removed from DB mid-processing
-                batch_check = db.query(ImageBatch.id).filter(ImageBatch.id == batch_id).first()
-                if not batch_check:
-                    logger.warning(f"Batch {batch_id} was removed from database during execution. Halting processing worker.")
-                    db.rollback()
-                    return
+                # 3) Wait for at least one image to finish, then commit its result.
+                finished, _ = await asyncio.wait(list(pending), return_when=asyncio.FIRST_COMPLETED)
+                for fut in finished:
+                    img, img_id = pending.pop(fut)
+                    outcome = fut.result()
+                    done += 1
 
-                # Process single image item
-                await cls._process_single_image(db, img, batch, ai_manager, cfg)
-
-                # Check if batch or image still exists before updating progress counters
-                batch_check = db.query(ImageBatch.id).filter(ImageBatch.id == batch_id).first()
-                img_check = db.query(BatchImage.id).filter(BatchImage.id == img.id).first()
-                if not batch_check or not img_check:
-                    logger.warning(f"Batch {batch_id} or image {img.id} was deleted during processing. Skipping DB commit.")
-                    db.rollback()
-                    if not batch_check:
-                        return
-                    continue
-
-                # Update batch progress counters
-                batch.processed_images = db.query(BatchImage).filter(
-                    BatchImage.batch_id == batch_id,
-                    BatchImage.status.in_(["auto_approved", "needs_review", "manually_approved", "rejected"]),
-                ).count()
-                batch.approved_images = db.query(BatchImage).filter(
-                    BatchImage.batch_id == batch_id,
-                    BatchImage.status.in_(["auto_approved", "manually_approved"]),
-                ).count()
-                batch.review_needed_images = db.query(BatchImage).filter(
-                    BatchImage.batch_id == batch_id,
-                    BatchImage.status == "needs_review",
-                ).count()
-                batch.failed_images = db.query(BatchImage).filter(
-                    BatchImage.batch_id == batch_id,
-                    BatchImage.status == "failed",
-                ).count()
-                try:
-                    db.commit()
-                except Exception as commit_err:
-                    db.rollback()
-                    if "StaleDataError" in type(commit_err).__name__:
-                        logger.warning(f"StaleDataError updating batch {batch_id} / image {img.id}. Record was deleted concurrently.")
-                        if not db.query(ImageBatch.id).filter(ImageBatch.id == batch_id).first():
+                    batch_exists = db.query(ImageBatch.id).filter(ImageBatch.id == batch_id).first()
+                    img_exists = db.query(BatchImage.id).filter(BatchImage.id == img_id).first()
+                    if not batch_exists or not img_exists:
+                        logger.warning(f"Batch {batch_id} or image {img_id} was deleted during processing. Skipping DB commit.")
+                        db.rollback()
+                        if not batch_exists:
                             return
                         continue
-                    raise
 
-                # Broadcast live progress
-                pct = int((idx / total) * 100) if total > 0 else 100
+                    cls._apply_outcome(db, img, batch, outcome, cfg)
+
+                    # Update batch progress counters
+                    cls._refresh_batch_counters(db, batch)
+                    try:
+                        db.commit()
+                    except Exception as commit_err:
+                        db.rollback()
+                        if "StaleDataError" in type(commit_err).__name__:
+                            logger.warning(f"StaleDataError updating batch {batch_id} / image {img_id}. Record was deleted concurrently.")
+                            if not db.query(ImageBatch.id).filter(ImageBatch.id == batch_id).first():
+                                return
+                            continue
+                        raise
+
+                    # Broadcast live progress
+                    pct = int((done / total) * 100) if total > 0 else 100
+                    await BigBasketEventBroadcaster.publish_event({
+                        "type": "image_progress",
+                        "batch_id": batch_id,
+                        "image_id": img_id,
+                        "status": img.status,
+                        "processed_count": batch.processed_images,
+                        "total_count": batch.total_images,
+                        "progress_pct": pct,
+                    })
+
+            if cancelled:
+                batch.status = "cancelled"
+                cls._log_event(db, batch_id, "cancelled", "Batch processing was cancelled by user.")
+                db.commit()
                 await BigBasketEventBroadcaster.publish_event({
-                    "type": "image_progress",
+                    "type": "batch_status",
                     "batch_id": batch_id,
-                    "image_id": img.id,
-                    "status": img.status,
-                    "processed_count": batch.processed_images,
-                    "total_count": batch.total_images,
-                    "progress_pct": pct,
+                    "status": "cancelled",
                 })
-
-                # Yield control briefly every chunk to keep async loop responsive
-                if idx % chunk_size == 0:
-                    await asyncio.sleep(0.05)
+                return
 
             # Recalculate final totals and counters upon completion
-            batch.total_images = db.query(BatchImage).filter(BatchImage.batch_id == batch_id).count()
-            batch.processed_images = db.query(BatchImage).filter(
-                BatchImage.batch_id == batch_id,
-                BatchImage.status.in_(["auto_approved", "needs_review", "manually_approved", "rejected"]),
-            ).count()
-            batch.approved_images = db.query(BatchImage).filter(
-                BatchImage.batch_id == batch_id,
-                BatchImage.status.in_(["auto_approved", "manually_approved"]),
-            ).count()
-            batch.review_needed_images = db.query(BatchImage).filter(
-                BatchImage.batch_id == batch_id,
-                BatchImage.status == "needs_review",
-            ).count()
-            batch.failed_images = db.query(BatchImage).filter(
-                BatchImage.batch_id == batch_id,
-                BatchImage.status == "failed",
-            ).count()
+            cls._refresh_batch_counters(db, batch, include_total=True)
 
             batch.status = "completed"
             cls._log_event(db, batch_id, "completed", f"Batch {batch.batch_code} completed all {batch.processed_images} items.")
@@ -271,9 +311,30 @@ class BatchProcessor:
             except Exception:
                 db.rollback()
         finally:
+            if executor is not None:
+                executor.shutdown(wait=False, cancel_futures=True)
             cls._PAUSE_REQUESTS.discard(batch_id)
             cls._CANCEL_REQUESTS.discard(batch_id)
             db.close()
+
+    # ── Single image: compute (thread, no DB) + apply (event loop, DB) ───────────────────────────────────────
+
+    @staticmethod
+    def _make_job(img: BatchImage, batch: ImageBatch) -> SimpleNamespace:
+        """Plain-data snapshot of everything the worker thread needs, so it never touches ORM objects."""
+        return SimpleNamespace(
+            image_id=img.id,
+            bbid=img.bbid,
+            filename=img.original_filename,
+            original_file_path=img.original_file_path,
+            image_type=img.image_type,
+            sequence_order=img.sequence_order,
+            final_output_path=img.final_output_path,
+            category=getattr(img, "category", "") or "FOOD",
+            batch_id=batch.id,
+            # Stand-in for the ORM batch: BigBasketStorage only reads batch_code / name / created_at.
+            batch=SimpleNamespace(batch_code=batch.batch_code, name=batch.name, created_at=batch.created_at),
+        )
 
     @classmethod
     async def _process_single_image(
@@ -284,13 +345,29 @@ class BatchProcessor:
         ai_manager: HybridAiManager,
         cfg: Dict[str, Any],
     ):
+        """Processes one image end to end (used by the retry endpoints)."""
+        job = cls._make_job(img, batch)
+        outcome = await asyncio.to_thread(cls._compute_image, job, cfg, ai_manager)
+        cls._apply_outcome(db, img, batch, outcome, cfg)
+
+    @classmethod
+    def _compute_image(
+        cls,
+        job: SimpleNamespace,
+        cfg: Dict[str, Any],
+        ai_manager: HybridAiManager,
+    ) -> Dict[str, Any]:
+        """Slow, database-free part of processing one image. Runs in a worker thread.
+
+        Returns {"ok": False, "error": ...} on failure, otherwise everything _apply_outcome needs.
+        """
         t0 = time.perf_counter()
         try:
             # Read original image file
-            orig_path = Path(img.original_file_path)
+            orig_path = Path(job.original_file_path)
             if not orig_path.is_absolute() or not orig_path.exists():
-                b_dir = BigBasketStorage.get_batch_dir(batch)
-                cand1 = b_dir / "original" / Path(img.original_filename).name
+                b_dir = BigBasketStorage.get_batch_dir(job.batch)
+                cand1 = b_dir / "original" / Path(job.filename).name
                 cand2 = b_dir / "original" / orig_path.name
                 if cand1.exists():
                     orig_path = cand1
@@ -304,30 +381,29 @@ class BatchProcessor:
                 raw_bytes = f.read()
 
             # 1. Classification & AI Inference
-            prediction = await ai_manager.analyze_image(
+            prediction = ai_manager.analyze_image_sync(
                 raw_bytes,
-                img.original_filename,
-                bbid=img.bbid,
-                threshold=cfg.get("confidence_threshold", 0.95),
-                batch_id=batch.id,
-                image_id=img.id,
+                job.filename,
+                bbid=job.bbid,
+                batch_id=job.batch_id,
+                image_id=job.image_id,
             )
 
             # Authoritative visual classification dynamically determined by Gemini Multimodal Vision AI
             # Works dynamically across any packaging format, material, color, and angle without filename heuristics
             ai_img_type = (prediction.get("predicted_category") or "").lower().strip()
-            if ai_img_type and ai_img_type != "unknown":
+            ai_type_valid = bool(ai_img_type and ai_img_type != "unknown")
+            if ai_type_valid:
                 effective_type = ai_img_type
-                img.image_type = effective_type
             else:
-                effective_type = (img.image_type or "unknown").lower().strip()
+                effective_type = (job.image_type or "unknown").lower().strip()
 
             # 2. Pipeline Execution (u2net / photoroom, padding, inpainting, validation)
             cfg_with_sku = dict(cfg)
-            cfg_with_sku["bbid"] = img.bbid
-            cfg_with_sku["filename"] = img.original_filename
-            cfg_with_sku["batch_id"] = batch.id
-            cfg_with_sku["image_id"] = img.id
+            cfg_with_sku["bbid"] = job.bbid
+            cfg_with_sku["filename"] = job.filename
+            cfg_with_sku["batch_id"] = job.batch_id
+            cfg_with_sku["image_id"] = job.image_id
             batch_cat = cfg.get("product_category")
             if not batch_cat or batch_cat == "auto":
                 cfg_with_sku["product_category"] = prediction.get("primary_category") or prediction.get("product_category") or "UNKNOWN"
@@ -353,27 +429,24 @@ class BatchProcessor:
                 auto_inpaint_mrp=cfg.get("auto_inpaint_mrp", True),
             )
 
-            # 3. Save versions & final output directly into Model 2 (BatchImage)
+            # 3. Save versions & final output
             # Remove any stale final output file if sequence or BBID changed
-            if img.final_output_path:
+            if job.final_output_path:
                 try:
-                    old_final = Path(img.final_output_path)
-                    if old_final.exists() and old_final.name != f"{img.bbid}_{img.sequence_order}.png":
+                    old_final = Path(job.final_output_path)
+                    if old_final.exists() and old_final.name != f"{job.bbid}_{job.sequence_order}.png":
                         old_final.unlink()
                 except Exception:
                     pass
 
             seg_path = BigBasketStorage.save_version_file(
-                batch, img.id, "segmented", result["segmented_image_bytes"]
+                job.batch, job.image_id, "segmented", result["segmented_image_bytes"]
             )
-            img.segmented_file_path = str(seg_path)
-
             final_path = BigBasketStorage.save_final_output(
-                batch, img.bbid, img.sequence_order, result["final_image_bytes"]
+                job.batch, job.bbid, job.sequence_order, result["final_image_bytes"]
             )
-            img.final_output_path = str(final_path)
 
-            # 4. Embedded validation results, Gemini classification & status
+            # 4. Embedded validation results & Gemini classification
             val = dict(result["validation"] or {})
             val["inpaint_applied"] = result.get("inpaint_applied", False)
             val["inpaint_notes"] = result.get("inpaint_notes", [])
@@ -381,7 +454,7 @@ class BatchProcessor:
                 "primary_category": prediction.get("primary_category"),
                 "subcategory": prediction.get("subcategory"),
                 "product_type": prediction.get("product_type"),
-                "image_type": (prediction.get("predicted_category") or img.image_type or "FOP").upper(),
+                "image_type": (prediction.get("predicted_category") or job.image_type or "FOP").upper(),
                 "is_multi_product_image": prediction.get("is_multi_product_image", False),
                 "total_detected_products": prediction.get("total_detected_products", 1),
                 "detected_products": prediction.get("detected_products", []),
@@ -393,36 +466,30 @@ class BatchProcessor:
             }
             val["product_category"] = prediction.get("primary_category") or val.get("product_category") or "UNKNOWN"
             val["matched_rules"] = prediction.get("matched_rules", [])
-            img.validation_results = val
-            img.status = result["status"]
-            img.confidence_score = result["confidence_score"]
-            img.original_width = result["original_width"]
-            img.original_height = result["original_height"]
-            img.file_size_bytes = len(result["final_image_bytes"])
-            img.error_message = result.get("bg_removal_error")
 
-            # Log internal API request audit record ONLY when Photoroom API was actually called and credits consumed
-            if result.get("photoroom_called", False):
-                try:
-                    user_id = img.created_by_id or batch.created_by_id or (getattr(batch, "updated_by_id", None)) or 2
-                    is_success = result["status"] in ("auto_approved", "needs_review", "manually_approved")
-                    db.add(ApiUsageLog(
-                        user_id=user_id,
-                        batch_id=batch.id,
-                        image_id=img.id,
-                        service_name="Classic background remover",
-                        provider="photoroom",
-                        status="success" if is_success else "failed",
-                        response_code=200 if is_success else 500,
-                        latency_ms=int((time.perf_counter() - t0) * 1000),
-                        credits=1,
-                    ))
-                except Exception as log_err:
-                    logger.warning(f"Failed to record API usage log: {log_err}")
+            outcome: Dict[str, Any] = {
+                "ok": True,
+                "elapsed_s": 0.0,
+                "effective_type": effective_type,
+                "ai_type_valid": ai_type_valid,
+                "validation_results": val,
+                "status": result["status"],
+                "confidence_score": result["confidence_score"],
+                "original_width": result["original_width"],
+                "original_height": result["original_height"],
+                "file_size_bytes": len(result["final_image_bytes"]),
+                "bg_removal_error": result.get("bg_removal_error"),
+                "photoroom_called": result.get("photoroom_called", False),
+                "segmented_file_path": str(seg_path),
+                "final_output_path": str(final_path),
+                "info_sections": None,
+                "sub_items": None,
+                "sub_ocr_error": None,
+            }
 
             # 5. Information Sections Detection for Back-of-Pack (BOP) images
-            fname_lower = (img.original_filename or "").lower()
-            img_type_lower = (img.image_type or "").lower().strip()
+            fname_lower = (job.filename or "").lower()
+            img_type_lower = effective_type
             # Secondary packaging photos (e.g. batch code, MRP, expiry closeups) should not run sub-region extraction
             is_secondary_bop = any(k in fname_lower for k in ("batch", "code", "mrp", "exp", "stamp", "detail"))
             is_bop = (
@@ -432,31 +499,115 @@ class BatchProcessor:
                 and not is_secondary_bop
             )
             if is_bop:
-                # Detect and store packaging information sections as metadata on the parent BOP image
+                # Detect packaging information sections as metadata on the parent BOP image
                 info_sections = SubRegionExtractor.detect_information_sections(
                     raw_bytes,
-                    bbid=img.bbid,
-                    category=getattr(img, "category", "") or "FOOD",
-                    batch_id=batch.id,
-                    image_id=img.id,
+                    bbid=job.bbid,
+                    category=job.category,
+                    batch_id=job.batch_id,
+                    image_id=job.image_id,
                 )
-                if not img.validation_results:
-                    img.validation_results = {}
+                outcome["info_sections"] = info_sections
+
+                # Standalone information crops (Ingredients, Nutritional, Marketed/Manufactured By, FSSAI) are extracted
+                # by default; a batch can opt out with extract_sub_regions=false.
+                ocr_ok = info_sections.get("ocr_available", True)
+                if ocr_ok and (cfg.get("extract_standalone_info_images", False) or cfg.get("extract_sub_regions", True)):
+                    try:
+                        if not batch_cat or batch_cat == "auto":
+                            product_cat = val.get("product_category") or "UNKNOWN"
+                        else:
+                            product_cat = batch_cat
+                        outcome["sub_items"] = SubRegionExtractor.detect_and_extract_sub_regions(
+                            image_bytes=raw_bytes,
+                            bbid=job.bbid,
+                            category=product_cat,
+                            canvas_width=cfg.get("canvas_width", 2000),
+                            canvas_height=cfg.get("canvas_height", 2000),
+                            dpi=cfg.get("dpi", 150),
+                        )
+                    except OcrError as ocr_err:
+                        logger.error(f"OCR unavailable during sub-region extraction for BOP image {job.image_id}: {ocr_err}")
+                        outcome["sub_ocr_error"] = str(ocr_err)
+                    except Exception as sub_err:
+                        # One failed extraction must not fail the whole image.
+                        logger.error(f"Failed sub-region extraction for BOP image {job.image_id}: {sub_err}")
+
+            outcome["elapsed_s"] = time.perf_counter() - t0
+            logger.info(
+                f"[Image {job.image_id}] {job.bbid} {effective_type} -> {outcome['status']} in {outcome['elapsed_s']:.1f}s"
+            )
+            return outcome
+        except Exception as e:
+            logger.error(f"Failed processing image {job.image_id}: {e}")
+            return {"ok": False, "error": str(e)}
+
+    @classmethod
+    def _apply_outcome(
+        cls,
+        db: Session,
+        img: BatchImage,
+        batch: ImageBatch,
+        outcome: Dict[str, Any],
+        cfg: Dict[str, Any],
+    ) -> None:
+        """Writes a worker's result to the database. Must run on the thread that owns `db`."""
+        if not outcome.get("ok"):
+            # A failed flush leaves the session unusable; roll back first so this image is marked failed and the
+            # rest of the batch keeps processing instead of the whole batch failing.
+            db.rollback()
+            img.status = "failed"
+            img.error_message = outcome.get("error")
+            return
+
+        try:
+            if outcome["ai_type_valid"]:
+                img.image_type = outcome["effective_type"]
+            img.segmented_file_path = outcome["segmented_file_path"]
+            img.final_output_path = outcome["final_output_path"]
+            img.validation_results = outcome["validation_results"]
+            img.status = outcome["status"]
+            img.confidence_score = outcome["confidence_score"]
+            img.original_width = outcome["original_width"]
+            img.original_height = outcome["original_height"]
+            img.file_size_bytes = outcome["file_size_bytes"]
+            img.error_message = outcome["bg_removal_error"]
+
+            # Log internal API request audit record ONLY when Photoroom API was actually called and credits consumed
+            if outcome["photoroom_called"]:
+                try:
+                    user_id = img.created_by_id or batch.created_by_id or (getattr(batch, "updated_by_id", None)) or 2
+                    is_success = outcome["status"] in ("auto_approved", "needs_review", "manually_approved")
+                    db.add(ApiUsageLog(
+                        user_id=user_id,
+                        batch_id=batch.id,
+                        image_id=img.id,
+                        service_name="Classic background remover",
+                        provider="photoroom",
+                        status="success" if is_success else "failed",
+                        response_code=200 if is_success else 500,
+                        latency_ms=int(outcome["elapsed_s"] * 1000),
+                        credits=1,
+                    ))
+                except Exception as log_err:
+                    logger.warning(f"Failed to record API usage log: {log_err}")
+
+            info_sections = outcome["info_sections"]
+            if info_sections is not None:
                 img.validation_results["detected_sections"] = info_sections
                 ocr_ok = info_sections.get("ocr_available", True)
                 if not ocr_ok:
                     cls._mark_ocr_unavailable(img, info_sections.get("ocr_error"))
                 db.commit()
 
-                # Standalone information crops (Ingredients, Nutritional, Marketed/Manufactured By, FSSAI) are extracted
-                # by default; a batch can opt out with extract_sub_regions=false.
-                if ocr_ok and (cfg.get("extract_standalone_info_images", False) or cfg.get("extract_sub_regions", True)):
-                    cls._extract_and_register_bop_sub_regions(db, img, batch, raw_bytes, cfg)
+                if outcome["sub_ocr_error"] is not None:
+                    cls._mark_ocr_unavailable(img, outcome["sub_ocr_error"])
+                    db.commit()
+                elif outcome["sub_items"] is not None:
+                    cls._register_bop_sub_regions(db, img, batch, outcome["sub_items"])
         except Exception as e:
-            # A failed flush leaves the session unusable; roll back first so this image is marked failed and the
-            # rest of the batch keeps processing instead of the whole batch failing.
             db.rollback()
-            logger.error(f"Failed processing image {img.id}: {e}")
+            logger.error(f"Failed saving result for image {img.id}: {e}")
             img.status = "failed"
             img.error_message = str(e)
 
@@ -476,17 +627,16 @@ class BatchProcessor:
             img.status = "needs_review"
 
     @classmethod
-    def _extract_and_register_bop_sub_regions(
+    def _register_bop_sub_regions(
         cls,
         db: Session,
         parent_img: BatchImage,
         batch: ImageBatch,
-        raw_bytes: bytes,
-        cfg: Dict[str, Any],
+        sub_items: List[Dict[str, Any]],
     ):
         """
-        Way 2: Automated extraction of Nutritional, Ingredients, Manufactured By,
-        FSSAI, and Barcode sub-regions from a Back-of-Pack (BOP) image.
+        Way 2: registers the Nutritional, Ingredients, Manufactured By, FSSAI and Barcode sub-regions that were
+        extracted from a Back-of-Pack (BOP) image by the worker thread (the slow Gemini / OCR / crop work).
         """
         try:
             # Clear only the crops previously auto-extracted from THIS parent image. They are identified by the
@@ -519,22 +669,6 @@ class BatchProcessor:
                 if s.sequence_order
             ]
             next_seq = max(used_seqs + [parent_img.sequence_order or 0]) + 1
-
-            # Determine product category (FOOD, NON_FOOD, or KITCHEN_ITEMS)
-            batch_cat = (batch.config or {}).get("product_category") or (batch.config or {}).get("category")
-            if not batch_cat or batch_cat == "auto":
-                product_cat = (parent_img.validation_results or {}).get("product_category") or "UNKNOWN"
-            else:
-                product_cat = batch_cat
-
-            sub_items = SubRegionExtractor.detect_and_extract_sub_regions(
-                image_bytes=raw_bytes,
-                bbid=parent_img.bbid,
-                category=product_cat,
-                canvas_width=cfg.get("canvas_width", 2000),
-                canvas_height=cfg.get("canvas_height", 2000),
-                dpi=cfg.get("dpi", 150),
-            )
 
             b_dir = BigBasketStorage.get_batch_dir(batch)
             orig_dir = b_dir / "original"
@@ -631,15 +765,10 @@ class BatchProcessor:
                     "sub_region_extracted",
                     f"Auto-extracted {sub['display_name']} ({sub['filename']}) from BOP for BBID {parent_img.bbid}."
                 )
-        except OcrError as e:
-            logger.error(f"OCR unavailable during sub-region extraction for BOP image {parent_img.id}: {e}")
-            db.rollback()
-            cls._mark_ocr_unavailable(parent_img, str(e))
-            db.commit()
         except Exception as e:
             # Roll back so one failed crop can't leave the session unusable and fail the whole batch.
             db.rollback()
-            logger.error(f"Failed sub-region extraction for BOP image {parent_img.id}: {e}")
+            logger.error(f"Failed registering sub-regions for BOP image {parent_img.id}: {e}")
 
     @classmethod
     async def generate_export_package(cls, batch_id: int, db: Session, include_all: bool = False) -> Optional[Dict[str, Any]]:
@@ -722,7 +851,7 @@ class BatchProcessor:
     async def retry_single_image(cls, db: Session, image_id: int, provider: str = "photoroom") -> BatchImage:
         """
         Retries background removal and image standardization for an individual image
-        using the specified provider ('photoroom' or 'rmbg2').
+        using the specified provider ('photoroom' or 'birefnet').
         """
         img = db.query(BatchImage).filter(BatchImage.id == image_id).first()
         if not img:
@@ -743,25 +872,7 @@ class BatchProcessor:
         await cls._process_single_image(db, img, batch, ai_manager, cfg)
 
         # Update batch counters
-        batch.total_images = db.query(BatchImage).filter(
-            BatchImage.batch_id == batch.id,
-        ).count()
-        batch.processed_images = db.query(BatchImage).filter(
-            BatchImage.batch_id == batch.id,
-            BatchImage.status.in_(["auto_approved", "needs_review", "manually_approved", "rejected"]),
-        ).count()
-        batch.approved_images = db.query(BatchImage).filter(
-            BatchImage.batch_id == batch.id,
-            BatchImage.status.in_(["auto_approved", "manually_approved"]),
-        ).count()
-        batch.review_needed_images = db.query(BatchImage).filter(
-            BatchImage.batch_id == batch.id,
-            BatchImage.status == "needs_review",
-        ).count()
-        batch.failed_images = db.query(BatchImage).filter(
-            BatchImage.batch_id == batch.id,
-            BatchImage.status == "failed",
-        ).count()
+        cls._refresh_batch_counters(db, batch, include_total=True)
         db.commit()
 
         # Notify via SSE broadcaster
@@ -800,25 +911,7 @@ class BatchProcessor:
             await cls._process_single_image(db, img, batch, ai_manager, cfg)
 
         # Update batch counters
-        batch.total_images = db.query(BatchImage).filter(
-            BatchImage.batch_id == batch.id,
-        ).count()
-        batch.processed_images = db.query(BatchImage).filter(
-            BatchImage.batch_id == batch.id,
-            BatchImage.status.in_(["auto_approved", "needs_review", "manually_approved", "rejected"]),
-        ).count()
-        batch.approved_images = db.query(BatchImage).filter(
-            BatchImage.batch_id == batch.id,
-            BatchImage.status.in_(["auto_approved", "manually_approved"]),
-        ).count()
-        batch.review_needed_images = db.query(BatchImage).filter(
-            BatchImage.batch_id == batch.id,
-            BatchImage.status == "needs_review",
-        ).count()
-        batch.failed_images = db.query(BatchImage).filter(
-            BatchImage.batch_id == batch.id,
-            BatchImage.status == "failed",
-        ).count()
+        cls._refresh_batch_counters(db, batch, include_total=True)
         db.commit()
 
         await BigBasketEventBroadcaster.publish_event({

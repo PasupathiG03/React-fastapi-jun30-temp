@@ -1,6 +1,5 @@
 import re
-from typing import Any, Dict, List, Optional
-import urllib.parse
+from typing import Any, Dict, Optional
 
 
 class GoogleDriveService:
@@ -37,12 +36,3 @@ class GoogleDriveService:
             "folder_url": f"https://drive.google.com/drive/folders/{folder_id}",
             "requires_oauth": api_key is None,
         }
-
-    @classmethod
-    async def list_folder_images(
-        cls, folder_id: str, access_token: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
-        """Lists image files contained in the specified Google Drive folder."""
-        # Simulated/OAuth-ready listing
-        return []
-
