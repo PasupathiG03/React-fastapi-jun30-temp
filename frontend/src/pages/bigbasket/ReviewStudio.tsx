@@ -481,10 +481,6 @@ export default function ReviewStudio() {
                 r.toLowerCase().includes("photoroom")
             )
           }
-          onRerunCloud={handleRetryPhotoroom}
-          onRerunLocal={handleRetryLocal}
-          loadingCloud={retrying}
-          loadingLocal={retryingLocal}
         />
 
         {/* Batch Products Quick-Switcher Strip */}
