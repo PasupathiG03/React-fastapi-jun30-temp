@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 
 from sqlalchemy.orm import Session
 
+from app.core.logger import logger
 from app.models.bigbasket import BatchImage, ImageBatch
 from app.services.bigbasket.batch_processor import BatchProcessor
 from app.services.bigbasket.events import BigBasketEventBroadcaster
@@ -70,21 +71,31 @@ class BgOnlyProcessor:
         cfg = {**(batch.config or {}), "bg_removal_provider": provider}
 
         img.status = "processing"
+        img.error_message = None
         db.commit()
 
-        await BatchProcessor._process_single_image(db, img, batch, ai_stub, cfg)
+        try:
+            await BatchProcessor._process_single_image(db, img, batch, ai_stub, cfg)
 
-        BatchProcessor._refresh_batch_counters(db, batch, include_total=True)
-        db.commit()
+            BatchProcessor._refresh_batch_counters(db, batch, include_total=True)
+            db.commit()
 
-        await BigBasketEventBroadcaster.publish_event({
-            "type": "image_progress",
-            "batch_id": batch.id,
-            "image_id": img.id,
-            "status": img.status,
-            "processed_count": batch.processed_images,
-            "total_count": batch.total_images,
-            "progress_pct": int((batch.processed_images / max(1, batch.total_images)) * 100),
-        })
+            await BigBasketEventBroadcaster.publish_event({
+                "type": "image_progress",
+                "batch_id": batch.id,
+                "image_id": img.id,
+                "status": img.status,
+                "processed_count": batch.processed_images,
+                "total_count": batch.total_images,
+                "progress_pct": int((batch.processed_images / max(1, batch.total_images)) * 100),
+            })
 
-        return img
+            return img
+        except Exception as e:
+            logger.exception(f"Failed BgOnlyProcessor.run for image {image_id}: {e}")
+            db.rollback()
+            img.status = "failed"
+            img.error_message = str(e)
+            BatchProcessor._refresh_batch_counters(db, batch, include_total=True)
+            db.commit()
+            raise e

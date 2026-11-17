@@ -37,13 +37,6 @@ class CategoryProcessingRules(BaseModel):
 
     # Framing Specs
     is_fop_bop: bool = True
-    padding_top: int = 180
-    padding_bottom: int = 180
-    padding_left: int = 100
-    padding_right: int = 100
-    target_width: int = 2000
-    target_height: int = 2000
-    min_dpi: int = 150
 
 
 class DynamicRulesEngine:
@@ -71,11 +64,6 @@ class DynamicRulesEngine:
         )
         is_fop_bop = not is_flat_panel
 
-        pad_t = 0 if is_flat_panel else 180
-        pad_b = 0 if is_flat_panel else 180
-        pad_l = 0 if is_flat_panel else 100
-        pad_r = 0 if is_flat_panel else 100
-
         is_lifestyle_or_infographic = eff_img_type in ("LIFESTYLE", "INFOGRAPHIC")
 
         rules = CategoryProcessingRules(
@@ -83,17 +71,13 @@ class DynamicRulesEngine:
             is_fop_bop=is_fop_bop,
             requires_background_removal=not (is_flat_panel or is_lifestyle_or_infographic),
             preserve_lifestyle_environment=is_lifestyle_or_infographic,
-            padding_top=pad_t,
-            padding_bottom=pad_b,
-            padding_left=pad_l,
-            padding_right=pad_r,
         )
 
         if is_lifestyle_or_infographic:
             rules.active_rules.extend([
                 "rule.lifestyle.environment_preservation",
                 "rule.lifestyle.no_background_removal",
-                "rule.lifestyle.edge_to_edge_2000x2000",
+                "rule.lifestyle.edge_to_edge_canvas",
                 "rule.lifestyle.preserve_composition_and_text",
             ])
 

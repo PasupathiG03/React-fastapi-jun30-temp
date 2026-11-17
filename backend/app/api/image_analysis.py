@@ -2,7 +2,10 @@ import uuid
 import logging
 from pathlib import Path
 from typing import Optional
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from sqlalchemy.orm import Session
+
+from app.core.dependencies import get_db
 
 from app.schemas.image_analysis import (
     ImageAnalysisResponse,
@@ -13,6 +16,7 @@ from app.schemas.image_analysis import (
     QualityMetrics,
 )
 from app.services.image_analysis import analyze_original_image
+from app.services.app_settings import SettingsNotConfigured, require_image_validation_settings
 from app.services.image_quality import assess_image_quality
 
 router = APIRouter()
@@ -25,15 +29,23 @@ logger = logging.getLogger(__name__)
     summary="Analyze Original Image & Assess Quality",
     description=(
         "Executes Step 1 (Original Image Analysis) and Step 3 (Image Quality Assessment). "
-        "Evaluates resolution (≥ 1500px), sharpness, brightness, contrast, and visual usability "
+        "Evaluates resolution (against the configured minimum), sharpness, brightness, contrast, and visual usability "
         "without modifying the original image bytes."
     ),
 )
 async def analyze_product_image(
     file: UploadFile = File(..., description="Original product photograph to analyze"),
-    min_width: Optional[int] = Query(None, ge=1, description="Minimum required width in px (default 1500)"),
-    min_height: Optional[int] = Query(None, ge=1, description="Minimum required height in px (default 1500)"),
+    min_width: Optional[int] = Query(None, ge=1, description="Minimum required width in px (default: Image Automation settings)"),
+    min_height: Optional[int] = Query(None, ge=1, description="Minimum required height in px (default: Image Automation settings)"),
+    db: Session = Depends(get_db),
 ):
+    if not (min_width and min_height):
+        try:
+            saved = require_image_validation_settings(db)
+        except SettingsNotConfigured as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        min_width = min_width or saved["min_width"]
+        min_height = min_height or saved["min_height"]
     image_id = str(uuid.uuid4())
     filename = Path(file.filename).name if file.filename else "product_image.jpg"
 

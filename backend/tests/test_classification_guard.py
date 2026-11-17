@@ -5,6 +5,7 @@ from unittest.mock import patch
 from app.services.bigbasket.ai_provider import GeminiAiProvider
 from app.services.bigbasket.classification_guard import ConsensusAiManager
 from app.services.bigbasket.gemini_service import GeminiClassificationService
+from fixtures import TEST_PRESET
 
 IMG = b"fake-image-bytes"
 
@@ -106,7 +107,7 @@ class TestGuardThroughPipeline(unittest.TestCase):
 
         with patch.object(BigBasketStorage, "get_batch_dir", return_value=tmp), \
              patch.object(GeminiAiProvider, "classify_and_analyze_sync", side_effect=[pred("fop"), pred("lifestyle")]):
-            out = BatchProcessor._compute_image(job, {"auto_inpaint_mrp": False}, ConsensusAiManager())
+            out = BatchProcessor._compute_image(job, {**TEST_PRESET, "auto_inpaint_mrp": False}, ConsensusAiManager())
 
         self.assertTrue(out["ok"], out.get("error"))
         self.assertEqual(out["status"], "needs_review")

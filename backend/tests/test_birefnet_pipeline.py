@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.services.bigbasket.pipeline import ImageProcessingPipeline
 from app.services.bigbasket.birefnet_service import BiRefNetService
+from fixtures import TEST_PRESET
 
 
 def _make_sample_jpeg_bytes(width: int = 400, height: int = 400) -> bytes:
@@ -51,7 +52,7 @@ class TestBiRefNetPipeline(unittest.TestCase):
             result = ImageProcessingPipeline.process_image(
                 image_bytes=self.sample_jpg,
                 image_type="fop",
-                config={"product_category": "FOOD"},
+                config={**TEST_PRESET, "product_category": "FOOD"},
                 auto_inpaint_mrp=False,
             )
 
@@ -106,7 +107,7 @@ class TestBiRefNetPipeline(unittest.TestCase):
             result = ImageProcessingPipeline.process_image(
                 image_bytes=self.sample_jpg,
                 image_type="fop",
-                config={"product_category": "FOOD"},
+                config={**TEST_PRESET, "product_category": "FOOD"},
                 auto_inpaint_mrp=False,
             )
 
@@ -142,7 +143,7 @@ class TestBiRefNetPipeline(unittest.TestCase):
             result = ImageProcessingPipeline.process_image(
                 image_bytes=self.sample_jpg,
                 image_type="fop",
-                config={"product_category": "FOOD"},
+                config={**TEST_PRESET, "product_category": "FOOD"},
                 auto_inpaint_mrp=False,
             )
 
@@ -172,7 +173,7 @@ class TestBiRefNetPipeline(unittest.TestCase):
             result = ImageProcessingPipeline.process_image(
                 image_bytes=self.sample_jpg,
                 image_type="fop",
-                config={"product_category": "FOOD"},
+                config={**TEST_PRESET, "product_category": "FOOD"},
                 auto_inpaint_mrp=False,
             )
 
@@ -193,7 +194,7 @@ class TestBiRefNetPipeline(unittest.TestCase):
             result = ImageProcessingPipeline.process_image(
                 image_bytes=self.sample_jpg,
                 image_type="fop",
-                config={"product_category": "FOOD"},
+                config={**TEST_PRESET, "product_category": "FOOD"},
                 auto_inpaint_mrp=False,
             )
 
@@ -215,7 +216,7 @@ class TestBiRefNetPipeline(unittest.TestCase):
             result = ImageProcessingPipeline.process_image(
                 image_bytes=self.sample_jpg,
                 image_type="fop",
-                config={"product_category": "FOOD", "bg_removal_provider": "photoroom"},
+                config={**TEST_PRESET, "product_category": "FOOD", "bg_removal_provider": "photoroom"},
                 auto_inpaint_mrp=False,
             )
 

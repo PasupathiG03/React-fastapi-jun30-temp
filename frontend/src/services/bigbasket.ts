@@ -182,17 +182,26 @@ export async function uploadBatchImageFiles(batchId: number, files: File[]): Pro
   });
 }
 
+/** Without minWidth/minHeight the server validates against the saved Image Automation settings. */
+function dimensionQuery(minWidth?: number, minHeight?: number): string {
+  const q = new URLSearchParams();
+  if (minWidth) q.set("min_width", String(minWidth));
+  if (minHeight) q.set("min_height", String(minHeight));
+  const qs = q.toString();
+  return qs ? `?${qs}` : "";
+}
+
 export async function inspectImageFiles(
   files: File[],
-  minWidth = 1500,
-  minHeight = 1500
+  minWidth?: number,
+  minHeight?: number
 ): Promise<InspectionResponse> {
   const fd = new FormData();
   for (const f of files) {
     fd.append("files", f);
   }
   return request<InspectionResponse>(
-    `/api/image-studio/inspect/images?min_width=${minWidth}&min_height=${minHeight}`,
+    `/api/image-studio/inspect/images${dimensionQuery(minWidth, minHeight)}`,
     {
       method: "POST",
       body: fd,
@@ -202,17 +211,117 @@ export async function inspectImageFiles(
 
 export async function inspectImagesZip(
   zipFile: File,
-  minWidth = 1500,
-  minHeight = 1500
+  minWidth?: number,
+  minHeight?: number
 ): Promise<InspectionResponse> {
   const fd = new FormData();
   fd.append("file", zipFile);
   return request<InspectionResponse>(
-    `/api/image-studio/inspect/zip?min_width=${minWidth}&min_height=${minHeight}`,
+    `/api/image-studio/inspect/zip${dimensionQuery(minWidth, minHeight)}`,
     {
       method: "POST",
       body: fd,
     }
+  );
+}
+
+export interface ImageValidationSettings {
+  /** Null until a user saves the setting in Image Automation > Settings. */
+  min_width: number | null;
+  min_height: number | null;
+  is_configured: boolean;
+  updated_at?: string | null;
+}
+
+export async function fetchImageValidationSettings(): Promise<ImageValidationSettings> {
+  return request<ImageValidationSettings>("/api/image-studio/settings/image-validation");
+}
+
+export async function updateImageValidationSettings(data: {
+  min_width: number;
+  min_height: number;
+}): Promise<ImageValidationSettings> {
+  return request<ImageValidationSettings>("/api/image-studio/settings/image-validation", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export interface OutputPresetPadding {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+/** A saved output preset: canvas size, DPI and FOP/BOP padding. */
+export interface OutputPresetValues {
+  canvas_width: number;
+  canvas_height: number;
+  dpi: number;
+  padding: OutputPresetPadding;
+}
+
+export interface OutputPreset {
+  /** All null until a user saves the preset in Image Automation > Settings. */
+  canvas_width: number | null;
+  canvas_height: number | null;
+  dpi: number | null;
+  padding: OutputPresetPadding | null;
+  is_configured: boolean;
+  updated_at?: string | null;
+}
+
+/** The preset's values when it has been saved, otherwise null. */
+export function configuredPreset(p: OutputPreset | null | undefined): OutputPresetValues | null {
+  if (!p || !p.is_configured || p.canvas_width == null || p.canvas_height == null || p.dpi == null || !p.padding) {
+    return null;
+  }
+  return { canvas_width: p.canvas_width, canvas_height: p.canvas_height, dpi: p.dpi, padding: p.padding };
+}
+
+export async function fetchOutputPreset(): Promise<OutputPreset> {
+  return request<OutputPreset>("/api/image-studio/settings/output-preset");
+}
+
+export async function updateOutputPreset(data: OutputPresetValues): Promise<OutputPreset> {
+  return request<OutputPreset>("/api/image-studio/settings/output-preset", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+/** Short summary of a saved preset: canvas, DPI and FOP/BOP padding (top/bottom, left/right). */
+export function describeOutputPreset(p: OutputPresetValues): string {
+  const { top, bottom, left, right } = p.padding;
+  const vertical = top === bottom ? `${top}` : `${top}/${bottom}`;
+  const horizontal = left === right ? `${left}` : `${left}/${right}`;
+  return `${p.canvas_width}×${p.canvas_height}px · ${p.dpi} DPI · FOP/BOP padding ${vertical}/${horizontal}`;
+}
+
+export interface OutputSpec {
+  width: number;
+  height: number;
+  dpi: number;
+}
+
+/** Canvas size and DPI an image was produced for: the spec recorded on the image, else the one from its
+ * batch (`{width, height, dpi}` or a batch config with canvas_width/canvas_height/dpi). Null when neither
+ * is known; there is no built-in value. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getOutputSpec(validation: any, fallback?: any): OutputSpec | null {
+  const pick = (w: unknown, h: unknown, d: unknown): OutputSpec | null => {
+    const width = Number(w);
+    const height = Number(h);
+    const dpi = Number(d);
+    return width > 0 && height > 0 && dpi > 0 ? { width, height, dpi } : null;
+  };
+  const spec = validation?.output_spec;
+  return (
+    pick(spec?.width, spec?.height, spec?.dpi) ??
+    pick(fallback?.width ?? fallback?.canvas_width, fallback?.height ?? fallback?.canvas_height, fallback?.dpi)
   );
 }
 
@@ -246,6 +355,19 @@ export async function retryBatchFailed(batchId: number): Promise<{ message: stri
   return request<{ message: string; count: number }>(`/api/image-studio/batches/${batchId}/retry-failed`, {
     method: "POST",
   });
+}
+
+export async function rerunEntireBatch(
+  batchId: number,
+  provider?: "photoroom" | "birefnet"
+): Promise<{ message: string; batch_id: number; status: string; count: number }> {
+  const q = provider ? `?provider=${provider}` : "";
+  return request<{ message: string; batch_id: number; status: string; count: number }>(
+    `/api/image-studio/batches/${batchId}/rerun${q}`,
+    {
+      method: "POST",
+    }
+  );
 }
 
 export async function fetchReviewQueue(

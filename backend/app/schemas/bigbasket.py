@@ -10,17 +10,19 @@ from app.schemas.base import CreatorOut
 # ─────────────────────────────────────────────────────────────────────────────
 
 class PaddingConfig(BaseModel):
-    top: int = 180
-    bottom: int = 180
-    left: int = 100
-    right: int = 100
+    top: int
+    bottom: int
+    left: int
+    right: int
 
 
 class BatchProcessConfig(BaseModel):
-    canvas_width: int = 2000
-    canvas_height: int = 2000
-    dpi: int = 150
-    fop_bop_padding: PaddingConfig = Field(default_factory=PaddingConfig)
+    # Canvas size, DPI and FOP/BOP padding come from Image Automation > Settings (output preset) when the
+    # request leaves them out; there are no built-in values.
+    canvas_width: Optional[int] = None
+    canvas_height: Optional[int] = None
+    dpi: Optional[int] = None
+    fop_bop_padding: Optional[PaddingConfig] = None
     product_category: str = "auto"  # "auto", "food", "non_food"
     confidence_threshold: float = 0.95  # QC auto-approval score required for "auto_approved"
     # Gemini classification confidence below this marks the image uncertain: background removal is skipped
@@ -114,7 +116,9 @@ class BatchImageOut(BaseModel):
 
 
 class BatchImageDetailOut(BatchImageOut):
-    pass
+    # Canvas size and DPI from the image's batch config ({"width", "height", "dpi"}), for images processed
+    # before the output spec was recorded on each image.
+    batch_output_spec: Optional[dict] = None
 
 
 class ImageListResponse(BaseModel):

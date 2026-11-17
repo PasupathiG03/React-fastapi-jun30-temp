@@ -527,9 +527,9 @@ class BatchProcessor:
                             image_bytes=raw_bytes,
                             bbid=job.bbid,
                             category=product_cat,
-                            canvas_width=cfg.get("canvas_width", 2000),
-                            canvas_height=cfg.get("canvas_height", 2000),
-                            dpi=cfg.get("dpi", 150),
+                            canvas_width=int(cfg["canvas_width"]),
+                            canvas_height=int(cfg["canvas_height"]),
+                            dpi=int(cfg["dpi"]),
                         )
                     except OcrError as ocr_err:
                         logger.error(f"OCR unavailable during sub-region extraction for BOP image {job.image_id}: {ocr_err}")
@@ -724,7 +724,7 @@ class BatchProcessor:
                 with open(crop_orig_path, "wb") as f:
                     f.write(sub["original_crop_bytes"])
 
-                # 2. Save final 2000x2000 output canvas
+                # 2. Save final output canvas
                 final_path = BigBasketStorage.save_final_output(
                     batch, parent_img.bbid, seq, sub["canvas_bytes"]
                 )
@@ -833,8 +833,8 @@ class BatchProcessor:
                 img.image_type,
                 img.status,
                 f"{img.confidence_score:.2%}" if img.confidence_score else "N/A",
-                img.original_width or 2000,
-                img.original_height or 2000,
+                img.original_width or "",
+                img.original_height or "",
                 "YES" if trans_ok else "NO",
                 err,
             ])
@@ -871,27 +871,37 @@ class BatchProcessor:
 
         # Reset status to processing temporarily
         img.status = "processing"
+        img.error_message = None
         db.commit()
 
-        # Re-run processing pipeline through Photoroom AI
-        await cls._process_single_image(db, img, batch, ai_manager, cfg)
+        try:
+            # Re-run processing pipeline through Photoroom AI / BiRefNet
+            await cls._process_single_image(db, img, batch, ai_manager, cfg)
 
-        # Update batch counters
-        cls._refresh_batch_counters(db, batch, include_total=True)
-        db.commit()
+            # Update batch counters
+            cls._refresh_batch_counters(db, batch, include_total=True)
+            db.commit()
 
-        # Notify via SSE broadcaster
-        await BigBasketEventBroadcaster.publish_event({
-            "type": "image_progress",
-            "batch_id": batch.id,
-            "image_id": img.id,
-            "status": img.status,
-            "processed_count": batch.processed_images,
-            "total_count": batch.total_images,
-            "progress_pct": int((batch.processed_images / max(1, batch.total_images)) * 100),
-        })
+            # Notify via SSE broadcaster
+            await BigBasketEventBroadcaster.publish_event({
+                "type": "image_progress",
+                "batch_id": batch.id,
+                "image_id": img.id,
+                "status": img.status,
+                "processed_count": batch.processed_images,
+                "total_count": batch.total_images,
+                "progress_pct": int((batch.processed_images / max(1, batch.total_images)) * 100),
+            })
 
-        return img
+            return img
+        except Exception as e:
+            logger.exception(f"Failed retry_single_image for image {image_id}: {e}")
+            db.rollback()
+            img.status = "failed"
+            img.error_message = str(e)
+            cls._refresh_batch_counters(db, batch, include_total=True)
+            db.commit()
+            raise e
 
     @classmethod
     async def retry_batch_failed_images(cls, db: Session, batch_id: int) -> List[BatchImage]:
@@ -927,6 +937,79 @@ class BatchProcessor:
         })
 
         return images
+
+    @classmethod
+    def rerun_entire_batch(cls, db: Session, batch_id: int, provider: Optional[str] = None) -> ImageBatch:
+        """
+        Resets and re-queues all images in an entire batch for end-to-end re-processing.
+        """
+        batch = db.query(ImageBatch).filter(ImageBatch.id == batch_id).first()
+        if not batch:
+            raise ValueError(f"Batch {batch_id} not found")
+
+        if batch.status in ("queued", "processing"):
+            raise ValueError(f"Batch is already {batch.status}. Please wait or cancel before rerunning.")
+
+        images = db.query(BatchImage).filter(BatchImage.batch_id == batch_id).all()
+        if not images:
+            raise ValueError("Batch has no images to process")
+
+        if provider:
+            cfg = dict(batch.config or {})
+            cfg["bg_removal_provider"] = provider
+            batch.config = cfg
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(batch, "config")
+
+        # Clear cancellation or pause requests from previous runs
+        cls._PAUSE_REQUESTS.discard(batch_id)
+        cls._CANCEL_REQUESTS.discard(batch_id)
+
+        # Delete any previously auto-extracted crops so they are cleanly re-extracted from source images
+        real_images = []
+        for img in images:
+            is_crop = (
+                (img.validation_results or {}).get("auto_extracted_from") is not None
+                or "_crop" in (img.original_filename or "")
+                or (img.original_file_path and "_crop" in img.original_file_path)
+            )
+            if is_crop:
+                db.delete(img)
+            else:
+                real_images.append(img)
+        db.flush()
+
+        if not real_images:
+            raise ValueError("Batch has no source images to process")
+
+        # Reset all source image rows back to pending status and clear previous outcomes/errors
+        for img in real_images:
+            img.status = "pending"
+            img.error_message = None
+            img.confidence_score = None
+            img.validation_results = None
+            img.review_decision = None
+            img.reviewer_id = None
+            img.review_comments = None
+            img.reviewed_at = None
+
+        # Reset batch counters and set to queued
+        batch.status = "queued"
+        batch.processed_images = 0
+        batch.approved_images = 0
+        batch.review_needed_images = 0
+        batch.failed_images = 0
+        batch.total_images = len(real_images)
+        batch.zip_export_path = None
+        batch.excel_report_path = None
+
+        db.commit()
+
+        cls._log_event(
+            db, batch_id, "started", f"Batch {batch.batch_code} rerun requested for all {len(real_images)} source images."
+        )
+
+        return batch
 
     @staticmethod
     def _log_event(db: Session, batch_id: int, event_type: str, message: str, details: Optional[Dict] = None):

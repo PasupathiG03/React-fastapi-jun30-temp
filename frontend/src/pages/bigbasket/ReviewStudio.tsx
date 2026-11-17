@@ -26,7 +26,9 @@ import {
   fetchBatches,
   fetchBatchImages,
   retryImageProcessing,
+  rerunEntireBatch,
   getImageFileUrl,
+  getOutputSpec,
 } from "@/services/bigbasket";
 import { showError, showSuccess } from "@/lib/toast";
 import {
@@ -76,6 +78,8 @@ export default function ReviewStudio() {
   }, [paramId]);
 
   const [image, setImage] = useState<any>(null);
+  const outputSpec = getOutputSpec(image?.validation_status ?? image?.validation_results, image?.batch_output_spec);
+  const outputSpecText = outputSpec ? `${outputSpec.width} × ${outputSpec.height}` : "—";
   const [batchSiblings, setBatchSiblings] = useState<any[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [isSwitching, setIsSwitching] = useState(false);
@@ -135,24 +139,34 @@ export default function ReviewStudio() {
     }
   }, [activeImageId]);
 
-  // Auto-refresh image details every 3 seconds if active image is still in progress
+  // Auto-refresh image details and siblings every 3 seconds if active image or any sibling is still in progress
   useEffect(() => {
     if (!image?.id) return;
-    if (image.status !== "processing" && image.status !== "pending") return;
+    const isCurrentActiveProcessing = image.status === "processing" || image.status === "pending";
+    const isAnySiblingProcessing = batchSiblings.some((s) => s.status === "processing" || s.status === "pending");
+    if (!isCurrentActiveProcessing && !isAnySiblingProcessing) return;
 
     const timer = setInterval(() => {
-      fetchImageDetails(image.id)
-        .then((updated) => {
-          setImage(updated);
-          if (updated.status !== "processing" && updated.status !== "pending") {
-            setCacheBuster(Date.now());
-          }
-        })
-        .catch(() => { });
+      if (isCurrentActiveProcessing) {
+        fetchImageDetails(image.id)
+          .then((updated) => {
+            setImage(updated);
+            if (updated.status !== "processing" && updated.status !== "pending") {
+              setCacheBuster(Date.now());
+            }
+          })
+          .catch(() => { });
+      }
+
+      if (image.batch_id) {
+        fetchBatchImages(image.batch_id, 1, 100)
+          .then((siblings) => setBatchSiblings(siblings.items || []))
+          .catch(() => {});
+      }
     }, 3000);
 
     return () => clearInterval(timer);
-  }, [image?.id, image?.status]);
+  }, [image?.id, image?.status, image?.batch_id, batchSiblings]);
 
   async function loadFirstPending() {
     setInitialLoading(true);
@@ -257,7 +271,9 @@ export default function ReviewStudio() {
           .then((siblings) => setBatchSiblings(siblings.items || []))
           .catch(() => {});
       }
-      if (updated.status === "auto_approved" || (updated.confidence_score && updated.confidence_score >= 0.95)) {
+      if (updated.status === "processing") {
+        showSuccess(`Photoroom background task queued for SKU ${updated.bbid || image.id}...`);
+      } else if (updated.status === "auto_approved" || (updated.confidence_score && updated.confidence_score >= 0.95)) {
         showSuccess(`Photoroom AI background removal succeeded! SKU ${updated.bbid} is auto-approved.`);
       } else {
         showSuccess(`Photoroom re-processed SKU ${updated.bbid} (Confidence: ${Math.round((updated.confidence_score || 0) * 100)}%).`);
@@ -281,7 +297,9 @@ export default function ReviewStudio() {
           .then((siblings) => setBatchSiblings(siblings.items || []))
           .catch(() => {});
       }
-      if (updated.error_message) {
+      if (updated.status === "processing") {
+        showSuccess(`Local AI background task queued for SKU ${updated.bbid || image.id}...`);
+      } else if (updated.error_message) {
         showError(updated.error_message);
       } else if (updated.status === "auto_approved" || (updated.confidence_score && updated.confidence_score >= 0.95)) {
         showSuccess(`Local BiRefNet background removal succeeded! SKU ${updated.bbid} is auto-approved.`);
@@ -292,6 +310,26 @@ export default function ReviewStudio() {
       showError(e.message || "Failed to run local BiRefNet background removal");
     } finally {
       setRetryingLocal(false);
+    }
+  }
+
+  const [rerunningBatch, setRerunningBatch] = useState(false);
+
+  async function handleRerunEntireBatch() {
+    if (!image?.batch_id) return;
+    setRerunningBatch(true);
+    try {
+      const res = await rerunEntireBatch(image.batch_id);
+      showSuccess(res.message || "Rerun started for entire batch!");
+      const siblings = await fetchBatchImages(image.batch_id, 1, 100);
+      setBatchSiblings(siblings.items || []);
+      if (activeImageId) {
+        await loadDetails(activeImageId);
+      }
+    } catch (e: any) {
+      showError(e.message || "Failed to rerun entire batch");
+    } finally {
+      setRerunningBatch(false);
     }
   }
 
@@ -461,6 +499,18 @@ export default function ReviewStudio() {
                 {image.batch_code || (image.batch_id ? `Batch #${image.batch_id}` : "")}
               </span>
               {isSwitching && <GlobalInlineLoader text="Loading..." className="text-[11px]" />}
+              {image.batch_id && (
+                <button
+                  type="button"
+                  onClick={handleRerunEntireBatch}
+                  disabled={rerunningBatch || isImageProcessing}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors disabled:opacity-50 cursor-pointer ml-1"
+                  title="Rerun this entire batch from scratch with a single click"
+                >
+                  <RotateCcw className={`w-3 h-3 ${rerunningBatch ? "animate-spin" : ""}`} />
+                  <span>{rerunningBatch ? "Rerunning Batch..." : "Rerun Entire Batch"}</span>
+                </button>
+              )}
             </div>
 
             {/* Quick Item Pills / Thumbnails */}
@@ -682,7 +732,7 @@ export default function ReviewStudio() {
                     onMouseLeave={handleMouseUp}
                   >
                     <span className="absolute top-2 left-2 z-10 text-[10px] font-bold bg-emerald-600/80 text-white px-2 py-0.5 rounded-md pointer-events-none">
-                      Output Canvas (2000 × 2000 px, 150 DPI)
+                      Output Canvas{outputSpec ? ` (${outputSpecText} px, ${outputSpec.dpi} DPI)` : ""}
                     </span>
                     {image.final_output_path || image.status?.includes("approved") ? (
                       <>
@@ -824,7 +874,7 @@ export default function ReviewStudio() {
                   {
                     num: "01",
                     title: "Image Dimensions & DPI",
-                    desc: "2000 × 2000 · PNG · 150 DPI · RGB",
+                    desc: outputSpec ? `${outputSpecText} · PNG · ${outputSpec.dpi} DPI · RGB` : "PNG · RGB",
                     passed: check1Passed,
                   },
                   {
@@ -969,7 +1019,7 @@ export default function ReviewStudio() {
               </div>
               <div className="p-2 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/5 space-y-0.5">
                 <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Target Standard</span>
-                <p className="font-semibold text-emerald-600 dark:text-emerald-400 truncate">2000 × 2000 (150 DPI)</p>
+                <p className="font-semibold text-emerald-600 dark:text-emerald-400 truncate">{outputSpec ? `${outputSpecText} (${outputSpec.dpi} DPI)` : "—"}</p>
               </div>
             </div>
 

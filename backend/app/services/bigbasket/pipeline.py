@@ -34,19 +34,26 @@ class ImageProcessingPipeline:
         Executes BigBasket SRS V1.0 production pipeline:
         1. Parse original image and analyze type (FOP, BOP, Informational / Nutrition / Lifestyle).
         2. For FOP/BOP: Use Photoroom AI to remove background with transparent internal holes/loops.
-        3. Frame onto 2000x2000 canvas per Table 3:
+        3. Frame onto the batch's canvas (output preset):
            - FOP/BOP: 180px top/bottom, 100px left/right margins (max 1820x1640 bounding box), centrally aligned.
            - Nutrition/Ingredients/Lifestyle/Infographics: Edge-to-edge 2000x2000 canvas.
         4. Inpaint MRP/expiry if configured (SRS Section 5).
-        5. Save transparent PNG with 150 DPI metadata (SRS Section 2).
+        5. Save transparent PNG with the batch's DPI metadata (SRS Section 2).
         6. Validate against SRS quality standards (Dimensions, Aspect Ratio, DPI, Transparency, Padding).
         """
         t0 = time.perf_counter()
         cfg = config or {}
-        canvas_w = cfg.get("canvas_width", 2000)
-        canvas_h = cfg.get("canvas_height", 2000)
-        target_dpi = cfg.get("dpi", 150)
-        padding_cfg = cfg.get("fop_bop_padding", {"top": 180, "bottom": 180, "left": 100, "right": 100})
+        # Output preset stored on the batch when it was created (Image Automation > Settings).
+        missing = [k for k in ("canvas_width", "canvas_height", "dpi", "fop_bop_padding") if not cfg.get(k)]
+        if missing:
+            raise ValueError(
+                f"Batch configuration is missing {', '.join(missing)}; create the batch again after setting "
+                f"the output preset in Image Automation > Settings."
+            )
+        canvas_w = int(cfg["canvas_width"])
+        canvas_h = int(cfg["canvas_height"])
+        target_dpi = int(cfg["dpi"])
+        padding_cfg = cfg["fop_bop_padding"]
         confidence_thresh = cfg.get("confidence_threshold", 0.95)
         product_category = (cfg.get("product_category") or "UNKNOWN").upper()
 
@@ -169,17 +176,15 @@ class ImageProcessingPipeline:
                 cropped_subject = clean_rgba
                 bw, bh = orig_w, orig_h
 
-            # Step 3: Enforce BigBasket SRS Table 3 Framing (Category 1: FOP / BOP):
-            # Top: 180 px, Bottom: 180 px, Left: 100 px, Right: 100 px
-            # Max content bounding box: 1820 px width, 1640 px height
-            # Centrally aligned, aspect-ratio preserving scaling, never stretched or distorted.
-            pad_t = int(padding_cfg.get("top", 180))
-            pad_b = int(padding_cfg.get("bottom", 180))
-            pad_l = int(padding_cfg.get("left", 100))
-            pad_r = int(padding_cfg.get("right", 100))
+            # Step 3: FOP / BOP framing with the batch's padding (output preset).
+            # The product fits inside the canvas minus the padding, centred, aspect ratio preserved.
+            pad_t = int(padding_cfg["top"])
+            pad_b = int(padding_cfg["bottom"])
+            pad_l = int(padding_cfg["left"])
+            pad_r = int(padding_cfg["right"])
 
-            max_box_w = min(1820, max(100, canvas_w - pad_l - pad_r))
-            max_box_h = min(1640, max(100, canvas_h - pad_t - pad_b))
+            max_box_w = max(100, canvas_w - pad_l - pad_r)
+            max_box_h = max(100, canvas_h - pad_t - pad_b)
 
             scale = min(max_box_w / bw, max_box_h / bh)
             fit_w = max(10, int(bw * scale))
@@ -188,7 +193,7 @@ class ImageProcessingPipeline:
             # Resize with LANCZOS for maximum optical sharpness
             resized_subject = cropped_subject.resize((fit_w, fit_h), Image.Resampling.LANCZOS)
 
-            # Center centrally aligned on 2000x2000 transparent canvas
+            # Centre on the transparent canvas
             offset_x = (canvas_w - fit_w) // 2
             offset_y = (canvas_h - fit_h) // 2
             canvas.paste(resized_subject, (offset_x, offset_y), resized_subject)
@@ -197,7 +202,7 @@ class ImageProcessingPipeline:
             # CATEGORIES 2, 3, 4: INGREDIENT, NUTRITIONAL, MANUFACTURER, FSSAI, BARCODE, LIFESTYLE
             # Per BigBasket SRS Table 3:
             # - All four padding values: 0 px.
-            # - Fill complete 2000x2000 canvas edge-to-edge.
+            # - Fill the complete canvas edge-to-edge.
             # - Preserve all headings, text, rows, columns, company details.
             # - Never distort, never cut off text or information.
             clean_rgba = raw_img.convert("RGBA")
@@ -250,9 +255,9 @@ class ImageProcessingPipeline:
                         clean_rgba = clean_rgba.crop((x1, y1, x2, y2))
                         orig_w, orig_h = clean_rgba.size
 
-                # 2. Scale edge-to-edge on transparent 2000x2000 canvas per BigBasket SRS Table 3
+                # 2. Scale edge-to-edge on the transparent canvas
                 canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
-                target_w = min(canvas_w - 20, 1980)
+                target_w = canvas_w - 20  # 10 px margin each side
                 scale = min(target_w / orig_w, (canvas_h - 20) / orig_h)
                 fit_w = int(orig_w * scale)
                 fit_h = int(orig_h * scale)
@@ -282,7 +287,7 @@ class ImageProcessingPipeline:
                 image_id=image_id_val,
             )
 
-        # Step 5: Save final output PNG with 150 DPI metadata (SRS Section 1 & 2)
+        # Step 5: Save final output PNG with the batch's DPI metadata (SRS Section 1 & 2)
         out_buf = io.BytesIO()
         canvas.save(out_buf, format="PNG", dpi=(target_dpi, target_dpi))
         final_png_bytes = out_buf.getvalue()
@@ -296,6 +301,7 @@ class ImageProcessingPipeline:
             is_fop_bop=is_product_shot,
             product_category=product_category,
             image_type=image_type,
+            padding=padding_cfg,
         )
         if is_product_shot and not is_fop_bop:
             error_notes.append(
@@ -486,19 +492,20 @@ class ImageProcessingPipeline:
     def validate_output(
         cls,
         img: Image.Image,
-        expected_width: int = 2000,
-        expected_height: int = 2000,
-        min_dpi: int = 150,
+        expected_width: int,
+        expected_height: int,
+        min_dpi: int,
         is_fop_bop: bool = True,
         product_category: str = "food",
         image_type: str = "fop",
+        padding: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Content-Aware Automated Quality Checks & Validation adhering to BigBasket SRS V1.0:
-        1. Image Dimension: Exactly 2000 x 2000 pixels.
-        2. DPI Header: >= 150 DPI minimum.
+        1. Image Dimension: exactly expected_width x expected_height (the batch's canvas).
+        2. DPI Header: >= min_dpi (the batch's DPI).
         3. Transparency & Alpha: 4-channel RGBA transparent PNG for FOP/BOP.
-        4. Framing (Table 3 Margins): Top/Bottom 180px, Left/Right 100px.
+        4. Framing: FOP/BOP margins >= the batch's padding.
         5. Complete Product Boundary: Subject not clipped at outer borders.
         6. Top & Bottom Content Preservation: Verification of packaging boundaries.
         7. Unexpected Blank Areas: Detection of empty stark gaps in panel layouts.
@@ -554,6 +561,7 @@ class ImageProcessingPipeline:
         bottom_preservation_valid = True
         unexpected_blank_valid = True
         readability_valid = True
+        cutout_passed = True
 
         if not has_4_channels:
             alpha_valid = False
@@ -670,6 +678,51 @@ class ImageProcessingPipeline:
                     f"Background not fully removed: {stray_count} small detached fragment(s) left beside the product."
                 )
 
+            # 3c. Interior Cutout: background removal sometimes treats a pale part of the pack itself (a white
+            # seal strip, a clear window, a white label band) as background and cuts it out, leaving a large
+            # transparent hole through the middle of the product. Real openings (carry handles, hang holes)
+            # are small or sit at the product's edge, so only a hole that spans at least half the product's
+            # height or width AND is centred in the product's middle is treated as a cut-out.
+            cutout_boxes = []
+            if is_fop_bop:
+                fg_u8 = (alpha > 128).astype(np.uint8)
+                fg_pts = cv2.findNonZero(fg_u8)
+                if fg_pts is not None:
+                    px, py, pw, ph = cv2.boundingRect(fg_pts)
+                    hole_contours, hole_hier = cv2.findContours(fg_u8, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+                    if hole_hier is not None:
+                        for cnt, hh in zip(hole_contours, hole_hier[0]):
+                            if hh[3] == -1:
+                                continue
+                            hx, hy, hw, hh_ = cv2.boundingRect(cnt)
+                            spans = hh_ >= 0.5 * ph or hw >= 0.5 * pw
+                            cx_rel = (hx + hw / 2 - px) / max(1, pw)
+                            cy_rel = (hy + hh_ / 2 - py) / max(1, ph)
+                            central = 0.2 <= cx_rel <= 0.8 and 0.2 <= cy_rel <= 0.8
+                            if not (spans and central):
+                                continue
+                            # A cut through a solid pack has solid product all around it; an opening framed
+                            # by wire or a thin handle (an immersion-rod loop, a basket) mostly does not.
+                            hole_mask = np.zeros_like(fg_u8)
+                            cv2.drawContours(hole_mask, [cnt], -1, 1, thickness=-1)
+                            ring_w = max(5, int(min(hw, hh_)), int(0.05 * min(pw, ph)))
+                            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2 * ring_w + 1, 2 * ring_w + 1))
+                            ring = (cv2.dilate(hole_mask, kernel) > 0) & (hole_mask == 0)
+                            if ring.any() and float(fg_u8[ring].mean()) >= 0.8:
+                                cutout_boxes.append([int(hx), int(hy), int(hw), int(hh_)])
+            cutout_passed = not cutout_boxes
+            audit_5d["interior_cutout"] = {
+                "passed": cutout_passed,
+                "boxes": cutout_boxes[:10],
+                "notes": "No large cut-out through the product" if cutout_passed
+                else "Large transparent gap through the middle of the product: part of the pack was likely removed as background",
+            }
+            if not cutout_passed:
+                reasons.append(
+                    "Background removal cut a large transparent gap through the middle of the product; "
+                    "part of the pack may have been removed. Manual review required."
+                )
+
             # 4. Transparency Topology
             binary_mask = (alpha > 128).astype(np.uint8)
             contours, hierarchy = cv2.findContours(binary_mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
@@ -740,16 +793,30 @@ class ImageProcessingPipeline:
                 "left": int(left_pad),
                 "right": int(right_pad),
             }
-            # Table 3 specifies: Top: 180px, Bottom: 180px, Left: 100px, Right: 100px
-            if top_pad < 175 or bottom_pad < 175:
+            # FOP/BOP padding from the batch's output preset.
+            if not padding:
+                raise ValueError("padding is required to validate a FOP/BOP image.")
+            exp_t = int(padding["top"])
+            exp_b = int(padding["bottom"])
+            exp_l = int(padding["left"])
+            exp_r = int(padding["right"])
+            max_w = img.width - exp_l - exp_r
+            max_h = img.height - exp_t - exp_b
+            if top_pad < exp_t - 5 or bottom_pad < exp_b - 5:
                 padding_valid = False
-                reasons.append(f"Insufficient vertical padding per Table 3: top={top_pad}px, bottom={bottom_pad}px (expected >= 180px)")
-            if left_pad < 90 or right_pad < 90:
+                reasons.append(
+                    f"Insufficient vertical padding: top={top_pad}px, bottom={bottom_pad}px "
+                    f"(expected >= {exp_t}px top, >= {exp_b}px bottom)"
+                )
+            if left_pad < exp_l - 10 or right_pad < exp_r - 10:
                 padding_valid = False
-                reasons.append(f"Insufficient horizontal padding per Table 3: left={left_pad}px, right={right_pad}px (expected >= 100px)")
-            if bw > 1825 or bh > 1645:
+                reasons.append(
+                    f"Insufficient horizontal padding: left={left_pad}px, right={right_pad}px "
+                    f"(expected >= {exp_l}px left, >= {exp_r}px right)"
+                )
+            if bw > max_w + 25 or bh > max_h + 5:
                 padding_valid = False
-                reasons.append(f"Content exceeds Table 3 bounding box: {bw}x{bh} px (maximum allowed 1820x1640 px)")
+                reasons.append(f"Content exceeds the padded area: {bw}x{bh} px (maximum allowed {max_w}x{max_h} px)")
         elif not is_fop_bop:
             # Categories 2, 3, 4: Full edge-to-edge coverage per BigBasket Table 3
             if has_4_channels:
@@ -762,11 +829,11 @@ class ImageProcessingPipeline:
                     cbx, cby, cbw, cbh = cv2.boundingRect(c_coords)
                     # Verify content fills the canvas edge-to-edge without excessive uncropped margins
                     side_margins = cbx + (img.width - (cbx + cbw))
-                    if cbw < 1750 and side_margins > 300:
+                    if cbw < 0.875 * img.width and side_margins > 0.15 * img.width:
                         padding_valid = False
                         reasons.append(
                             f"Uncropped whitespace: informational content does not fill the canvas edge-to-edge "
-                            f"(width {cbw}px, expected >= 1800px per Table 3)"
+                            f"(width {cbw}px, expected >= {int(0.9 * img.width)}px)"
                         )
                     margin_audit = {
                         "top": int(cby),
@@ -787,6 +854,7 @@ class ImageProcessingPipeline:
             and padding_valid
             and classification_valid
             and complete_boundary_valid
+            and cutout_passed
         )
         cat_upper = (product_category or "UNKNOWN").upper()
 
@@ -794,6 +862,8 @@ class ImageProcessingPipeline:
             "passed": passed,
             "overall_status": "PASSED" if passed else "REQUIRES_REVIEW",
             "product_category": cat_upper,
+            # The standard this output was produced for (the batch's output preset), shown in the UI.
+            "output_spec": {"width": int(expected_width), "height": int(expected_height), "dpi": int(min_dpi)},
             "dimension_valid": dim_valid,
             "aspect_ratio_valid": aspect_valid,
             "dpi_valid": dpi_valid,
@@ -829,11 +899,11 @@ class ImageProcessingPipeline:
         """
         Dynamically calculates AI quality confidence score from real objective validation checks:
         Checks evaluated:
-        1. Dimension validity (2000x2000)
+        1. Dimension validity (the batch's canvas size)
         2. Aspect ratio (1:1 square)
-        3. DPI metadata (>= 150 DPI)
+        3. DPI metadata (>= the batch's DPI)
         4. Image-type classification compliance
-        5. Table 3 framing & margins (Top >= 180, Bottom >= 180, Left/Right >= 100)
+        5. Framing & margins (the batch's FOP/BOP padding)
         6. Complete product boundary (no outer border clipping)
         7. Top packaging content preservation
         8. Bottom packaging content preservation
@@ -869,6 +939,8 @@ class ImageProcessingPipeline:
                 checks.append(audit_5d["background_residue"].get("passed", True))
             if "stray_fragments" in audit_5d:
                 checks.append(audit_5d["stray_fragments"].get("passed", True))
+            if "interior_cutout" in audit_5d:
+                checks.append(audit_5d["interior_cutout"].get("passed", True))
 
         total_checks = len(checks)
         passed_checks = sum(1 for c in checks if c)
@@ -890,10 +962,12 @@ class ImageProcessingPipeline:
         cls,
         image_bytes: bytes,
         padding_cfg: Dict[str, Any],
-        image_type: str = "fop",
-        target_dpi: int = 150,
+        image_type: str,
+        target_dpi: int,
+        canvas_w: int,
+        canvas_h: int,
     ) -> bytes:
-        """Re-apply Table 3 padding overrides to a segmented image on a 2000x2000 canvas."""
+        """Re-apply padding overrides to a segmented image on the batch's canvas."""
         bio = io.BytesIO(image_bytes)
         img = Image.open(bio).convert("RGBA")
         arr = np.array(img)
@@ -906,23 +980,12 @@ class ImageProcessingPipeline:
             cropped_subject = img
             bw, bh = img.width, img.height
 
-        canvas_w, canvas_h = 2000, 2000
         canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
 
-        img_type_lower = (image_type or "fop").lower().strip()
-        is_flat_panel = any(k in img_type_lower for k in (
-            "nutrition", "ingredient", "manufacture", "marketed", "mfg",
-            "fssai", "barcode", "license", "table", "cert", "lifestyle", "infographic"
-        ))
-        def_t = 0 if is_flat_panel else 180
-        def_b = 0 if is_flat_panel else 180
-        def_l = 0 if is_flat_panel else 100
-        def_r = 0 if is_flat_panel else 100
-
-        pad_t = int(padding_cfg.get("top", def_t))
-        pad_b = int(padding_cfg.get("bottom", def_b))
-        pad_l = int(padding_cfg.get("left", def_l))
-        pad_r = int(padding_cfg.get("right", def_r))
+        pad_t = int(padding_cfg["top"])
+        pad_b = int(padding_cfg["bottom"])
+        pad_l = int(padding_cfg["left"])
+        pad_r = int(padding_cfg["right"])
 
         avail_w = max(100, canvas_w - pad_l - pad_r)
         avail_h = max(100, canvas_h - pad_t - pad_b)

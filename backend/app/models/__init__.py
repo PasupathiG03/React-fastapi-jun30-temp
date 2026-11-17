@@ -2,6 +2,7 @@
 import app.models.role  # noqa: F401
 import app.models.user  # noqa: F401
 import app.models.access  # noqa: F401
+import app.models.app_setting  # noqa: F401
 import app.models.api_usage  # noqa: F401
 import app.models.bigbasket  # noqa: F401
 import app.models.gemini_usage  # noqa: F401

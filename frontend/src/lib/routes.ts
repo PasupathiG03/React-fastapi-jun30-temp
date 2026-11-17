@@ -18,6 +18,7 @@ export const APP_ROUTES = {
   IMAGE_STUDIO_MANUAL_REVIEW: "/image-studio/manual-review",
   IMAGE_STUDIO_REVIEW_STUDIO: "/image-studio/review-studio",
   IMAGE_STUDIO_REPORTS: "/image-studio/reports",
+  IMAGE_STUDIO_SETTINGS: "/image-studio/settings",
   API_DASHBOARD: "/api-dashboard",
   API_MONITORING_GEMINI: "/api-monitoring/gemini",
 } as const;
@@ -37,5 +38,6 @@ export const BUILTIN_DEV_SCREENS: ScreenEntry[] = [
   { path: APP_ROUTES.WORKFLOW_MANAGEMENT, label: "Workflow Management", group: "Access Control" },
   { path: APP_ROUTES.SUPPORT, label: "Support", group: "Support" },
   { path: APP_ROUTES.IMAGE_STUDIO, label: "Image Studio", group: "Image Studio" },
+  { path: APP_ROUTES.IMAGE_STUDIO_SETTINGS, label: "Settings", group: "Image Studio" },
 ];
 

@@ -13,7 +13,9 @@ from app.schemas.bigbasket import (
     BatchListResponse,
     BatchOut,
 )
+from app.services.app_settings import SettingsNotConfigured, require_output_preset
 from app.services.bigbasket.batch_processor import BatchProcessor
+from app.services.bigbasket.events import BigBasketEventBroadcaster
 from app.services.bigbasket.storage import BigBasketStorage
 
 router = APIRouter()
@@ -54,18 +56,28 @@ def create_batch(
         if existing:
             return existing
 
-    # Default configuration
+    # Default configuration. Canvas size, DPI and padding come from the Image Automation output preset
+    # unless the request sets them explicitly.
     cfg = payload.config.model_dump() if payload.config else {
-        "canvas_width": 2000,
-        "canvas_height": 2000,
-        "dpi": 150,
-        "fop_bop_padding": {"top": 180, "bottom": 180, "left": 100, "right": 100},
         "confidence_threshold": 0.95,
         "classification_confidence_threshold": 0.90,
         "extract_sub_regions": True,
         "auto_inpaint_mrp": True,
         "max_workers": 4,
     }
+
+    preset_keys = ("canvas_width", "canvas_height", "dpi", "fop_bop_padding")
+    missing = [k for k in preset_keys if cfg.get(k) is None]
+    if missing:
+        try:
+            preset = require_output_preset(db)
+        except SettingsNotConfigured as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        for key in ("canvas_width", "canvas_height", "dpi"):
+            if cfg.get(key) is None:
+                cfg[key] = preset[key]
+        if cfg.get("fop_bop_padding") is None:
+            cfg["fop_bop_padding"] = dict(preset["padding"])
 
     # 1. Allocate batch in DB with temporary code to obtain auto-increment primary key ID
     temp_code = f"TEMP-{secrets.token_hex(4)}"
@@ -241,5 +253,42 @@ async def retry_batch_failed(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Photoroom retry failed: {str(e)}")
+
+
+@router.post("/{batch_id}/rerun")
+async def rerun_batch(
+    batch_id: int,
+    provider: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Reruns the entire batch from scratch with a single button click by resetting all images
+    to pending and dispatching background processing.
+    """
+    try:
+        batch = BatchProcessor.rerun_entire_batch(db, batch_id, provider=provider)
+        dispatch_batch_processing(batch_id)
+
+        await BigBasketEventBroadcaster.publish_event({
+            "type": "batch_status",
+            "batch_id": batch_id,
+            "status": "queued",
+            "progress_pct": 0,
+        })
+
+        return {
+            "message": f"Rerun started for entire batch {batch.batch_code} ({batch.total_images} images)",
+            "batch_id": batch.id,
+            "status": "queued",
+            "count": batch.total_images,
+        }
+    except ValueError as e:
+        status_code = 404 if "not found" in str(e).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Failed to rerun batch {batch_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to rerun batch: {str(e)}")
+
 
 

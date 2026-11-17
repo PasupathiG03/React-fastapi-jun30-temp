@@ -47,7 +47,7 @@ rem How many batches may run at the same time. Override with: set CELERY_CONCURR
 if not defined CELERY_CONCURRENCY set "CELERY_CONCURRENCY=4"
 
 echo [+] Starting Celery worker (threads pool, %CELERY_CONCURRENCY% concurrent batches)...
-echo [i] Task queue: tasks.process_batch_task
+echo [i] Task queues: tasks.process_batch_task, tasks.process_single_image_task
 echo.
 
 rem Threads pool (prefork is unreliable on Windows; solo runs only ONE batch at a time and queues the rest).

@@ -15,13 +15,13 @@ logger = logging.getLogger(__name__)
 
 def assess_image_quality(
     analysis: ImageAnalysisData,
-    min_width: Optional[int] = None,
-    min_height: Optional[int] = None,
+    min_width: int,
+    min_height: int,
 ) -> QualityAssessment:
     """
     Step 3: Image Quality Assessment.
     Evaluates:
-    - Resolution (25 pts): verifies width >= min_width and height >= min_height (default >= 1500px).
+    - Resolution (25 pts): verifies width >= min_width and height >= min_height.
     - Sharpness (30 pts)
     - Brightness (15 pts)
     - Contrast (15 pts)
@@ -37,10 +37,11 @@ def assess_image_quality(
 
     # -------------------------------------------------------------------------
     # A. Resolution Assessment (Max 25 pts)
-    # Default: 1080x1440 px or dynamic user-specified dimensions
+    # Required dimensions come from the caller (request or Image Automation settings).
     # -------------------------------------------------------------------------
-    req_w = min_width if (min_width and min_width > 0) else quality_settings.resolution.default_min_width
-    req_h = min_height if (min_height and min_height > 0) else quality_settings.resolution.default_min_height
+    if not min_width or not min_height or min_width <= 0 or min_height <= 0:
+        raise ValueError("min_width and min_height are required to assess resolution.")
+    req_w, req_h = min_width, min_height
 
     w_ratio = width / float(req_w)
     h_ratio = height / float(req_h)

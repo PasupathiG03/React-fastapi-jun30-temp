@@ -21,6 +21,7 @@ import app.models.ticket  # noqa: F401
 import app.models.bigbasket  # noqa: F401
 import app.models.api_usage  # noqa: F401
 import app.models.gemini_usage  # noqa: F401
+import app.models.app_setting  # noqa: F401
 
 config = context.config
 

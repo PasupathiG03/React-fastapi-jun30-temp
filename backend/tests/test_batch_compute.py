@@ -12,6 +12,7 @@ from app.services.bigbasket.ai_provider import HybridAiManager
 from app.services.bigbasket.batch_processor import BatchProcessor
 from app.services.bigbasket.gemini_service import GeminiClassificationService, GeminiProductClassification
 from app.services.bigbasket.storage import BigBasketStorage
+from fixtures import TEST_PRESET
 
 
 class TestBatchCompute(unittest.TestCase):
@@ -35,7 +36,7 @@ class TestBatchCompute(unittest.TestCase):
                  batch=NS(batch_code="T", name="t", created_at=None))
         with patch.object(BigBasketStorage, "get_batch_dir", return_value=tmp), \
              patch.object(GeminiClassificationService, "classify_image", return_value=fake):
-            out = BatchProcessor._compute_image(job, {"auto_inpaint_mrp": False}, HybridAiManager())
+            out = BatchProcessor._compute_image(job, {**TEST_PRESET, "auto_inpaint_mrp": False}, HybridAiManager())
 
         self.assertTrue(out["ok"], out.get("error"))
         self.assertEqual(out["effective_type"], "nutritional")

@@ -19,9 +19,7 @@ class QualityWeights(BaseModel):
 
 
 class ResolutionThresholds(BaseModel):
-    default_min_width: int = 1500   # Default required width in px (>= 1500px)
-    default_min_height: int = 1500  # Default required height in px (>= 1500px)
-    min_dimension: int = 1500
+    # The required width/height are not here: they come from Image Automation > Settings (database).
     warning_ratio: float = 0.85
     critical_rejection_ratio: float = 0.60
 

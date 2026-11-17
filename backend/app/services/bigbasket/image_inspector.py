@@ -12,19 +12,15 @@ logger = logging.getLogger(__name__)
 # Regex pattern to match "100%", "100 %", "100 percent"
 HUNDRED_PERCENT_REGEX = re.compile(r'(?i)\b100\s*(?:%|percent)\b|100%', re.IGNORECASE)
 
-DEFAULT_MIN_WIDTH = 1500
-DEFAULT_MIN_HEIGHT = 1500
-
-
 def inspect_image_bytes(
     image_bytes: bytes,
-    filename: str = "image.png",
-    min_width: int = DEFAULT_MIN_WIDTH,
-    min_height: int = DEFAULT_MIN_HEIGHT,
+    filename: str,
+    min_width: int,
+    min_height: int,
 ) -> Dict[str, Any]:
     """
     Inspects an uploaded image:
-    1. Checks if width >= min_width (default 1500) and height >= min_height (default 1500).
+    1. Checks width >= min_width and height >= min_height (the Image Automation validation setting).
     2. Runs RapidOCR to detect any occurrence of '100%' claims on the product package.
     """
     result: Dict[str, Any] = {

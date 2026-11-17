@@ -17,6 +17,7 @@ import {
   Network,
   Sparkles,
   PanelLeft,
+  Settings,
 } from "lucide-react";
 import { Cog } from "flowbite-react-icons/outline";
 import { logout } from "@/lib/auth";
@@ -64,7 +65,8 @@ const DEV_ACCESS_CONTROL: FlyoutItem[] = [
   { href: APP_ROUTES.WORKFLOW_MANAGEMENT, label: "Workflow Management", Icon: Network },
 ];
 const DEV_IMAGE_STUDIO = { href: APP_ROUTES.IMAGE_STUDIO, label: "Image Studio", Icon: Sparkles };
-const BUILT_IN_URLS = new Set<string>([DEV_DASHBOARD.href, DEV_ROUTER_SETUP.href, DEV_SUPPORT.href, DEV_IMAGE_STUDIO.href, ...DEV_ACCESS_CONTROL.map((i) => i.href)]);
+const DEV_IMAGE_SETTINGS = { href: APP_ROUTES.IMAGE_STUDIO_SETTINGS, label: "Settings", Icon: Settings };
+const BUILT_IN_URLS = new Set<string>([DEV_DASHBOARD.href, DEV_ROUTER_SETUP.href, DEV_SUPPORT.href, DEV_IMAGE_STUDIO.href, DEV_IMAGE_SETTINGS.href, ...DEV_ACCESS_CONTROL.map((i) => i.href)]);
 
 export function getProcessIcon(name: string): React.ElementType {
   const n = name.trim().toLowerCase();
@@ -330,6 +332,11 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
     };
   })();
 
+  // Other roles see each Image Automation item only when that screen was granted in Menu Access.
+  const grantedImageUrls = menuGroups.imageStudio.flatMap((e) => (e.kind === "item" ? [e.item.url] : e.group.items.map((i) => i.url)));
+  const showImageSettings = grantedImageUrls.includes(DEV_IMAGE_SETTINGS.href);
+  const showImageStudio = grantedImageUrls.some((u) => u !== DEV_IMAGE_SETTINGS.href);
+
   const [processChoice, setProcessChoice] = useState<Record<number, boolean>>({});
 
   const isGroupActive = (items: MenuItem[]) => items.some((i) => pathname === i.url || pathname.startsWith(i.url + "/"));
@@ -402,7 +409,10 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
   }
 
   const renderItem = (href: string, label: string, Icon: React.ElementType, indent = false, badge = 0) => {
-    const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href + "/"));
+    const active =
+      (pathname === href || (href !== "/dashboard" && pathname.startsWith(href + "/"))) &&
+      // Settings lives under /image-studio but is its own sidebar item, so it must not light up Image Studio.
+      !(href === DEV_IMAGE_STUDIO.href && (pathname === DEV_IMAGE_SETTINGS.href || pathname.startsWith(DEV_IMAGE_SETTINGS.href + "/")));
 
     return (
       <Link
@@ -728,14 +738,17 @@ export default function Sidebar({ collapsed: collapsedProp, loading = false, mob
             )}
 
             {/* Image Automation: Single Unified Workspace */}
-            {(isDeveloper || menuGroups.imageStudio.length > 0) && (
+            {(isDeveloper || showImageStudio || showImageSettings) && (
               <>
                 {!collapsed && (
                   <p className="px-3 pt-3 pb-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                     Image Automation
                   </p>
                 )}
-                {renderItem(DEV_IMAGE_STUDIO.href, DEV_IMAGE_STUDIO.label, DEV_IMAGE_STUDIO.Icon)}
+                {(isDeveloper || showImageStudio) &&
+                  renderItem(DEV_IMAGE_STUDIO.href, DEV_IMAGE_STUDIO.label, DEV_IMAGE_STUDIO.Icon)}
+                {(isDeveloper || showImageSettings) &&
+                  renderItem(DEV_IMAGE_SETTINGS.href, DEV_IMAGE_SETTINGS.label, DEV_IMAGE_SETTINGS.Icon)}
               </>
             )}
 

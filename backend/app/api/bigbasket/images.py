@@ -2,11 +2,11 @@ from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, get_db
-from app.models.bigbasket import BatchImage
+from app.models.bigbasket import BatchImage, ImageBatch
 from app.models.user import User
 from app.schemas.bigbasket import BatchImageDetailOut, ImageListResponse
 from app.services.bigbasket.pipeline import PipelineService
@@ -15,10 +15,10 @@ router = APIRouter()
 
 
 class RepadPayload(BaseModel):
-    top: int = 180
-    bottom: int = 180
-    left: int = 100
-    right: int = 100
+    top: int = Field(ge=0)
+    bottom: int = Field(ge=0)
+    left: int = Field(ge=0)
+    right: int = Field(ge=0)
 
 
 @router.get("/batch/{batch_id}", response_model=ImageListResponse)
@@ -68,6 +68,13 @@ def get_image_details(
         raise HTTPException(status_code=404, detail="Image not found")
     # Expose validation_status alias pointing to validation_results dictionary
     setattr(img, "validation_status", img.validation_results)
+    batch_cfg = (img.batch.config if img.batch else None) or {}
+    if all(batch_cfg.get(k) for k in ("canvas_width", "canvas_height", "dpi")):
+        setattr(img, "batch_output_spec", {
+            "width": int(batch_cfg["canvas_width"]),
+            "height": int(batch_cfg["canvas_height"]),
+            "dpi": int(batch_cfg["dpi"]),
+        })
     val = img.validation_results or {}
     cat = val.get("product_category") or (val.get("gemini_classification") or {}).get("primary_category")
     setattr(img, "product_category", cat)
@@ -87,11 +94,44 @@ def stream_image_file(
 
     # An auto-extracted crop (Ingredients, Nutritional, FSSAI...) has no upload of its own: its "original" is the
     # uploaded back-of-pack image it was cut from, shown exactly as uploaded, never the cut-out strip.
-    parent_id = (img.validation_results or {}).get("auto_extracted_from")
-    if variant == "original" and parent_id:
-        parent = db.query(BatchImage).filter(BatchImage.id == parent_id).first()
-        if parent and parent.original_file_path and Path(parent.original_file_path).exists():
-            img = parent
+    if variant == "original":
+        parent_id = (img.validation_results or {}).get("auto_extracted_from")
+        is_crop = (
+            bool(parent_id)
+            or "_crop" in (img.original_filename or "")
+            or bool(img.original_file_path and "_crop" in img.original_file_path)
+        )
+        if is_crop:
+            parent = None
+            if parent_id:
+                parent = db.query(BatchImage).filter(BatchImage.id == parent_id).first()
+            if not parent:
+                parent = (
+                    db.query(BatchImage)
+                    .filter(
+                        BatchImage.batch_id == img.batch_id,
+                        BatchImage.bbid == img.bbid,
+                        BatchImage.id != img.id,
+                        BatchImage.image_type == "bop",
+                        ~BatchImage.original_filename.like("%_crop%"),
+                    )
+                    .order_by(BatchImage.id)
+                    .first()
+                )
+            if not parent:
+                parent = (
+                    db.query(BatchImage)
+                    .filter(
+                        BatchImage.batch_id == img.batch_id,
+                        BatchImage.bbid == img.bbid,
+                        BatchImage.id != img.id,
+                        ~BatchImage.original_filename.like("%_crop%"),
+                    )
+                    .order_by(BatchImage.id)
+                    .first()
+                )
+            if parent and parent.original_file_path and Path(parent.original_file_path).exists():
+                img = parent
 
     target_path = None
     if variant == "final" and img.final_output_path:
@@ -137,10 +177,17 @@ def reapply_padding_endpoint(
     with open(source_path, "rb") as f:
         src_bytes = f.read()
 
+    parent = db.query(ImageBatch).filter(ImageBatch.id == img.batch_id).first()
+    batch_cfg = (parent.config if parent else None) or {}
+    if not all(batch_cfg.get(k) for k in ("canvas_width", "canvas_height", "dpi")):
+        raise HTTPException(status_code=400, detail="This image's batch has no canvas size or DPI configured.")
     new_png_bytes = PipelineService.reapply_padding(
         image_bytes=src_bytes,
         padding_cfg={"top": payload.top, "bottom": payload.bottom, "left": payload.left, "right": payload.right},
         image_type=img.image_type,
+        target_dpi=int(batch_cfg["dpi"]),
+        canvas_w=int(batch_cfg["canvas_width"]),
+        canvas_h=int(batch_cfg["canvas_height"]),
     )
 
     if not img.final_output_path:
@@ -167,16 +214,25 @@ async def retry_image_processing(
     """
     Retries background removal and standardization for an individual image
     using the specified provider ('photoroom' or 'birefnet').
+    Dispatches to Celery background worker / Redis for concurrent multi-processing.
     """
+    img = db.query(BatchImage).filter(BatchImage.id == image_id).first()
+    if not img:
+        raise HTTPException(status_code=404, detail=f"Image {image_id} not found")
+
+    img.status = "processing"
+    img.error_message = None
+    db.commit()
+    db.refresh(img)
+
     try:
-        from app.services.bigbasket.batch_processor import BatchProcessor
-        img = await BatchProcessor.retry_single_image(db, image_id, provider=provider)
-        setattr(img, "validation_status", img.validation_results)
-        return img
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Background removal retry failed: {str(e)}")
+        from app.tasks.batch_tasks import dispatch_single_image_task
+        dispatch_single_image_task(image_id, provider=provider, skip_classification=False)
+    except Exception as exc:
+        logger.warning(f"Failed to dispatch single image task {image_id}: {exc}")
+
+    setattr(img, "validation_status", img.validation_results)
+    return img
 
 
 class UpdateCategoryPayload(BaseModel):

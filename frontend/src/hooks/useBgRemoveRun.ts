@@ -20,7 +20,11 @@ export function useBgRemoveRun(onDone: (updated: any) => void) {
     try {
       const updated = await bgRemoveImage(imageId, provider);
       onDone(updated);
-      if (updated.error_message) {
+      if (updated.status === "processing") {
+        showSuccess(
+          `${PROVIDER_LABEL[provider]} background removal task queued for SKU ${updated.bbid || imageId}...`
+        );
+      } else if (updated.error_message) {
         showError(updated.error_message);
       } else {
         showSuccess(

@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.services.image_analysis import analyze_original_image
 from app.services.image_quality import assess_image_quality
+from fixtures import TEST_MIN_HEIGHT, TEST_MIN_WIDTH
 
 
 def create_base_product_image(width=1800, height=1800, bg_color=(210, 210, 210)):
@@ -81,35 +82,35 @@ def run_tests():
     img1 = create_base_product_image(2000, 2000)
     b1 = to_jpeg_bytes(img1)
     a1 = analyze_original_image(b1, "1_high_res_sharp.jpg")
-    q1 = assess_image_quality(a1)
+    q1 = assess_image_quality(a1, min_width=TEST_MIN_WIDTH, min_height=TEST_MIN_HEIGHT)
     results.append(("1. High-res Sharp", a1, q1, "ACCEPTED"))
 
     # 2. Low-resolution product image (< 1500px)
     img2 = create_base_product_image(800, 600)
     b2 = to_jpeg_bytes(img2)
     a2 = analyze_original_image(b2, "2_low_res.jpg")
-    q2 = assess_image_quality(a2)
+    q2 = assess_image_quality(a2, min_width=TEST_MIN_WIDTH, min_height=TEST_MIN_HEIGHT)
     results.append(("2. Low-res (<1500px)", a2, q2, "REJECTED"))
 
     # 3. Blurry product image
     img3 = cv2.GaussianBlur(create_base_product_image(1800, 1800), (35, 35), 15)
     b3 = to_jpeg_bytes(img3)
     a3 = analyze_original_image(b3, "3_blurry.jpg")
-    q3 = assess_image_quality(a3)
+    q3 = assess_image_quality(a3, min_width=TEST_MIN_WIDTH, min_height=TEST_MIN_HEIGHT)
     results.append(("3. Blurry Image", a3, q3, "REJECTED"))
 
     # 4. Very dark image
     img4 = np.clip(create_base_product_image(1800, 1800).astype(np.float32) * 0.12, 0, 255).astype(np.uint8)
     b4 = to_jpeg_bytes(img4)
     a4 = analyze_original_image(b4, "4_very_dark.jpg")
-    q4 = assess_image_quality(a4)
+    q4 = assess_image_quality(a4, min_width=TEST_MIN_WIDTH, min_height=TEST_MIN_HEIGHT)
     results.append(("4. Very Dark", a4, q4, "REJECTED"))
 
     # 5. Overexposed image (can be WARNING or REJECTED depending on severity per Section 5)
     img5 = np.clip(create_base_product_image(1800, 1800).astype(np.float32) * 1.6 + 60, 0, 255).astype(np.uint8)
     b5 = to_jpeg_bytes(img5)
     a5 = analyze_original_image(b5, "5_overexposed.jpg")
-    q5 = assess_image_quality(a5)
+    q5 = assess_image_quality(a5, min_width=TEST_MIN_WIDTH, min_height=TEST_MIN_HEIGHT)
     results.append(("5. Overexposed", a5, q5, ("WARNING", "REJECTED")))
 
     # 6. Low-contrast image
@@ -117,7 +118,7 @@ def run_tests():
     cv2.rectangle(img6, (600, 600), (1200, 1200), (135, 135, 135), -1)
     b6 = to_jpeg_bytes(img6)
     a6 = analyze_original_image(b6, "6_low_contrast.jpg")
-    q6 = assess_image_quality(a6)
+    q6 = assess_image_quality(a6, min_width=TEST_MIN_WIDTH, min_height=TEST_MIN_HEIGHT)
     results.append(("6. Low Contrast", a6, q6, "REJECTED"))
 
     # 7. Transparent PNG
@@ -143,28 +144,28 @@ def run_tests():
     Image.fromarray(rgba, mode="RGBA").save(buf7, format="PNG")
     b7 = buf7.getvalue()
     a7 = analyze_original_image(b7, "7_transparent.png")
-    q7 = assess_image_quality(a7)
+    q7 = assess_image_quality(a7, min_width=TEST_MIN_WIDTH, min_height=TEST_MIN_HEIGHT)
     results.append(("7. Transparent PNG", a7, q7, "ACCEPTED"))
 
     # 8. Portrait image (height > width >= 1500px)
     img8 = create_base_product_image(1600, 2400)
     b8 = to_jpeg_bytes(img8)
     a8 = analyze_original_image(b8, "8_portrait.jpg")
-    q8 = assess_image_quality(a8)
+    q8 = assess_image_quality(a8, min_width=TEST_MIN_WIDTH, min_height=TEST_MIN_HEIGHT)
     results.append(("8. Portrait (1600x2400)", a8, q8, "ACCEPTED"))
 
     # 9. Landscape image (width > height >= 1500px)
     img9 = create_base_product_image(2400, 1600)
     b9 = to_jpeg_bytes(img9)
     a9 = analyze_original_image(b9, "9_landscape.jpg")
-    q9 = assess_image_quality(a9)
+    q9 = assess_image_quality(a9, min_width=TEST_MIN_WIDTH, min_height=TEST_MIN_HEIGHT)
     results.append(("9. Landscape (2400x1600)", a9, q9, "ACCEPTED"))
 
     # 10. Square image (width == height == 2000px)
     img10 = create_base_product_image(2000, 2000)
     b10 = to_jpeg_bytes(img10)
     a10 = analyze_original_image(b10, "10_square.jpg")
-    q10 = assess_image_quality(a10)
+    q10 = assess_image_quality(a10, min_width=TEST_MIN_WIDTH, min_height=TEST_MIN_HEIGHT)
     results.append(("10. Square (2000x2000)", a10, q10, "ACCEPTED"))
 
     # 11. Corrupted image

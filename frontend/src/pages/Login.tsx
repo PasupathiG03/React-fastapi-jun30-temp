@@ -126,7 +126,7 @@ export default function LoginPage() {
               standardization platform
             </h1>
             <p className="text-xs xl:text-[13px] text-white/85 leading-relaxed max-w-lg font-normal">
-              AI-powered background removal, 2000×2000 canvas standardization, intelligent back-of-pack sub-region extraction, and reviewer sign-off for BigBasket cataloging.
+              AI-powered background removal, standardized canvas output, intelligent back-of-pack sub-region extraction, and reviewer sign-off for BigBasket cataloging.
             </p>
           </div>
 
@@ -134,7 +134,7 @@ export default function LoginPage() {
           <div className="space-y-2 pt-1 w-full">
             {[
               { Icon: Sparkles, text: "AI Background Removal & Photoroom Pipeline" },
-              { Icon: Crop, text: "2000 × 2000 Square Canvas & 150 DPI Margins" },
+              { Icon: Crop, text: "Configurable Canvas Size, DPI & Margins" },
               { Icon: Sliders, text: "Sub-Region Extraction & Interactive Review Studio" },
             ].map(({ Icon, text }, i) => (
               <motion.div

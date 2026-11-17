@@ -24,8 +24,8 @@ function formatReportFilename(batchTitle: string | undefined, reportName: string
 
 function downloadLowResReport(
   items: InspectionResponse["items"],
-  targetWidth = 1500,
-  targetHeight = 1500,
+  targetWidth: number | undefined,
+  targetHeight: number | undefined,
   batchTitle?: string
 ) {
   const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
@@ -46,10 +46,10 @@ function downloadLowResReport(
     it.filename,
     it.width,
     it.height,
-    it.required_width ?? targetWidth,
-    it.required_height ?? targetHeight,
-    it.width_shortfall ?? Math.max(0, (it.required_width ?? targetWidth) - it.width),
-    it.height_shortfall ?? Math.max(0, (it.required_height ?? targetHeight) - it.height),
+    it.required_width ?? targetWidth ?? "",
+    it.required_height ?? targetHeight ?? "",
+    it.width_shortfall ?? Math.max(0, (it.required_width ?? targetWidth ?? it.width) - it.width),
+    it.height_shortfall ?? Math.max(0, (it.required_height ?? targetHeight ?? it.height) - it.height),
     it.megapixels ?? "",
     it.format ?? "",
     it.file_size_bytes != null ? (it.file_size_bytes / 1024).toFixed(1) : "",
@@ -128,8 +128,8 @@ export default function ImageInspectionModal({
   onClose,
   onConfirm,
   inspectionData,
-  targetWidth = 1500,
-  targetHeight = 1500,
+  targetWidth,
+  targetHeight,
   isLoading = false,
   isUploading = false,
   batchTitle,
@@ -218,7 +218,7 @@ export default function ImageInspectionModal({
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-xs font-bold text-amber-700 dark:text-amber-400">
                     <AlertTriangle className="w-4 h-4" />
-                    <span>Images not meeting {reqW}×{reqH}px ({invalidDimensionItems.length} of {items.length})</span>
+                    <span>Images not meeting {reqW ?? "—"}×{reqH ?? "—"}px ({invalidDimensionItems.length} of {items.length})</span>
                   </div>
                   <button
                     type="button"
@@ -249,7 +249,7 @@ export default function ImageInspectionModal({
                             {it.error ? "Unreadable" : `${it.width} × ${it.height}`}
                           </td>
                           <td className="px-2.5 py-1.5 font-mono">
-                            {it.error ? "-" : `${it.width_shortfall ?? Math.max(0, reqW - it.width)} × ${it.height_shortfall ?? Math.max(0, reqH - it.height)}`}
+                            {it.error ? "-" : `${it.width_shortfall ?? Math.max(0, (reqW ?? it.width) - it.width)} × ${it.height_shortfall ?? Math.max(0, (reqH ?? it.height) - it.height)}`}
                           </td>
                           <td className="px-2.5 py-1.5">{it.megapixels ?? "-"}</td>
                           <td className="px-2.5 py-1.5">{it.format ?? "-"}</td>
@@ -319,7 +319,7 @@ export default function ImageInspectionModal({
                 <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <span>Image Resolution Breakdown ({items.length} files)</span>
                 </h4>
-                <span className="text-[11px] text-slate-500">Threshold: ≥ {reqW} × {reqH} px</span>
+                <span className="text-[11px] text-slate-500">Threshold: ≥ {reqW ?? "—"} × {reqH ?? "—"} px</span>
               </div>
 
               <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200 dark:border-white/10 divide-y divide-slate-100 dark:divide-white/[0.06] bg-white dark:bg-slate-900">

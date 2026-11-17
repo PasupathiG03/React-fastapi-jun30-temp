@@ -44,6 +44,12 @@ import {
   createBatch,
   uploadBatchImageFiles,
   uploadBatchImagesZip,
+  configuredPreset,
+  describeOutputPreset,
+  fetchImageValidationSettings,
+  fetchOutputPreset,
+  getOutputSpec,
+  type OutputPreset,
   inspectImageFiles,
   inspectImagesZip,
   fetchDashboardSummary,
@@ -52,6 +58,7 @@ import {
   downloadBatchExcelFile,
   retryImageProcessing,
   retryBatchFailed,
+  rerunEntireBatch,
   type BatchItem,
   type ImageItem,
   type DashboardSummary,
@@ -59,6 +66,7 @@ import {
 } from "@/services/bigbasket";
 import ImageInspectionModal from "@/components/bigbasket/ImageInspectionModal";
 import { showError, showSuccess } from "@/lib/toast";
+import { APP_ROUTES } from "@/lib/routes";
 
 export default function BatchProcessing() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -138,7 +146,9 @@ export default function BatchProcessing() {
 
   // Polling sync every 3 seconds if any batch is currently processing
   useEffect(() => {
-    const hasActiveProcessing = batches.some((b) => b.status === "processing" || b.status === "queued");
+    const hasActiveProcessing =
+      batches.some((b) => b.status === "processing" || b.status === "queued") ||
+      Object.values(batchImages).some((imgs) => imgs.some((img) => img.status === "processing" || img.status === "pending"));
     if (!hasActiveProcessing) return;
 
     const interval = setInterval(async () => {
@@ -200,12 +210,17 @@ export default function BatchProcessing() {
 
   const [retryingImageId, setRetryingImageId] = useState<number | null>(null);
   const [retryingBatchId, setRetryingBatchId] = useState<number | null>(null);
+  const [rerunningBatchId, setRerunningBatchId] = useState<number | null>(null);
 
   async function handleRetryImage(batchId: number, imageId: number) {
     setRetryingImageId(imageId);
     try {
       const res = await retryImageProcessing(imageId);
-      showSuccess(`Photoroom re-processed SKU ${res.bbid || imageId}! Status: ${res.status.replace("_", " ").toUpperCase()}`);
+      if (res.status === "processing") {
+        showSuccess(`Photoroom background task queued for SKU ${res.bbid || imageId}...`);
+      } else {
+        showSuccess(`Photoroom re-processed SKU ${res.bbid || imageId}! Status: ${res.status.replace("_", " ").toUpperCase()}`);
+      }
       await loadImagesForBatch(batchId, imageStatusFilter[batchId] || "", imageSearch[batchId] || "");
       await loadBatches();
     } catch (e: any) {
@@ -226,6 +241,25 @@ export default function BatchProcessing() {
       showError(e.message || "Failed to retry batch images with Photoroom");
     } finally {
       setRetryingBatchId(null);
+    }
+  }
+
+  async function handleRerunBatch(batchId: number) {
+    setRerunningBatchId(batchId);
+    try {
+      const res = await rerunEntireBatch(batchId);
+      showSuccess(res.message || "Rerun started for entire batch!");
+      setBatches((prev) =>
+        prev.map((b) => (b.id === batchId ? { ...b, status: "queued", processed_images: 0 } : b))
+      );
+      if (expandedBatchId === batchId) {
+        await loadImagesForBatch(batchId, imageStatusFilter[batchId] || "", imageSearch[batchId] || "");
+      }
+      await loadBatches();
+    } catch (e: any) {
+      showError(e.message || "Failed to rerun entire batch");
+    } finally {
+      setRerunningBatchId(null);
     }
   }
 
@@ -551,8 +585,10 @@ export default function BatchProcessing() {
                       }}
                       retryingImageId={retryingImageId}
                       retryingBatchId={retryingBatchId}
+                      rerunningBatchId={rerunningBatchId}
                       onRetryImage={(imageId) => handleRetryImage(batch.id, imageId)}
                       onRetryBatchFailed={() => handleRetryBatchFailed(batch.id)}
+                      onRerunBatch={() => handleRerunBatch(batch.id)}
                       onDownloadZip={() => handleInitiateZipDownload(batch)}
                     />
                   );
@@ -733,8 +769,10 @@ function BatchTableRow({
   onReloadImages,
   retryingImageId,
   retryingBatchId,
+  rerunningBatchId,
   onRetryImage,
   onRetryBatchFailed,
+  onRerunBatch,
   onDownloadZip,
 }: {
   index: number;
@@ -754,8 +792,10 @@ function BatchTableRow({
   onReloadImages: (status: string, search: string) => void;
   retryingImageId: number | null;
   retryingBatchId: number | null;
+  rerunningBatchId: number | null;
   onRetryImage: (imageId: number) => void;
   onRetryBatchFailed: () => void;
+  onRerunBatch: () => void;
   onDownloadZip: () => void;
 }) {
   const navigate = useNavigate();
@@ -967,6 +1007,19 @@ function BatchTableRow({
               </button>
             )}
 
+            {["completed", "failed", "cancelled", "paused"].includes(batch.status) && (
+              <button
+                type="button"
+                onClick={onRerunBatch}
+                disabled={actionLoading || rerunningBatchId === batch.id}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 border border-indigo-200 dark:border-indigo-800 shadow-xs transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                title="Rerun the entire batch with single click"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 ${rerunningBatchId === batch.id ? "animate-spin" : ""}`} />
+                <span>{rerunningBatchId === batch.id ? "Rerunning..." : "Rerun Batch"}</span>
+              </button>
+            )}
+
             {/* Quick Export Downloads if completed */}
             {batch.status === "completed" && (
               <>
@@ -1080,6 +1133,19 @@ function BatchTableRow({
                     >
                       <RotateCcw className={`w-3.5 h-3.5 ${retryingBatchId === batch.id ? "animate-spin" : ""}`} />
                       <span>{retryingBatchId === batch.id ? "Retrying with Photoroom..." : "Retry Needs Review"}</span>
+                    </button>
+                  )}
+
+                  {batch.status !== "processing" && batch.status !== "queued" && images.length > 0 && (
+                    <button
+                      type="button"
+                      disabled={rerunningBatchId === batch.id || retryingBatchId === batch.id}
+                      onClick={onRerunBatch}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors disabled:opacity-50 cursor-pointer"
+                      title="Rerun the entire batch from scratch with AI background removal and standardization"
+                    >
+                      <RotateCcw className={`w-3.5 h-3.5 ${rerunningBatchId === batch.id ? "animate-spin" : ""}`} />
+                      <span>{rerunningBatchId === batch.id ? "Rerunning Entire Batch..." : "Rerun Entire Batch"}</span>
                     </button>
                   )}
 
@@ -1241,7 +1307,12 @@ function BatchTableRow({
 
                           {/* Resolution Specs */}
                           <td className="py-2 px-3 text-slate-500 dark:text-slate-400 text-[11px]">
-                            {img.final_output_path ? "2000×2000 · 150 DPI" : "Processing..."}
+                            {img.final_output_path
+                              ? (() => {
+                                const spec = getOutputSpec(img.validation_status ?? img.validation_results, batch.config);
+                                return spec ? `${spec.width}×${spec.height} · ${spec.dpi} DPI` : "—";
+                              })()
+                              : "Processing..."}
                           </td>
 
                           {/* Confidence */}
@@ -1380,8 +1451,18 @@ function CreateBatchModal({
   const [productCategory, setProductCategory] = useState<"auto" | "food" | "non_food" | "kitchen_items">("auto");
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [zipFile, setZipFile] = useState<File | null>(null);
-  const [targetWidth, setTargetWidth] = useState<number>(1500);
-  const [targetHeight, setTargetHeight] = useState<number>(1500);
+  // Minimum upload resolution from Image Automation > Settings; null until loaded or while not configured.
+  const [targetWidth, setTargetWidth] = useState<number | null>(null);
+  const [targetHeight, setTargetHeight] = useState<number | null>(null);
+  const [resolutionLoaded, setResolutionLoaded] = useState(false);
+  const resolutionLoading = isOpen && !resolutionLoaded;
+  // Canvas size, DPI and padding new batches use (Image Automation > Settings); applied by the server.
+  const [outputPreset, setOutputPreset] = useState<OutputPreset | null>(null);
+  const resolutionConfigured = targetWidth != null && targetHeight != null;
+  const preset = configuredPreset(outputPreset);
+  // Both settings must be saved before a batch can be created; the server enforces the same rule.
+  const settingsReady = resolutionConfigured && preset !== null;
+  const settingsChecked = resolutionLoaded && outputPreset !== null;
   const [submitting, setSubmitting] = useState(false);
   const [inspecting, setInspecting] = useState(false);
   const [inspectionModalOpen, setInspectionModalOpen] = useState(false);
@@ -1395,12 +1476,39 @@ function CreateBatchModal({
       setBatchName(`Catalog Batch - ${now.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`);
       setImageFiles([]);
       setZipFile(null);
-      setTargetWidth(1500);
-      setTargetHeight(1500);
       setClientLowResCount(0);
+      setResolutionLoaded(false);
       setInspectionData(null);
       setInspectionModalOpen(false);
     }
+  }, [isOpen]);
+
+  // Load the saved minimum resolution each time the dialog opens, so a change in Settings applies at once.
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    fetchOutputPreset()
+      .then((p) => {
+        if (!cancelled) setOutputPreset(p);
+      })
+      .catch(() => {
+        // The strip keeps showing "Loading…"; the server refuses the batch if the preset is missing.
+      });
+    fetchImageValidationSettings()
+      .then((s) => {
+        if (cancelled) return;
+        setTargetWidth(s.min_width);
+        setTargetHeight(s.min_height);
+      })
+      .catch(() => {
+        // Leave the values empty; the server still validates against the saved settings.
+      })
+      .finally(() => {
+        if (!cancelled) setResolutionLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen]);
 
   async function recheckFiles(files: File[], reqW: number, reqH: number) {
@@ -1418,7 +1526,7 @@ function CreateBatchModal({
 
   async function handleFileSelection(files: File[]) {
     setImageFiles(files);
-    await recheckFiles(files, targetWidth, targetHeight);
+    if (targetWidth != null && targetHeight != null) await recheckFiles(files, targetWidth, targetHeight);
   }
 
   async function handleLaunchInspection() {
@@ -1437,9 +1545,9 @@ function CreateBatchModal({
     try {
       let res: InspectionResponse;
       if (mode === "files") {
-        res = await inspectImageFiles(imageFiles, targetWidth, targetHeight);
+        res = await inspectImageFiles(imageFiles, targetWidth ?? undefined, targetHeight ?? undefined);
       } else {
-        res = await inspectImagesZip(zipFile!, targetWidth, targetHeight);
+        res = await inspectImagesZip(zipFile!, targetWidth ?? undefined, targetHeight ?? undefined);
       }
       setInspectionData(res);
     } catch (e: any) {
@@ -1457,12 +1565,9 @@ function CreateBatchModal({
       const batch = await createBatch({
         name: batchName.trim(),
         source_type: mode === "zip" ? "zip_upload" : "auto_images",
+        // Canvas size, DPI and padding are left out: the server applies the saved output preset.
         config: {
-          canvas_width: 2000,
-          canvas_height: 2000,
-          dpi: 150,
           product_category: productCategory,
-          fop_bop_padding: { top: 180, bottom: 180, left: 100, right: 100 },
           confidence_threshold: 1.0,
         },
       });
@@ -1617,7 +1722,28 @@ function CreateBatchModal({
               </div>
             </div>
 
-            {/* Validation Resolution Dimensions (Fixed Standards) */}
+            {settingsChecked && !settingsReady && (
+              <div
+                role="alert"
+                className="p-3 rounded-xl border border-amber-300/60 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 text-[11px] text-amber-800 dark:text-amber-200 flex items-start gap-2"
+              >
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-px" />
+                <span>
+                  {!resolutionConfigured && !preset
+                    ? "The minimum resolution and the output preset are not configured."
+                    : !resolutionConfigured
+                      ? "The minimum resolution is not configured."
+                      : "The output preset is not configured."}{" "}
+                  Set them in{" "}
+                  <Link to={APP_ROUTES.IMAGE_STUDIO_SETTINGS} className="font-semibold underline">
+                    Image Automation › Settings
+                  </Link>{" "}
+                  before creating a batch.
+                </span>
+              </div>
+            )}
+
+            {/* Validation Resolution Dimensions (from Image Automation > Settings) */}
             <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-white/10 bg-slate-50/50 dark:bg-white/[0.02] space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
@@ -1625,11 +1751,18 @@ function CreateBatchModal({
                   <span>Validation Resolution Dimensions</span>
                 </label>
                 <span className="text-[10px] text-slate-400 font-medium font-mono">
-                  Standard (1500 × 1500 px)
+                  {resolutionLoading ? "Loading…" : resolutionConfigured ? `Minimum (${targetWidth} × ${targetHeight} px)` : "Not configured"}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500">
-                Minimum required pixel dimensions for image validation (Standard: 1500 × 1500 px).
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Minimum required pixel dimensions for image validation. Change them in{" "}
+                <Link
+                  to={APP_ROUTES.IMAGE_STUDIO_SETTINGS}
+                  className="font-semibold text-sky-600 dark:text-sky-400 hover:underline"
+                >
+                  Image Automation › Settings
+                </Link>
+                .
               </p>
               <div className="grid grid-cols-2 gap-3 pt-1">
                 <div>
@@ -1640,7 +1773,7 @@ function CreateBatchModal({
                     type="number"
                     readOnly
                     disabled
-                    value={targetWidth}
+                    value={targetWidth ?? ""}
                     className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-mono text-xs font-semibold cursor-not-allowed select-none focus:outline-none"
                   />
                 </div>
@@ -1652,7 +1785,7 @@ function CreateBatchModal({
                     type="number"
                     readOnly
                     disabled
-                    value={targetHeight}
+                    value={targetHeight ?? ""}
                     className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-mono text-xs font-semibold cursor-not-allowed select-none focus:outline-none"
                   />
                 </div>
@@ -1728,7 +1861,15 @@ function CreateBatchModal({
             {/* BigBasket SRS Specifications Strip */}
             <div className="p-3 rounded-xl bg-sky-500/5 dark:bg-white/[0.02] border border-sky-500/15 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
               <span className="font-semibold text-slate-700 dark:text-slate-300">Automation Preset:</span>
-              <span>2000×2000px · 150 DPI · SRS Padded (180/100)</span>
+              <span className="text-right">
+                {outputPreset === null ? "Loading…" : preset ? describeOutputPreset(preset) : "Not configured"}{" "}
+                <Link
+                  to={APP_ROUTES.IMAGE_STUDIO_SETTINGS}
+                  className="font-semibold text-sky-600 dark:text-sky-400 hover:underline whitespace-nowrap"
+                >
+                  Change
+                </Link>
+              </span>
             </div>
           </div>
         </ModalBody>
@@ -1738,7 +1879,7 @@ function CreateBatchModal({
           <button
             type="button"
             onClick={handleLaunchInspection}
-            disabled={inspecting || submitting || (mode === "files" ? imageFiles.length === 0 : !zipFile)}
+            disabled={inspecting || submitting || !settingsReady || (mode === "files" ? imageFiles.length === 0 : !zipFile)}
             className={PRIMARY_BUTTON}
           >
             {inspecting ? (
@@ -1761,8 +1902,8 @@ function CreateBatchModal({
         onClose={() => setInspectionModalOpen(false)}
         onConfirm={handleConfirmAndUpload}
         inspectionData={inspectionData}
-        targetWidth={targetWidth}
-        targetHeight={targetHeight}
+        targetWidth={targetWidth ?? undefined}
+        targetHeight={targetHeight ?? undefined}
         isLoading={inspecting}
         isUploading={submitting}
         batchTitle={batchName}

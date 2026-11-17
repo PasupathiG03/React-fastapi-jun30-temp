@@ -240,6 +240,47 @@ class SubRegionExtractor:
         digits = sum(ch.isdigit() for ch in t)
         return digits >= 1 and digits / len(t) >= 0.85 and (digits >= 6 or len(t) <= 2)
 
+    @staticmethod
+    def _locate_barcode_near(
+        arr: np.ndarray, px1: int, py1: int, px2: int, py2: int
+    ) -> Optional[Tuple[int, int, int, int]]:
+        """Finds the full barcode symbol around a rough box (e.g. a vision-model box that only covers the
+        human-readable digits beside a vertical barcode). OpenCV's detector misses small barcodes on a full
+        page, so it searches a window padded by the box's longest side, at 1x and 2x scale, and returns the
+        detection that overlaps the box (or None)."""
+        h, w = arr.shape[:2]
+        pad = max(px2 - px1, py2 - py1)
+        wx1, wy1 = max(0, px1 - pad), max(0, py1 - pad)
+        wx2, wy2 = min(w, px2 + pad), min(h, py2 + pad)
+        roi = arr[wy1:wy2, wx1:wx2]
+        if roi.size == 0:
+            return None
+        try:
+            detector = cv2.barcode.BarcodeDetector()
+        except Exception:
+            return None
+        best, best_overlap = None, 0
+        for scale in (1, 2):
+            img = roi if scale == 1 else cv2.resize(roi, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+            try:
+                ok, pts = detector.detect(img)
+            except Exception:
+                continue
+            if not ok or pts is None:
+                continue
+            for quad in np.asarray(pts).reshape(-1, 4, 2):
+                q = quad / scale
+                qx1, qy1 = int(q[:, 0].min()) + wx1, int(q[:, 1].min()) + wy1
+                qx2, qy2 = int(q[:, 0].max()) + wx1, int(q[:, 1].max()) + wy1
+                overlap = max(0, min(qx2, px2) - max(qx1, px1)) * max(0, min(qy2, py2) - max(qy1, py1))
+                if overlap > best_overlap:
+                    best, best_overlap = (qx1, qy1, qx2, qy2), overlap
+        if best is None:
+            return None
+        # Detector quads sit slightly inside the outer guard bars; a small margin keeps them whole.
+        m = max(3, int(round(0.03 * max(best[2] - best[0], best[3] - best[1]))))
+        return max(0, best[0] - m), max(0, best[1] - m), min(w, best[2] + m), min(h, best[3] + m)
+
     @classmethod
     def _refine_barcode_boundary(
         cls,
@@ -258,6 +299,12 @@ class SubRegionExtractor:
            (e.g. orange bottom folds or colored panel margins) or dark boundary seams.
         """
         h, w = arr.shape[:2]
+        # The given box can cover only part of the symbol (just the digit column of a vertical barcode, or
+        # just the bars without the digits). Grow it to the detected symbol before refining.
+        symbol = cls._locate_barcode_near(arr, px1, py1, px2, py2)
+        if symbol is not None:
+            px1, py1 = min(px1, symbol[0]), min(py1, symbol[1])
+            px2, py2 = max(px2, symbol[2]), max(py2, symbol[3])
         sx1 = max(0, px1 - 35)
         sy1 = max(0, py1 - 35)
         sx2 = min(w, px2 + 35)
@@ -694,6 +741,194 @@ class SubRegionExtractor:
             return None
         return (px1, ny1, px2, ny2)
 
+    @staticmethod
+    def _longest_run(mask_1d: np.ndarray, max_gap: int = 3) -> int:
+        """Longest run of True values in a 1-D mask, bridging gaps of up to max_gap pixels."""
+        best = cur = gap = 0
+        for v in mask_1d:
+            if v:
+                cur += gap + 1
+                gap = 0
+            elif cur:
+                gap += 1
+                if gap > max_gap:
+                    best, cur, gap = max(best, cur), 0, 0
+        return max(best, cur)
+
+    @classmethod
+    def _even_frame_margins(
+        cls, arr: np.ndarray, box: Tuple[int, int, int, int]
+    ) -> Tuple[int, int, int, int]:
+        """When a crop is enclosed by a thin frame on all four sides (a bordered table or panel), re-centre
+        it so the frame gets the same small margin on every side. The refine steps above move each edge
+        independently, which can leave a wide strip of card outside one border and none outside the other.
+        Crops without a complete frame are returned unchanged; margins only grow into clean background."""
+        h, w = arr.shape[:2]
+        x1, y1, x2, y2 = box
+        bw, bh = x2 - x1, y2 - y1
+        if bw < 60 or bh < 40:
+            return box
+        gray = cv2.cvtColor(arr[:, :, :3], cv2.COLOR_RGB2GRAY) if arr.ndim == 3 else arr
+        bg = float(np.median(gray[y1:y2, x1:x2]))
+        if bg < 170:
+            return box  # dark panel: border lines are not darker than the background
+        dark_thr, light_thr = bg - 30, bg - 15
+        max_thick = 6
+
+        band = 3  # tolerate slightly slanted (photographed) border lines
+
+        def find_line(vertical: bool, from_start: bool) -> Optional[int]:
+            """Outer edge of the frame line on one side, in image coordinates, or None."""
+            length, (s0, s1) = (bh, (y1, y2)) if vertical else (bw, (x1, x2))
+            limit = w if vertical else h
+            win = max(20, int(0.08 * (bw if vertical else bh)))
+            lo, hi = (x1, x2 - 1) if vertical else (y1, y2 - 1)
+            inward = 1 if from_start else -1
+            # Start at the crop edge: a line outside the crop belongs to a neighbouring box.
+            start = lo if from_start else hi
+
+            def line_mean(q: int) -> float:
+                strip = gray[s0:s1, q] if vertical else gray[q, s0:s1]
+                return float(strip.mean())
+
+            def is_line(q: int) -> bool:
+                qs = [q + inward * k for k in range(band)]
+                if not all(0 <= v < limit for v in qs):
+                    return False
+                if vertical:
+                    stack = gray[s0:s1, min(qs):max(qs) + 1].min(axis=1)
+                else:
+                    stack = gray[min(qs):max(qs) + 1, s0:s1].min(axis=0)
+                return cls._longest_run(stack < dark_thr) >= 0.6 * length
+
+            def light_near(q: int, step: int) -> bool:
+                vals = [line_mean(q + step * k) for k in range(1, 5) if 0 <= q + step * k < limit]
+                return bool(vals) and max(vals) > light_thr
+
+            end = start + inward * win
+            q = start - inward
+            while True:
+                q += inward
+                if (q - end) * inward >= 0:
+                    return None
+                if not 0 <= q < limit or not is_line(q):
+                    continue
+                q0 = q
+                # Snap to the first visibly darker pixel in the band, then take in faint slant pixels.
+                k = 0
+                while k < band - 1 and line_mean(q) >= bg - 5:
+                    q += inward
+                    k += 1
+                k = 0
+                while k < 4 and 0 <= q - inward < limit and line_mean(q - inward) < bg - 5:
+                    q -= inward
+                    k += 1
+                r = q
+                while abs(r - q) <= max_thick + band and 0 <= r + inward < limit and line_mean(r + inward) < light_thr:
+                    r += inward
+                if abs(r - q) > max_thick + band or not light_near(q, -inward) or not light_near(r, inward):
+                    # Not a thin line on plain background (e.g. the packaging edge outside the card): skip past it.
+                    q = max(q0, r) if inward > 0 else min(q0, r)
+                    continue
+                return q
+
+        left, right = find_line(True, True), find_line(True, False)
+        top, bottom = find_line(False, True), find_line(False, False)
+        if None in (left, right, top, bottom) or right - left < 40 or bottom - top < 25:
+            return box
+
+        target = max(4, int(round(0.015 * max(bw, bh))))
+
+        def clean_room(vertical: bool, start: int, step: int) -> int:
+            """How many pixels outward from the frame line stay plain, neutral background (up to target)."""
+            n = 0
+            for i in range(1, target + 1):
+                p = start + step * i
+                if not 0 <= p < (w if vertical else h):
+                    break
+                strip = arr[top:bottom + 1, p] if vertical else arr[p, left:right + 1]
+                g = gray[top:bottom + 1, p] if vertical else gray[p, left:right + 1]
+                if float(g.mean()) < light_thr or float(g.std()) > 12 or cls._get_chroma(strip) > 22:
+                    break
+                n = i
+            return n
+
+        m = min(
+            target,
+            clean_room(True, left, -1), clean_room(True, right, 1),
+            clean_room(False, top, -1), clean_room(False, bottom, 1),
+        )
+        return (max(0, left - m), max(0, top - m), min(w, right + 1 + m), min(h, bottom + 1 + m))
+
+    @classmethod
+    def _trim_edge_lines(
+        cls, arr: np.ndarray, box: Tuple[int, int, int, int]
+    ) -> Tuple[int, int, int, int]:
+        """Removes a thin rule caught at a crop edge that belongs to a neighbouring box: a line touching the
+        edge, separated from the crop's content by a clean gap, whose ends do not run back into the crop
+        (so it is not this region's own frame). Example: the top border of the next panel showing as a
+        sliver under an address block."""
+        h, w = arr.shape[:2]
+        x1, y1, x2, y2 = box
+        gray = cv2.cvtColor(arr[:, :, :3], cv2.COLOR_RGB2GRAY) if arr.ndim == 3 else arr
+        sub = gray[y1:y2, x1:x2]
+        if sub.shape[0] < 30 or sub.shape[1] < 30:
+            return box
+        bg = float(np.median(sub))
+        if bg < 170:
+            return box
+        dark_thr, light_thr = bg - 30, bg - 15
+
+        def trim(lines: np.ndarray) -> int:
+            """lines: 2-D array whose rows run from the crop edge inward. Returns how many rows to drop."""
+            n, span = lines.shape
+            depth = min(n // 3, max(8, int(round(0.06 * n))))
+            dark = lines < dark_thr
+            is_line = [cls._longest_run(dark[i]) >= 0.5 * span for i in range(depth)]
+            # The line group must touch the edge (within 2 rows) and be thin.
+            first = next((i for i in range(min(3, depth)) if is_line[i]), None)
+            if first is None:
+                return 0
+            last = first
+            while last + 1 < depth and is_line[last + 1]:
+                last += 1
+            def light(i: int) -> bool:
+                return float(lines[i].mean()) > light_thr and cls._longest_run(dark[i]) < 0.1 * span
+
+            # Anti-aliased rows next to the line belong to it.
+            while last + 1 < depth and last - first < 6 and not light(last + 1):
+                last += 1
+            if last - first + 1 > 6:
+                return 0
+            gap = 0
+            for i in range(last + 1, depth):
+                if light(i):
+                    gap += 1
+                else:
+                    break
+            if gap < 2:
+                return 0
+            # The line's ends must not continue into the crop (that would be this region's own frame).
+            cols = np.where(dark[first:last + 1].any(axis=0))[0]
+            if cols.size == 0:
+                return 0
+            # Checked in the rows right after the line, a little wider than its ends, because a rounded
+            # corner curves sideways as it turns.
+            near = dark[last + 1:last + 1 + min(3, gap)]
+            for c in (cols.min(), cols.max()):
+                if near[:, max(0, c - 6):min(span, c + 7)].any():
+                    return 0
+            return last + 1
+
+        top = trim(sub)
+        bottom = trim(sub[::-1])
+        left = trim(sub.T)
+        right = trim(sub.T[::-1])
+        nx1, ny1, nx2, ny2 = x1 + left, y1 + top, x2 - right, y2 - bottom
+        if nx2 - nx1 < 35 or ny2 - ny1 < 25:
+            return box
+        return (nx1, ny1, nx2, ny2)
+
     @classmethod
     def validate_and_refine_crop_box(
         cls,
@@ -804,6 +1039,12 @@ class SubRegionExtractor:
 
         fy1, fy2 = py1, py2
 
+        if arr is not None:
+            # Drop a neighbouring box's border caught at an edge first, so it is not mistaken for this
+            # region's own frame; then even out the margins around the frame (if the region has one).
+            fx1, fy1, fx2, fy2 = cls._trim_edge_lines(arr, (fx1, fy1, fx2, fy2))
+            fx1, fy1, fx2, fy2 = cls._even_frame_margins(arr, (fx1, fy1, fx2, fy2))
+
         final_w = fx2 - fx1
         final_h = fy2 - fy1
         if final_w < 35 or final_h < 25:
@@ -817,10 +1058,10 @@ class SubRegionExtractor:
         cls,
         image_bytes: bytes,
         bbid: str,
-        category: str = "general",
-        canvas_width: int = 2000,
-        canvas_height: int = 2000,
-        dpi: int = 150,
+        category: str,
+        canvas_width: int,
+        canvas_height: int,
+        dpi: int,
     ) -> List[Dict[str, Any]]:
         raw_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         orig_w, orig_h = raw_img.size
@@ -1405,18 +1646,18 @@ class SubRegionExtractor:
     def _fit_to_standard_canvas(
         cls,
         crop_img: Image.Image,
-        target_w: int = 2000,
-        target_h: int = 2000,
-        dpi: int = 150,
+        target_w: int,
+        target_h: int,
+        dpi: int,
     ) -> bytes:
         crop_rgba = crop_img.convert("RGBA")
         cw, ch = crop_rgba.size
 
         # Table 3: information panels use 0 px padding and fill the canvas edge-to-edge. Scale without
         # distortion so the panel touches the canvas on its long side.
-        # SRS Table 3: Informational panels fit edge-to-edge (1980 px width, 0 px padding)
-        target_span_w = min(1980, target_w)
-        target_span_h = min(1980, target_h)
+        # A 10 px margin each side, whatever the canvas size.
+        target_span_w = max(1, target_w - 20)
+        target_span_h = max(1, target_h - 20)
         scale = min(target_span_w / cw, target_span_h / ch)
         scaled_w = min(target_w, max(1, round(cw * scale)))
         scaled_h = min(target_h, max(1, round(ch * scale)))

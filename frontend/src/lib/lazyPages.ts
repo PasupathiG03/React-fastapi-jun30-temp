@@ -46,6 +46,7 @@ export const PAGE_ROUTES: PageRoute[] = [
   { path: APP_ROUTES.IMAGE_STUDIO_MANUAL_REVIEW, page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
   { path: APP_ROUTES.IMAGE_STUDIO_REVIEW_STUDIO, page: lazyPage(() => import("@/pages/bigbasket/ReviewStudio")) },
   { path: APP_ROUTES.IMAGE_STUDIO_REPORTS, page: lazyPage(() => import("@/pages/bigbasket/BatchProcessing")) },
+  { path: APP_ROUTES.IMAGE_STUDIO_SETTINGS, page: lazyPage(() => import("@/pages/bigbasket/ImageAutomationSettings")) },
 
   // Developer Management
   { path: APP_ROUTES.ROUTER_SETUP, page: lazyPage(() => import("@/pages/MenuManagement")) },
