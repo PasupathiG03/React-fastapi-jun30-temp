@@ -138,7 +138,7 @@ export default function BatchProcessing() {
 
   // Polling sync every 3 seconds if any batch is currently processing
   useEffect(() => {
-    const hasActiveProcessing = batches.some((b) => b.status === "processing");
+    const hasActiveProcessing = batches.some((b) => b.status === "processing" || b.status === "queued");
     if (!hasActiveProcessing) return;
 
     const interval = setInterval(async () => {
@@ -244,9 +244,9 @@ export default function BatchProcessing() {
     setActionLoadingId(batch.id);
     try {
       await startBatchProcessing(batch.id);
-      showSuccess(`Processing started for batch ${batch.batch_code}!`);
+      showSuccess(`Batch ${batch.batch_code} queued for processing!`);
       setBatches((prev) =>
-        prev.map((b) => (b.id === batch.id ? { ...b, status: "processing" } : b))
+        prev.map((b) => (b.id === batch.id ? { ...b, status: "queued" } : b))
       );
       loadImagesForBatch(batch.id);
     } catch (e: any) {
@@ -277,7 +277,7 @@ export default function BatchProcessing() {
       await resumeBatchProcessing(batch.id);
       showSuccess(`Batch ${batch.batch_code} resumed.`);
       setBatches((prev) =>
-        prev.map((b) => (b.id === batch.id ? { ...b, status: "processing" } : b))
+        prev.map((b) => (b.id === batch.id ? { ...b, status: "queued" } : b))
       );
     } catch (e: any) {
       showError(e.message || "Failed to resume batch");
@@ -357,7 +357,7 @@ export default function BatchProcessing() {
 
   // Overall KPI metrics
   const totalBatchesCount = batches.length;
-  const processingCount = batches.filter((b) => b.status === "processing").length;
+  const processingCount = batches.filter((b) => b.status === "processing" || b.status === "queued").length;
   const completedCount = batches.filter((b) => b.status === "completed").length;
   const totalImagesProcessed = batches.reduce((acc, b) => acc + (b.processed_images || 0), 0);
 
@@ -486,6 +486,7 @@ export default function BatchProcessing() {
             options={[
               { value: "", label: "All Batches" },
               { value: "processing", label: "Processing (Active)" },
+              { value: "queued", label: "Queued" },
               { value: "completed", label: "Completed" },
               { value: "created", label: "Created / Pending" },
               { value: "paused", label: "Paused" },
@@ -844,7 +845,9 @@ function BatchTableRow({
               ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
               : batch.status === "processing"
                 ? "bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/20 animate-pulse"
-                : batch.status === "paused"
+                : batch.status === "queued"
+                  ? "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20"
+                  : batch.status === "paused"
                   ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20"
                   : "bg-slate-500/15 text-slate-600 dark:text-slate-400 border border-slate-500/20"
               }`}
@@ -952,7 +955,7 @@ function BatchTableRow({
               </button>
             )}
 
-            {["created", "processing", "paused"].includes(batch.status) && (
+            {["created", "queued", "processing", "paused"].includes(batch.status) && (
               <button
                 type="button"
                 onClick={onCancel}
@@ -1474,7 +1477,7 @@ function CreateBatchModal({
       // 3. Start processing
       try {
         await startBatchProcessing(batch.id);
-        batch.status = "processing";
+        batch.status = "queued";
       } catch { }
 
       showSuccess(`Batch ${batch.batch_code} launched into automation!`);

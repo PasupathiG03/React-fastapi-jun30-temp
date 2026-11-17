@@ -139,13 +139,18 @@ async def start_batch(
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
 
-    if batch.status == "processing":
-        return {"message": "Batch is already processing", "status": batch.status}
+    if batch.status in ("queued", "processing"):
+        return {"message": f"Batch is already {batch.status}", "status": batch.status}
+
+    # Mark it queued before dispatch: the worker flips it to "processing" only when it actually picks the task
+    # up, so without this a batch waiting behind others still looks "created" and can be started twice.
+    batch.status = "queued"
+    db.commit()
 
     # Dispatch to Celery background worker (or detached daemon thread)
     dispatch_batch_processing(batch_id)
 
-    return {"message": "Batch processing started", "status": "processing"}
+    return {"message": "Batch queued for processing", "status": "queued"}
 
 
 @router.post("/{batch_id}/pause")
@@ -174,9 +179,11 @@ def resume_batch(
 
     BatchProcessor.resume(batch_id)
     if batch.status in ("paused", "failed"):
+        batch.status = "queued"
+        db.commit()
         dispatch_batch_processing(batch_id)
 
-    return {"message": "Resumed batch processing", "status": "processing"}
+    return {"message": "Resumed batch processing", "status": batch.status}
 
 
 @router.post("/{batch_id}/cancel")

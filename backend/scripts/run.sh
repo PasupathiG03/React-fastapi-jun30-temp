@@ -107,7 +107,9 @@ start_celery_worker() {
   fi
 
   echo "[+] Launching Celery background worker process..."
-  celery -A app.core.celery_app worker --loglevel=INFO > "$BASE_DIR/celery.log" 2>&1 &
+  # Threads pool: several batches run at once in ONE process, sharing a single BiRefNet model and inference gate
+  # (prefork would load the model once per child process).
+  celery -A app.core.celery_app worker --loglevel=INFO --pool=threads --concurrency="${CELERY_CONCURRENCY:-4}" > "$BASE_DIR/celery.log" 2>&1 &
   CELERY_PID=$!
   echo "$CELERY_PID" > "$BASE_DIR/.celery.pid"
   echo "[+] Celery worker running in background (PID: $CELERY_PID)."
@@ -133,11 +135,11 @@ MODE="${1:-dev}"
 case "$MODE" in
   dev)
     echo "[+] Starting FastAPI in development mode (auto-reload)..."
-    uvicorn app.main:app --host 0.0.0.0 --port 8107 --reload
+    python -m uvicorn app.main:app --host 0.0.0.0 --port 8107 --reload
     ;;
   prod)
     echo "[+] Starting FastAPI in production mode..."
-    uvicorn app.main:app --host 0.0.0.0 --port 8107 --workers 4
+    python -m uvicorn app.main:app --host 0.0.0.0 --port 8107 --workers 4
     ;;
   *)
     echo "Usage: $0 {dev|prod}"

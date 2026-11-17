@@ -152,6 +152,10 @@ class BatchProcessor:
             batch = db.query(ImageBatch).filter(ImageBatch.id == batch_id).first()
             if not batch:
                 return
+            # Cancelled while it was still waiting in the queue: don't resurrect it.
+            if batch.status == "cancelled":
+                logger.info(f"[Batch {batch_id}] was cancelled before a worker picked it up; skipping.")
+                return
 
             batch.status = "processing"
             db.commit()

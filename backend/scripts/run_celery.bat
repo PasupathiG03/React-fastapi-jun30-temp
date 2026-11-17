@@ -43,12 +43,17 @@ goto redis_ready
 echo [+] Redis is connected and healthy (localhost:6379).
 
 :redis_ready
-echo [+] Starting Celery worker (Windows solo pool)...
+rem How many batches may run at the same time. Override with: set CELERY_CONCURRENCY=2
+if not defined CELERY_CONCURRENCY set "CELERY_CONCURRENCY=4"
+
+echo [+] Starting Celery worker (threads pool, %CELERY_CONCURRENCY% concurrent batches)...
 echo [i] Task queue: tasks.process_batch_task
 echo.
 
-rem Run Celery worker with solo pool via python -m celery (avoids Device Guard blocking generated .exe stubs)
-python -m celery -A app.core.celery_app worker --loglevel=INFO --pool=solo
+rem Threads pool (prefork is unreliable on Windows; solo runs only ONE batch at a time and queues the rest).
+rem All batches share one process, so the BiRefNet model is loaded once and its inference gate is shared.
+rem Launched via python -m celery to avoid Device Guard blocking generated .exe stubs.
+python -m celery -A app.core.celery_app worker --loglevel=INFO --pool=threads --concurrency=%CELERY_CONCURRENCY%
 
 if errorlevel 1 (
     echo.
