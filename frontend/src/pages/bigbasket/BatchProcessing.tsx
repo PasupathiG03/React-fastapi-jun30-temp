@@ -754,7 +754,7 @@ export default function BatchProcessing() {
 function BatchTableRow({
   index,
   batch,
-  isExpanded,
+  isExpanded: isExpandedProp,
   progressPct,
   actionLoading,
   onToggle,
@@ -835,11 +835,16 @@ function BatchTableRow({
     }
   }, [batch.created_at]);
 
+  // The processed images can only be opened once the batch has completed.
+  const canInspect = batch.status === "completed";
+  const isExpanded = isExpandedProp && canInspect;
+  const inspectLockedTitle = "Available after the batch completes";
+
   return (
     <>
       <tr
-        onClick={onToggle}
-        className={`group transition-colors cursor-pointer select-none ${isExpanded
+        onClick={canInspect ? onToggle : undefined}
+        className={`group transition-colors select-none ${canInspect ? "cursor-pointer" : "cursor-default"} ${isExpanded
           ? "bg-sky-500/5 dark:bg-white/[0.04]"
           : "hover:bg-slate-50/80 dark:hover:bg-white/[0.02]"
           }`}
@@ -853,7 +858,9 @@ function BatchTableRow({
         <td className="py-3.5 px-2 text-center">
           <button
             type="button"
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/10 transition-colors cursor-pointer"
+            disabled={!canInspect}
+            title={canInspect ? undefined : inspectLockedTitle}
+            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             aria-label="Toggle batch images"
           >
             <ChevronRight
@@ -1046,11 +1053,12 @@ function BatchTableRow({
             <button
               type="button"
               onClick={onToggle}
-              className={`p-1.5 rounded-lg transition-colors ${isExpanded
+              disabled={!canInspect}
+              className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${isExpanded
                 ? "bg-sky-500/15 text-sky-600 dark:text-sky-400 hover:bg-sky-500/25"
                 : "text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-500/10"
                 }`}
-              title={isExpanded ? "Close images view" : "Inspect processed images"}
+              title={!canInspect ? inspectLockedTitle : isExpanded ? "Close images view" : "Inspect processed images"}
               aria-label={isExpanded ? "Close images view" : "Inspect processed images"}
             >
               {isExpanded ? (
