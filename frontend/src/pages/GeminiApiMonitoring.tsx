@@ -167,10 +167,21 @@ export default function GeminiApiMonitoring() {
                 <h1 className="text-xl font-bold text-slate-900 dark:text-white">
                   Gemini API Monitoring
                 </h1>
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
+                <span
+                  className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 whitespace-nowrap"
+                  title="Primary model (GEMINI_MODEL)"
+                >
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-1.5" />
-                  {overview?.model_name || "gemini-3.5-flash-lite"}
+                  {overview ? overview.model_name || "Model not configured" : "Loading…"}
                 </span>
+                {overview?.fallback_model_name && (
+                  <span
+                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 whitespace-nowrap"
+                    title="Fallback model (GEMINI_FALLBACK_MODEL) — used only when the primary model stays overloaded"
+                  >
+                    Fallback: {overview.fallback_model_name}
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 Multimodal token consumption, reasoning analysis, dual USD/INR official token pricing & SHA-256 caching efficiency.
@@ -400,6 +411,85 @@ export default function GeminiApiMonitoring() {
           </div>
         </div>
 
+        {/* ── USAGE BY MODEL (which model actually answered) ── */}
+        {overview?.model_breakdown && overview.model_breakdown.length > 0 && (
+          <div className="rounded-2xl border border-slate-200/80 dark:border-white/5 bg-white/70 dark:bg-slate-900/60 backdrop-blur-md overflow-hidden shadow-sm">
+            <div className="p-4 border-b border-slate-200 dark:border-white/10">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">Usage by Model</h2>
+              <p className="text-xs text-slate-500">
+                Each request is counted under the model that actually answered it. Cost uses that model's rate.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/75 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-white/10 text-[11px] uppercase tracking-wider">
+                    <th className="py-3 px-3.5">Model</th>
+                    <th className="py-3 px-3.5 text-right">Requests</th>
+                    <th className="py-3 px-3.5 text-right">Success</th>
+                    <th className="py-3 px-3.5 text-right">As Fallback</th>
+                    <th className="py-3 px-3.5 text-right">Cache Hits</th>
+                    <th className="py-3 px-3.5 text-right">Errors</th>
+                    <th className="py-3 px-3.5 text-right">Tokens</th>
+                    <th className="py-3 px-3.5 text-right">Rate / 1M (in · out)</th>
+                    <th className="py-3 px-3.5 text-right">
+                      Cost ({currency === "USD" ? "$ USD" : currency === "INR" ? "₹ INR" : "$ & ₹"})
+                    </th>
+                    <th className="py-3 px-3.5 text-right">Avg Latency</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                  {overview.model_breakdown.map((m) => {
+                    const role =
+                      m.model_name === overview.model_name
+                        ? "Primary"
+                        : m.model_name === overview.fallback_model_name
+                          ? "Fallback"
+                          : "Not configured now";
+                    return (
+                      <tr key={m.model_name} className="hover:bg-sky-500/5 dark:hover:bg-white/[0.02] transition-colors">
+                        <td className="py-2.5 px-3.5">
+                          <div className="font-mono font-semibold text-slate-900 dark:text-white">{m.model_name}</div>
+                          <div
+                            className={`text-[10px] font-semibold ${
+                              role === "Primary"
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : role === "Fallback"
+                                  ? "text-amber-600 dark:text-amber-400"
+                                  : "text-slate-400"
+                            }`}
+                          >
+                            {role}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3.5 text-right font-mono font-bold text-slate-900 dark:text-white">{fmt(m.requests)}</td>
+                        <td className="py-2.5 px-3.5 text-right font-mono text-emerald-600 dark:text-emerald-400">{fmt(m.success_requests)}</td>
+                        <td className="py-2.5 px-3.5 text-right font-mono text-amber-600 dark:text-amber-400">{fmt(m.fallback_requests)}</td>
+                        <td className="py-2.5 px-3.5 text-right font-mono text-teal-600 dark:text-teal-400">{fmt(m.cache_hits)}</td>
+                        <td className="py-2.5 px-3.5 text-right font-mono text-rose-600 dark:text-rose-400">{fmt(m.error_requests)}</td>
+                        <td className="py-2.5 px-3.5 text-right font-mono text-slate-700 dark:text-slate-300">{fmt(m.total_tokens)}</td>
+                        <td
+                          className="py-2.5 px-3.5 text-right font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap"
+                          title={m.pricing_known ? "Published rate for this model" : "Rate not on file — default rate used"}
+                        >
+                          ${m.input_per_million_usd} · ${m.output_per_million_usd}
+                          {!m.pricing_known && <span className="text-amber-500"> *</span>}
+                        </td>
+                        <td className="py-2.5 px-3.5 text-right font-mono font-semibold text-amber-600 dark:text-amber-400">
+                          {renderCostDisplay(m.cost_usd, m.cost_inr)}
+                        </td>
+                        <td className="py-2.5 px-3.5 text-right font-mono text-slate-500 whitespace-nowrap">
+                          {m.avg_latency_ms > 0 ? `${m.avg_latency_ms.toFixed(0)} ms` : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* ── OFFICIAL GEMINI TOKEN & BILLING LOGIC REFERENCE CARD ── */}
         <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 dark:bg-sky-950/20 p-4 space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -438,10 +528,38 @@ export default function GeminiApiMonitoring() {
                 <span className="w-2 h-2 rounded-full bg-amber-500" />
                 Official Rates (USD & INR)
               </div>
-              <p className="text-slate-600 dark:text-slate-400 text-[11px] leading-relaxed">
-                Input: <strong>$0.30 / 1M</strong> (≈ ₹{(0.30 * exchangeRate).toFixed(2)} / 1M)<br />
-                Output & Thoughts: <strong>$2.50 / 1M</strong> (≈ ₹{(2.50 * exchangeRate).toFixed(2)} / 1M)
-              </p>
+              {(overview?.configured_models?.length
+                ? overview.configured_models
+                : [
+                    {
+                      model_name: overview?.model_name || "Default",
+                      role: "primary" as const,
+                      input_per_million_usd: overview?.pricing_rates.input_per_million_usd ?? 0.3,
+                      output_per_million_usd: overview?.pricing_rates.output_per_million_usd ?? 2.5,
+                      pricing_known: true,
+                    },
+                  ]
+              ).map((m) => (
+                <p key={m.model_name} className="text-slate-600 dark:text-slate-400 text-[11px] leading-relaxed">
+                  <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">{m.model_name}</span>
+                  <span className="ml-1 text-[10px] uppercase tracking-wide text-slate-400">({m.role})</span>
+                  <br />
+                  Input: <strong>${m.input_per_million_usd} / 1M</strong> (≈ ₹{(m.input_per_million_usd * exchangeRate).toFixed(2)})
+                  <br />
+                  Output & Thoughts: <strong>${m.output_per_million_usd} / 1M</strong> (≈ ₹{(m.output_per_million_usd * exchangeRate).toFixed(2)})
+                  {"cached_per_million_usd" in m && m.cached_per_million_usd !== undefined && (
+                    <>
+                      <br />
+                      Cached input: <strong>${m.cached_per_million_usd} / 1M</strong> (≈ ₹{(m.cached_per_million_usd * exchangeRate).toFixed(2)})
+                    </>
+                  )}
+                  {!m.pricing_known && (
+                    <span className="block text-[10px] text-amber-600 dark:text-amber-400">
+                      Rate not on file for this model — default rate used.
+                    </span>
+                  )}
+                </p>
+              ))}
             </div>
 
             <div className="bg-white/60 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200/60 dark:border-white/5 space-y-1">
@@ -485,7 +603,7 @@ export default function GeminiApiMonitoring() {
                 { value: "ALL", label: "All Statuses" },
                 { value: "SUCCESS", label: "Success Only" },
                 { value: "CACHE_HIT", label: "Cache Hits (Saved)" },
-                { value: "FALLBACK", label: "Fallback" },
+                { value: "FALLBACK", label: "Fallback Model Used" },
                 { value: "ERROR", label: "Errors" },
               ]}
               className="w-40"
@@ -541,6 +659,7 @@ export default function GeminiApiMonitoring() {
                   <th className="py-3 px-3.5">SKU / BBID</th>
                   <th className="py-3 px-3.5">Filename</th>
                   <th className="py-3 px-3.5">Category</th>
+                  <th className="py-3 px-3.5">Model</th>
                   <th className="py-3 px-3.5">Status</th>
                   <th className="py-3 px-3.5 text-right">Prompt</th>
                   <th className="py-3 px-3.5 text-right">Output</th>
@@ -555,10 +674,10 @@ export default function GeminiApiMonitoring() {
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-white/5">
                 {loadingLogs ? (
-                  <GlobalTableRowSkeleton rows={5} cols={13} />
+                  <GlobalTableRowSkeleton rows={5} cols={14} />
                 ) : logs.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="py-12 text-center text-slate-500">
+                    <td colSpan={14} className="py-12 text-center text-slate-500">
                       No Gemini API logs found for selected criteria.
                     </td>
                   </tr>
@@ -619,6 +738,19 @@ export default function GeminiApiMonitoring() {
                             </span>
                           );
                         })()}
+                      </td>
+
+                      {/* Model that answered */}
+                      <td className="py-2.5 px-3.5 whitespace-nowrap">
+                        <div className="font-mono text-[11px] text-slate-700 dark:text-slate-300">{log.model_name || "—"}</div>
+                        {log.used_fallback_model && (
+                          <div
+                            className="text-[10px] font-semibold text-amber-600 dark:text-amber-400"
+                            title={log.primary_model ? `${log.primary_model} was overloaded` : undefined}
+                          >
+                            fallback
+                          </div>
+                        )}
                       </td>
 
                       {/* Status */}
@@ -736,6 +868,11 @@ export default function GeminiApiMonitoring() {
                   <div className="font-mono text-sky-500 mt-0.5 truncate" title={inspectItem.model_name}>
                     {inspectItem.model_name}
                   </div>
+                  {inspectItem.used_fallback_model && (
+                    <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
+                      Fallback — {inspectItem.primary_model || "primary model"} was overloaded
+                    </div>
+                  )}
                 </div>
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-white/5">
                   <div className="text-slate-400">Latency</div>

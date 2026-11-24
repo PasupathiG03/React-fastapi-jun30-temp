@@ -1,6 +1,5 @@
 import csv
 import io
-import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -14,6 +13,7 @@ from app.models.gemini_usage import GeminiApiLog
 from app.models.role import Role  # noqa: F401
 from app.models.user import User
 from app.services.bigbasket.forex_service import ForexService
+from app.services.bigbasket.gemini_service import GeminiClassificationService
 
 router = APIRouter()
 
@@ -91,7 +91,62 @@ def get_gemini_overview(
     avg_latency_ms = float(token_sums.avg_latency) if token_sums else 0.0
 
     cache_hit_rate = round((cache_hits / total_requests * 100), 1) if total_requests > 0 else 0.0
-    success_rate = round((success_requests / total_requests * 100), 1) if total_requests > 0 else 100.0
+    # FALLBACK = answered successfully by GEMINI_FALLBACK_MODEL, so it counts as a success.
+    success_rate = (
+        round(((success_requests + fallback_requests) / total_requests * 100), 1) if total_requests > 0 else 100.0
+    )
+
+    # Per-model breakdown: which model actually answered, and what it cost.
+    model_query = db.query(
+        GeminiApiLog.model_name,
+        func.count(GeminiApiLog.id).label("requests"),
+        func.coalesce(func.sum(case((GeminiApiLog.status == "SUCCESS", 1), else_=0)), 0).label("success"),
+        func.coalesce(func.sum(case((GeminiApiLog.status == "FALLBACK", 1), else_=0)), 0).label("fallback"),
+        func.coalesce(func.sum(case((GeminiApiLog.status == "CACHE_HIT", 1), else_=0)), 0).label("cache_hits"),
+        func.coalesce(func.sum(case((GeminiApiLog.status == "ERROR", 1), else_=0)), 0).label("errors"),
+        func.coalesce(func.sum(GeminiApiLog.total_tokens), 0).label("tokens"),
+        func.coalesce(func.sum(GeminiApiLog.estimated_cost_usd), 0.0).label("cost"),
+        func.coalesce(func.avg(case((GeminiApiLog.status.in_(("SUCCESS", "FALLBACK")), GeminiApiLog.latency_ms))), 0.0).label("latency"),
+    )
+    if since_date is not None:
+        model_query = model_query.filter(GeminiApiLog.created_at >= since_date)
+    model_breakdown = []
+    for row in model_query.group_by(GeminiApiLog.model_name).order_by(desc("requests")).all():
+        rates = GeminiClassificationService.get_pricing(row.model_name or "")
+        cost_usd = float(row.cost)
+        model_breakdown.append({
+            "model_name": row.model_name or "(unknown)",
+            "requests": int(row.requests),
+            "success_requests": int(row.success),
+            "fallback_requests": int(row.fallback),
+            "cache_hits": int(row.cache_hits),
+            "error_requests": int(row.errors),
+            "total_tokens": int(row.tokens),
+            "cost_usd": round(cost_usd, 6),
+            "cost_inr": round(cost_usd * inr_rate, 4),
+            "avg_latency_ms": round(float(row.latency), 1),
+            "input_per_million_usd": rates["input"],
+            "output_per_million_usd": rates["output"],
+            "cached_per_million_usd": rates["cached"],
+            "pricing_known": rates["known"],
+        })
+
+    # Rates for each configured model (primary + fallback).
+    model_chain = GeminiClassificationService.get_model_chain()
+    configured_models = []
+    for idx, name in enumerate(model_chain):
+        rates = GeminiClassificationService.get_pricing(name)
+        configured_models.append({
+            "model_name": name,
+            "role": "primary" if idx == 0 else "fallback",
+            "input_per_million_usd": rates["input"],
+            "output_per_million_usd": rates["output"],
+            "input_per_million_inr": round(rates["input"] * inr_rate, 2),
+            "output_per_million_inr": round(rates["output"] * inr_rate, 2),
+            "cached_per_million_usd": rates["cached"],
+            "pricing_known": rates["known"],
+        })
+    primary_rates = GeminiClassificationService.get_pricing(model_chain[0] if model_chain else "")
 
     # Category breakdown
     cat_query = db.query(GeminiApiLog.primary_category, func.count(GeminiApiLog.id))
@@ -112,16 +167,19 @@ def get_gemini_overview(
             category_distribution[cat.upper()] = cnt
 
     return {
-        "model_name": (getattr(settings, "GEMINI_MODEL", "") or os.getenv("GEMINI_MODEL", "")).strip(),
+        "model_name": model_chain[0] if model_chain else "",
+        "fallback_model_name": model_chain[1] if len(model_chain) > 1 else "",
+        "configured_models": configured_models,
+        "model_breakdown": model_breakdown,
         "api_configured": bool(getattr(settings, "GEMINI_API_KEY", "")),
         "days_window": days_val,
         "window_label": "All Day (Today)" if days_val == 1 else "All Days (All Time)" if days_val == 0 else f"{days_val} Days",
         "exchange_rate": fx,
         "pricing_rates": {
-            "input_per_million_usd": 0.30,
-            "output_per_million_usd": 2.50,
-            "input_per_million_inr": round(0.30 * inr_rate, 2),
-            "output_per_million_inr": round(2.50 * inr_rate, 2),
+            "input_per_million_usd": primary_rates["input"],
+            "output_per_million_usd": primary_rates["output"],
+            "input_per_million_inr": round(primary_rates["input"] * inr_rate, 2),
+            "output_per_million_inr": round(primary_rates["output"] * inr_rate, 2),
             "exchange_rate": inr_rate,
             "image_tile_tokens": 258,
             "tile_dimensions": "384x384 or 768x768 tiles",
@@ -320,6 +378,8 @@ def list_gemini_logs(
             "bbid": log.bbid,
             "filename": log.filename,
             "model_name": log.model_name,
+            "primary_model": (log.metadata_payload or {}).get("primary_model"),
+            "used_fallback_model": bool((log.metadata_payload or {}).get("used_fallback_model")),
             "status": log.status,
             "status_code": log.status_code,
             "prompt_tokens": log.prompt_tokens,
@@ -411,6 +471,7 @@ def export_gemini_logs_csv(
         "SKU / BBID",
         "Original Filename",
         "Model",
+        "Fallback Model Used",
         "Status",
         "Primary Category",
         "Subcategory",
@@ -438,6 +499,7 @@ def export_gemini_logs_csv(
             log.bbid or "",
             log.filename or "",
             log.model_name or "",
+            "Yes" if (log.metadata_payload or {}).get("used_fallback_model") else "No",
             log.status or "",
             log.primary_category or "",
             log.subcategory or "",

@@ -79,7 +79,9 @@ class DetectedPackagingRegion(BaseModel):
 class GeminiClassificationService:
     """
     Google Gemini AI Multimodal Image Classification Client.
-    Uses exactly ONE configured Gemini model (settings.GEMINI_MODEL) with structured JSON output.
+    Uses the configured primary model (settings.GEMINI_MODEL) with structured JSON output and,
+    when that model stays overloaded (429/5xx) after all retries, the optional
+    settings.GEMINI_FALLBACK_MODEL. Every usage log records the model that actually answered.
     Features image hash-based caching to prevent redundant API calls.
     Prompts and schemas are cleanly maintained in app.prompts.
     """
@@ -89,20 +91,185 @@ class GeminiClassificationService:
     _MRP_EXPIRY_CACHE: Dict[str, Dict[str, Any]] = {}
     _MAX_CACHE_ITEMS = 2000
 
-    # Official Google AI Studio Pricing for gemini-3.5-flash-lite / gemini-2.5-flash
+    # Default Google AI Studio paid-tier rates (USD per 1M tokens), used for any model not in MODEL_PRICING.
     PRICE_INPUT_PER_MILLION: float = 0.30     # $0.30 per 1M input tokens
     PRICE_OUTPUT_PER_MILLION: float = 2.50    # $2.50 per 1M output/thinking tokens
 
+    # Per-model rates, USD per 1M tokens: (input, output incl. thinking, cached input or None).
+    # Matched by longest model-name prefix, so "gemini-2.5-flash-lite-xx" uses the flash-lite rate, not flash.
+    # Source: https://aistudio.google.com/docs/pricing (Standard paid tier, checked 2026-11-24).
+    # Cached input = implicit context-cache hits (usageMetadata.cachedContentTokenCount); None = cache rate
+    # not on file, so cached tokens are billed at the full input rate (never under-reports cost).
+    # Note: 3.8/3.6 Flash rise to $1.50/$7.50 on 2027-01-01; Gemini 4 Carbon/Argon rise to $4/$20 on 2026-12-01.
+    MODEL_PRICING: Dict[str, tuple] = {
+        "gemini-4-carbon": (2.00, 10.00, None),
+        "gemini-4-argon": (2.00, 10.00, None),
+        "gemini-4-neon": (3.00, 15.00, None),
+        "gemini-4-hydrogen": (1.50, 7.50, 0.075),
+        "gemini-3.8-flash": (0.75, 3.75, 0.075),
+        "gemini-3.6-flash": (0.75, 3.75, None),
+        "gemini-3.5-flash-lite": (0.30, 2.50, 0.03),
+        "gemini-3.1-flash-lite": (0.25, 1.50, 0.025),
+        "gemini-3-flash-preview": (0.50, 3.00, None),
+        "gemini-3.1-pro-preview": (2.00, 12.00, None),   # prompts <= 200k tokens
+        "gemini-2.5-flash": (0.30, 2.50, None),          # deprecated: routed to gemini-3.5-flash-lite from 2026-12-01
+        "gemini-2.5-flash-lite": (0.10, 0.40, 0.01),
+        "gemini-2.5-pro": (1.25, 10.00, None),           # deprecated: routed to gemini-3.8-flash from 2026-12-01
+    }
+
+    # HTTP statuses where another attempt (or another model) can succeed.
+    _RETRYABLE_STATUS = (429, 500, 502, 503, 504)
+
     @classmethod
-    def calculate_cost(cls, prompt_tokens: int, candidates_tokens: int, thoughts_tokens: int = 0) -> float:
+    def get_pricing(cls, model_name: str = "") -> Dict[str, Any]:
+        """Returns {"input", "output", "cached"} in $/1M tokens plus "known" (rate on file) for a model name."""
+        name = (model_name or "").strip().lower()
+        best = ""
+        for prefix in cls.MODEL_PRICING:
+            if name.startswith(prefix) and len(prefix) > len(best):
+                best = prefix
+        if best:
+            rate_in, rate_out, rate_cached = cls.MODEL_PRICING[best]
+            return {
+                "input": rate_in, "output": rate_out,
+                "cached": rate_cached if rate_cached is not None else rate_in, "known": True,
+            }
+        return {
+            "input": cls.PRICE_INPUT_PER_MILLION, "output": cls.PRICE_OUTPUT_PER_MILLION,
+            "cached": cls.PRICE_INPUT_PER_MILLION, "known": False,
+        }
+
+    @classmethod
+    def calculate_cost(
+        cls,
+        prompt_tokens: int,
+        candidates_tokens: int,
+        thoughts_tokens: int = 0,
+        model_name: str = "",
+        cached_tokens: int = 0,
+    ) -> float:
         """
-        Calculates exact API cost in USD based on official Google AI Studio rates:
-        - Input: $0.30 per 1,000,000 tokens ($0.00000030 per token)
-        - Output & Thinking: $2.50 per 1,000,000 tokens ($0.00000250 per token)
+        API cost in USD at the rates of the model that answered:
+        - prompt tokens (text + image) at the input rate, except the cached part of the prompt
+          (promptTokenCount includes cachedContentTokenCount) which is billed at the cache rate;
+        - output and thinking tokens at the output rate ("Output price (including thinking tokens)").
         """
-        cost_input = (prompt_tokens / 1_000_000.0) * cls.PRICE_INPUT_PER_MILLION
-        cost_output = ((candidates_tokens + thoughts_tokens) / 1_000_000.0) * cls.PRICE_OUTPUT_PER_MILLION
-        return round(cost_input + cost_output, 7)
+        rates = cls.get_pricing(model_name)
+        cached = max(0, min(int(cached_tokens or 0), int(prompt_tokens or 0)))
+        cost_input = ((prompt_tokens - cached) / 1_000_000.0) * rates["input"]
+        cost_cached = (cached / 1_000_000.0) * rates["cached"]
+        cost_output = ((candidates_tokens + thoughts_tokens) / 1_000_000.0) * rates["output"]
+        return round(cost_input + cost_cached + cost_output, 7)
+
+    @classmethod
+    def get_model_chain(cls) -> List[str]:
+        """Primary model first, then the fallback model (if configured and different)."""
+        import os
+        primary = (getattr(settings, "GEMINI_MODEL", "") or os.getenv("GEMINI_MODEL", "")).strip()
+        fallback = (getattr(settings, "GEMINI_FALLBACK_MODEL", "") or os.getenv("GEMINI_FALLBACK_MODEL", "")).strip()
+        chain = [m for m in (primary, fallback) if m]
+        return list(dict.fromkeys(chain))
+
+    @classmethod
+    def _call_gemini(cls, payload: Dict[str, Any], timeout: Any, parse, purpose: str) -> Dict[str, Any]:
+        """
+        POSTs the payload to each model in the chain. Each model gets GEMINI_MAX_ATTEMPTS tries;
+        only overload/transient failures (429, 5xx, timeouts, unparseable output) move on to the
+        fallback model. Bad-request/auth errors (400/401/403) stop immediately since another model
+        would fail the same way.
+
+        `parse(raw_json)` turns a 200 response into the caller's value and raises on malformed output.
+
+        Returns a dict with: ok, model, value, usage, latency, status_code, error, used_fallback, primary_model.
+        """
+        models = cls.get_model_chain()
+        api_key = getattr(settings, "GEMINI_API_KEY", "") or ""
+        max_attempts = max(1, settings.GEMINI_MAX_ATTEMPTS)
+        primary = models[0] if models else ""
+        result: Dict[str, Any] = {
+            "ok": False, "model": primary, "value": None, "usage": {}, "latency": 0.0,
+            "status_code": 500, "error": "No Gemini model configured", "used_fallback": False,
+            "primary_model": primary,
+        }
+
+        for idx, model_name in enumerate(models):
+            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            result.update({"model": model_name, "used_fallback": idx > 0})
+            model_payload = payload
+            gen_cfg = payload.get("generationConfig", {})
+            if "thinkingLevel" in gen_cfg.get("thinkingConfig", {}) and model_name.lower().startswith(("gemini-2", "gemini-1")):
+                # thinkingLevel is a Gemini 3+ setting; 2.x models reject it with 400, so drop it for them.
+                model_payload = {**payload, "generationConfig": {k: v for k, v in gen_cfg.items() if k != "thinkingConfig"}}
+            for attempt in range(1, max_attempts + 1):
+                latency = 0.0
+                try:
+                    t0 = time.perf_counter()
+                    resp = requests.post(
+                        endpoint,
+                        headers={"Content-Type": "application/json"},
+                        json=model_payload,
+                        timeout=timeout,
+                    )
+                    latency = (time.perf_counter() - t0) * 1000
+
+                    if resp.status_code == 200:
+                        raw_json = resp.json()
+                        value = parse(raw_json)
+                        result.update({
+                            "ok": True, "value": value, "latency": latency, "status_code": 200,
+                            "usage": raw_json.get("usageMetadata", {}) or {}, "error": None,
+                        })
+                        return result
+
+                    result.update({
+                        "latency": latency, "status_code": resp.status_code,
+                        "error": f"Gemini API error {resp.status_code}: {resp.text[:300]}",
+                    })
+                    if resp.status_code not in cls._RETRYABLE_STATUS and resp.status_code != 404:
+                        # Request/auth problem: same outcome on any model, so stop here.
+                        logger.error(f"Gemini [{model_name}] {purpose}: {result['error']}")
+                        return result
+                    if resp.status_code == 404:
+                        break  # model name not found: no point retrying it, try the fallback
+                except (requests.RequestException, json.JSONDecodeError, ValidationError, ValueError, KeyError, TypeError) as err:
+                    result.update({
+                        "latency": latency, "status_code": 500,
+                        "error": f"Gemini {purpose} failed: {str(err)[:400]}",
+                    })
+
+                if attempt < max_attempts:
+                    backoff = min(10.0, (1.8 ** attempt) + random.uniform(0.5, 1.5))
+                    logger.warning(
+                        f"Gemini [{model_name}] {purpose}: {result['status_code']} "
+                        f"(attempt {attempt}/{max_attempts}). Retrying in {backoff:.1f}s..."
+                    )
+                    time.sleep(backoff)
+
+            if idx + 1 < len(models):
+                logger.warning(
+                    f"Gemini [{model_name}] {purpose} still failing ({result['status_code']}) after "
+                    f"{max_attempts} attempt(s); switching to fallback model {models[idx + 1]}."
+                )
+
+        logger.error(f"Gemini [{result['model']}] {purpose}: {result['error']}")
+        return result
+
+    @staticmethod
+    def _first_text_part(raw_json: Dict[str, Any]) -> str:
+        candidates = raw_json.get("candidates", [])
+        if candidates:
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if parts and "text" in parts[0]:
+                return parts[0]["text"]
+        raise ValueError("Empty or malformed Gemini response candidate parts")
+
+    @staticmethod
+    def _call_metadata(call: Dict[str, Any], extra: Dict[str, Any]) -> Dict[str, Any]:
+        """Usage-log metadata noting which model answered and whether the fallback was used."""
+        meta = dict(extra)
+        meta["primary_model"] = call.get("primary_model")
+        meta["used_fallback_model"] = bool(call.get("used_fallback"))
+        return meta
 
     @classmethod
     def _log_usage(
@@ -249,7 +416,7 @@ class GeminiClassificationService:
             cached_classification = cls._CACHE[img_hash]
             logger.info(f"Gemini Cache Hit for hash {img_hash[:10]} (BBID: {bbid})")
             # Typical call saves ~300 prompt tokens + 120 output tokens = ~$0.00039 USD
-            cost_saved = cls.calculate_cost(prompt_tokens=300, candidates_tokens=120)
+            cost_saved = cls.calculate_cost(prompt_tokens=300, candidates_tokens=120, model_name=model_name)
             cls._log_usage(
                 status="CACHE_HIT",
                 status_code=200,
@@ -306,8 +473,6 @@ class GeminiClassificationService:
             return unknown_res
 
         # 3. Call Google Gemini REST API with Structured JSON Output
-        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-
         # Optimize payload for fast, reliable transfer (<1280px)
         send_bytes = image_bytes
         mime_type = "image/png" if image_bytes[:8] == b"\x89PNG\r\n\x1a\n" else "image/jpeg"
@@ -363,120 +528,63 @@ class GeminiClassificationService:
         if thinking_level:
             payload["generationConfig"]["thinkingConfig"] = {"thinkingLevel": thinking_level}
 
-        max_attempts = max(1, settings.GEMINI_MAX_ATTEMPTS)
-        for attempt in range(1, max_attempts + 1):
-            try:
-                t0 = time.perf_counter()
-                resp = requests.post(
-                    endpoint,
-                    headers={"Content-Type": "application/json"},
-                    json=payload,
-                    timeout=30.0
-                )
-                latency = (time.perf_counter() - t0) * 1000
+        def _parse_classification(raw_json: Dict[str, Any]) -> GeminiProductClassification:
+            return GeminiProductClassification(**json.loads(cls._first_text_part(raw_json)))
 
-                if resp.status_code == 200:
-                    raw_json = resp.json()
-                    usage_meta = raw_json.get("usageMetadata", {})
-                    prompt_tok = usage_meta.get("promptTokenCount", 280)
-                    candidates_tok = usage_meta.get("candidatesTokenCount", 95)
-                    thoughts_tok = usage_meta.get("thoughtsTokenCount", 0)
-                    total_tok = usage_meta.get("totalTokenCount", prompt_tok + candidates_tok + thoughts_tok)
-                    cached_tok = usage_meta.get("cachedContentTokenCount", 0)
-                    cost_usd = cls.calculate_cost(prompt_tok, candidates_tok, thoughts_tok)
+        call = cls._call_gemini(payload, timeout=30.0, parse=_parse_classification, purpose="classification")
+        used_model = call["model"]
+        if call["ok"]:
+            classification = call["value"]
+            usage_meta = call["usage"]
+            latency = call["latency"]
+            prompt_tok = usage_meta.get("promptTokenCount", 280)
+            candidates_tok = usage_meta.get("candidatesTokenCount", 95)
+            thoughts_tok = usage_meta.get("thoughtsTokenCount", 0)
+            total_tok = usage_meta.get("totalTokenCount", prompt_tok + candidates_tok + thoughts_tok)
+            cached_tok = usage_meta.get("cachedContentTokenCount", 0)
+            cost_usd = cls.calculate_cost(
+                prompt_tok, candidates_tok, thoughts_tok, model_name=used_model, cached_tokens=cached_tok
+            )
+            fallback_note = " (fallback)" if call["used_fallback"] else ""
+            logger.info(
+                f"Gemini [{used_model}]{fallback_note} classified {filename} (BBID {bbid}) -> "
+                f"{classification.primary_category} ({classification.subcategory}) in {latency:.1f}ms | "
+                f"Tokens: {total_tok} (In: {prompt_tok}, Out: {candidates_tok}, Thoughts: {thoughts_tok}) | ${cost_usd:.6f}"
+            )
+            cls._cache_classification(img_hash, classification)
+            cls._log_usage(
+                status="FALLBACK" if call["used_fallback"] else "SUCCESS",
+                status_code=200,
+                model_name=used_model,
+                prompt_tokens=prompt_tok,
+                candidates_tokens=candidates_tok,
+                thoughts_tokens=thoughts_tok,
+                total_tokens=total_tok,
+                cached_tokens=cached_tok,
+                estimated_cost_usd=cost_usd,
+                cost_saved_usd=0.0,
+                latency_ms=latency,
+                bbid=bbid,
+                filename=filename,
+                batch_id=batch_id,
+                image_id=image_id,
+                classification=classification,
+                metadata_payload=cls._call_metadata(call, {"usage_metadata": usage_meta}),
+            )
+            return classification
 
-                    candidates = raw_json.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        if parts and "text" in parts[0]:
-                            text_payload = parts[0]["text"]
-                            parsed_dict = json.loads(text_payload)
-                            classification = GeminiProductClassification(**parsed_dict)
-                            logger.info(
-                                f"Gemini [{model_name}] classified {filename} (BBID {bbid}) -> "
-                                f"{classification.primary_category} ({classification.subcategory}) in {latency:.1f}ms | "
-                                f"Tokens: {total_tok} (In: {prompt_tok}, Out: {candidates_tok}, Thoughts: {thoughts_tok}) | ${cost_usd:.6f}"
-                            )
-                            cls._cache_classification(img_hash, classification)
-                            cls._log_usage(
-                                status="SUCCESS",
-                                status_code=200,
-                                model_name=model_name,
-                                prompt_tokens=prompt_tok,
-                                candidates_tokens=candidates_tok,
-                                thoughts_tokens=thoughts_tok,
-                                total_tokens=total_tok,
-                                cached_tokens=cached_tok,
-                                estimated_cost_usd=cost_usd,
-                                cost_saved_usd=0.0,
-                                latency_ms=latency,
-                                bbid=bbid,
-                                filename=filename,
-                                batch_id=batch_id,
-                                image_id=image_id,
-                                classification=classification,
-                                metadata_payload={"usage_metadata": usage_meta}
-                            )
-                            return classification
-                    raise ValueError("Empty or malformed Gemini response candidate parts")
-
-                elif resp.status_code in (429, 503) and attempt < max_attempts:
-                    backoff = min(10.0, (1.8 ** attempt) + random.uniform(0.5, 1.5))
-                    logger.warning(
-                        f"Gemini {resp.status_code} temporary capacity spike (attempt {attempt}/{max_attempts}). "
-                        f"Google servers under high demand. Retrying in {backoff:.1f}s..."
-                    )
-                    time.sleep(backoff)
-                    continue
-
-                elif resp.status_code == 429:
-                    err_msg = f"Gemini API rate limit exceeded (429): {resp.text[:300]}"
-                    logger.error(err_msg)
-                    cls._log_usage(
-                        status="ERROR",
-                        status_code=429,
-                        model_name=model_name,
-                        latency_ms=latency,
-                        bbid=bbid,
-                        filename=filename,
-                        batch_id=batch_id,
-                        image_id=image_id,
-                        error_message=err_msg
-                    )
-                else:
-                    err_msg = f"Gemini API error {resp.status_code}: {resp.text[:300]}"
-                    logger.error(err_msg)
-                    cls._log_usage(
-                        status="ERROR",
-                        status_code=resp.status_code,
-                        model_name=model_name,
-                        latency_ms=latency,
-                        bbid=bbid,
-                        filename=filename,
-                        batch_id=batch_id,
-                        image_id=image_id,
-                        error_message=err_msg
-                    )
-
-            except (requests.RequestException, json.JSONDecodeError, ValidationError, ValueError) as err:
-                if attempt < max_attempts:
-                    backoff = min(10.0, (1.8 ** attempt) + random.uniform(0.5, 1.5))
-                    logger.warning(f"Gemini request exception (attempt {attempt}/{max_attempts}): {err}. Retrying in {backoff:.1f}s...")
-                    time.sleep(backoff)
-                    continue
-                err_msg = f"Gemini classification failed: {str(err)[:400]}"
-                logger.error(err_msg)
-                cls._log_usage(
-                    status="ERROR",
-                    status_code=500,
-                    model_name=model_name,
-                    latency_ms=0.0,
-                    bbid=bbid,
-                    filename=filename,
-                    batch_id=batch_id,
-                    image_id=image_id,
-                    error_message=err_msg
-                )
+        cls._log_usage(
+            status="ERROR",
+            status_code=call["status_code"],
+            model_name=used_model,
+            latency_ms=call["latency"],
+            bbid=bbid,
+            filename=filename,
+            batch_id=batch_id,
+            image_id=image_id,
+            error_message=call["error"],
+            metadata_payload=cls._call_metadata(call, {"action": "classification"}),
+        )
 
         # 4. Strict AI Policy: If Gemini API fails, NEVER guess with keyword heuristics.
         # Mark as UNKNOWN and route for manual review.
@@ -563,77 +671,49 @@ class GeminiClassificationService:
             }
         }
 
-        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+        def _parse_regions(raw_json: Dict[str, Any]) -> List[Dict[str, Any]]:
+            return json.loads(cls._first_text_part(raw_json)).get("detected_regions", [])
 
-        max_attempts = max(1, settings.GEMINI_MAX_ATTEMPTS)
-        for attempt in range(1, max_attempts + 1):
-            try:
-                t0 = time.perf_counter()
-                resp = requests.post(
-                    endpoint,
-                    headers={"Content-Type": "application/json"},
-                    json=payload,
-                    timeout=(30.0, 90.0)
-                )
-                latency = (time.perf_counter() - t0) * 1000
+        call = cls._call_gemini(payload, timeout=(30.0, 90.0), parse=_parse_regions, purpose="sub-region detection")
+        used_model = call["model"]
+        if call["ok"]:
+            regions = call["value"]
+            usage_meta = call["usage"]
+            latency = call["latency"]
+            prompt_tok = usage_meta.get("promptTokenCount", 300)
+            candidates_tok = usage_meta.get("candidatesTokenCount", 120)
+            thoughts_tok = usage_meta.get("thoughtsTokenCount", 0)
+            total_tok = usage_meta.get("totalTokenCount", prompt_tok + candidates_tok + thoughts_tok)
+            cached_tok = usage_meta.get("cachedContentTokenCount", 0)
+            cost_usd = cls.calculate_cost(
+                prompt_tok, candidates_tok, thoughts_tok, model_name=used_model, cached_tokens=cached_tok
+            )
+            logger.info(
+                f"Gemini [{used_model}] localized {len(regions)} packaging sub-regions for {filename} (BBID {bbid}) in {latency:.1f}ms | "
+                f"Tokens: {total_tok} | Cost: ${cost_usd:.6f}"
+            )
+            if len(cls._SUBREGIONS_CACHE) >= cls._MAX_CACHE_ITEMS:
+                cls._SUBREGIONS_CACHE.clear()
+            cls._SUBREGIONS_CACHE[img_hash] = regions
 
-                if resp.status_code == 200:
-                    raw_json = resp.json()
-                    usage_meta = raw_json.get("usageMetadata", {})
-                    prompt_tok = usage_meta.get("promptTokenCount", 300)
-                    candidates_tok = usage_meta.get("candidatesTokenCount", 120)
-                    thoughts_tok = usage_meta.get("thoughtsTokenCount", 0)
-                    total_tok = usage_meta.get("totalTokenCount", prompt_tok + candidates_tok + thoughts_tok)
-                    cost_usd = cls.calculate_cost(prompt_tok, candidates_tok, thoughts_tok)
-
-                    candidates = raw_json.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        if parts and "text" in parts[0]:
-                            parsed = json.loads(parts[0]["text"])
-                            regions = parsed.get("detected_regions", [])
-                            logger.info(
-                                f"Gemini AI localized {len(regions)} packaging sub-regions for {filename} (BBID {bbid}) in {latency:.1f}ms | "
-                                f"Tokens: {total_tok} | Cost: ${cost_usd:.6f}"
-                            )
-                            # Cache in memory
-                            if len(cls._SUBREGIONS_CACHE) >= cls._MAX_CACHE_ITEMS:
-                                cls._SUBREGIONS_CACHE.clear()
-                            cls._SUBREGIONS_CACHE[img_hash] = regions
-
-                            cls._log_usage(
-                                status="SUCCESS",
-                                status_code=200,
-                                model_name=model_name,
-                                prompt_tokens=prompt_tok,
-                                candidates_tokens=candidates_tok,
-                                thoughts_tokens=thoughts_tok,
-                                total_tokens=total_tok,
-                                estimated_cost_usd=cost_usd,
-                                latency_ms=latency,
-                                bbid=bbid,
-                                filename=filename,
-                                batch_id=batch_id,
-                                image_id=image_id,
-                                metadata_payload={"action": "packaging_sub_regions", "region_count": len(regions)}
-                            )
-                            return regions
-                elif resp.status_code in (429, 503) and attempt < max_attempts:
-                    backoff = min(10.0, (1.8 ** attempt) + random.uniform(0.5, 1.5))
-                    logger.warning(
-                        f"Gemini {resp.status_code} temporary capacity spike (attempt {attempt}/{max_attempts}). "
-                        f"Google servers under high demand. Retrying in {backoff:.1f}s..."
-                    )
-                    time.sleep(backoff)
-                    continue
-                else:
-                    logger.warning(f"Gemini sub-regions API responded with status {resp.status_code}: {resp.text[:200]}")
-            except Exception as e:
-                if attempt < max_attempts:
-                    backoff = min(10.0, (1.8 ** attempt) + random.uniform(0.5, 1.5))
-                    time.sleep(backoff)
-                    continue
-                logger.warning(f"Gemini packaging sub-region detection error: {e}")
+            cls._log_usage(
+                status="FALLBACK" if call["used_fallback"] else "SUCCESS",
+                status_code=200,
+                model_name=used_model,
+                prompt_tokens=prompt_tok,
+                candidates_tokens=candidates_tok,
+                thoughts_tokens=thoughts_tok,
+                total_tokens=total_tok,
+                cached_tokens=cached_tok,
+                estimated_cost_usd=cost_usd,
+                latency_ms=latency,
+                bbid=bbid,
+                filename=filename,
+                batch_id=batch_id,
+                image_id=image_id,
+                metadata_payload=cls._call_metadata(call, {"action": "packaging_sub_regions", "region_count": len(regions)}),
+            )
+            return regions
 
         return []
 
@@ -705,78 +785,52 @@ class GeminiClassificationService:
             }
         }
 
-        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+        def _parse_stamps(raw_json: Dict[str, Any]) -> Dict[str, Any]:
+            return json.loads(cls._first_text_part(raw_json))
 
-        max_attempts = max(1, settings.GEMINI_MAX_ATTEMPTS)
-        for attempt in range(1, max_attempts + 1):
-            try:
-                t0 = time.perf_counter()
-                resp = requests.post(
-                    endpoint,
-                    headers={"Content-Type": "application/json"},
-                    json=payload,
-                    timeout=(30.0, 90.0)
-                )
-                latency = (time.perf_counter() - t0) * 1000
+        call = cls._call_gemini(payload, timeout=(30.0, 90.0), parse=_parse_stamps, purpose="stamp detection")
+        used_model = call["model"]
+        if call["ok"]:
+            parsed = call["value"]
+            usage_meta = call["usage"]
+            latency = call["latency"]
+            prompt_tok = usage_meta.get("promptTokenCount", 300)
+            candidates_tok = usage_meta.get("candidatesTokenCount", 120)
+            thoughts_tok = usage_meta.get("thoughtsTokenCount", 0)
+            total_tok = usage_meta.get("totalTokenCount", prompt_tok + candidates_tok + thoughts_tok)
+            cached_tok = usage_meta.get("cachedContentTokenCount", 0)
+            cost_usd = cls.calculate_cost(
+                prompt_tok, candidates_tok, thoughts_tok, model_name=used_model, cached_tokens=cached_tok
+            )
+            stamps_list = parsed.get("stamps", [])
+            has_stamps = parsed.get("has_removable_stamps", bool(stamps_list))
+            logger.info(
+                f"Gemini [{used_model}] localized {len(stamps_list)} price/date stamp(s) for {filename} (BBID {bbid}) in {latency:.1f}ms | "
+                f"Tokens: {total_tok} | Cost: ${cost_usd:.6f}"
+            )
+            result = {"has_removable_stamps": has_stamps, "stamps": stamps_list, "detection_ok": True}
 
-                if resp.status_code == 200:
-                    raw_json = resp.json()
-                    usage_meta = raw_json.get("usageMetadata", {})
-                    prompt_tok = usage_meta.get("promptTokenCount", 300)
-                    candidates_tok = usage_meta.get("candidatesTokenCount", 120)
-                    thoughts_tok = usage_meta.get("thoughtsTokenCount", 0)
-                    total_tok = usage_meta.get("totalTokenCount", prompt_tok + candidates_tok + thoughts_tok)
-                    cost_usd = cls.calculate_cost(prompt_tok, candidates_tok, thoughts_tok)
+            if len(cls._MRP_EXPIRY_CACHE) >= cls._MAX_CACHE_ITEMS:
+                cls._MRP_EXPIRY_CACHE.clear()
+            cls._MRP_EXPIRY_CACHE[img_hash] = result
 
-                    candidates = raw_json.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        if parts and "text" in parts[0]:
-                            parsed = json.loads(parts[0]["text"])
-                            stamps_list = parsed.get("stamps", [])
-                            has_stamps = parsed.get("has_removable_stamps", bool(stamps_list))
-                            logger.info(
-                                f"Gemini AI localized {len(stamps_list)} price/date stamp(s) for {filename} (BBID {bbid}) in {latency:.1f}ms | "
-                                f"Tokens: {total_tok} | Cost: ${cost_usd:.6f}"
-                            )
-                            result = {"has_removable_stamps": has_stamps, "stamps": stamps_list, "detection_ok": True}
-
-                            if len(cls._MRP_EXPIRY_CACHE) >= cls._MAX_CACHE_ITEMS:
-                                cls._MRP_EXPIRY_CACHE.clear()
-                            cls._MRP_EXPIRY_CACHE[img_hash] = result
-
-                            cls._log_usage(
-                                status="SUCCESS",
-                                status_code=200,
-                                model_name=model_name,
-                                prompt_tokens=prompt_tok,
-                                candidates_tokens=candidates_tok,
-                                thoughts_tokens=thoughts_tok,
-                                total_tokens=total_tok,
-                                estimated_cost_usd=cost_usd,
-                                latency_ms=latency,
-                                bbid=bbid,
-                                filename=filename,
-                                batch_id=batch_id,
-                                image_id=image_id,
-                                metadata_payload={"action": "mrp_expiry_stamps", "stamp_count": len(stamps_list)}
-                            )
-                            return result
-                elif resp.status_code in (429, 503) and attempt < max_attempts:
-                    backoff = min(10.0, (1.8 ** attempt) + random.uniform(0.5, 1.5))
-                    logger.warning(
-                        f"Gemini {resp.status_code} temporary capacity spike (attempt {attempt}/{max_attempts}). "
-                        f"Retrying in {backoff:.1f}s..."
-                    )
-                    time.sleep(backoff)
-                    continue
-                else:
-                    logger.warning(f"Gemini stamp detection responded with status {resp.status_code}: {resp.text[:200]}")
-            except Exception as e:
-                if attempt < max_attempts:
-                    backoff = min(10.0, (1.8 ** attempt) + random.uniform(0.5, 1.5))
-                    time.sleep(backoff)
-                    continue
-                logger.warning(f"Gemini stamp detection error: {e}")
+            cls._log_usage(
+                status="FALLBACK" if call["used_fallback"] else "SUCCESS",
+                status_code=200,
+                model_name=used_model,
+                prompt_tokens=prompt_tok,
+                candidates_tokens=candidates_tok,
+                thoughts_tokens=thoughts_tok,
+                total_tokens=total_tok,
+                cached_tokens=cached_tok,
+                estimated_cost_usd=cost_usd,
+                latency_ms=latency,
+                bbid=bbid,
+                filename=filename,
+                batch_id=batch_id,
+                image_id=image_id,
+                metadata_payload=cls._call_metadata(call, {"action": "mrp_expiry_stamps", "stamp_count": len(stamps_list)}),
+            )
+            return result
 
         return {"has_removable_stamps": False, "stamps": [], "detection_ok": False}

@@ -70,8 +70,39 @@ export interface GeminiPricingRates {
   tile_dimensions: string;
 }
 
+export interface GeminiConfiguredModel {
+  model_name: string;
+  role: "primary" | "fallback";
+  input_per_million_usd: number;
+  output_per_million_usd: number;
+  input_per_million_inr: number;
+  output_per_million_inr: number;
+  cached_per_million_usd?: number;
+  pricing_known: boolean;
+}
+
+export interface GeminiModelBreakdown {
+  model_name: string;
+  requests: number;
+  success_requests: number;
+  fallback_requests: number;
+  cache_hits: number;
+  error_requests: number;
+  total_tokens: number;
+  cost_usd: number;
+  cost_inr: number;
+  avg_latency_ms: number;
+  input_per_million_usd: number;
+  output_per_million_usd: number;
+  cached_per_million_usd?: number;
+  pricing_known: boolean;
+}
+
 export interface GeminiOverviewData {
   model_name: string;
+  fallback_model_name?: string;
+  configured_models?: GeminiConfiguredModel[];
+  model_breakdown?: GeminiModelBreakdown[];
   api_configured: boolean;
   days_window: number;
   window_label?: string;
@@ -110,6 +141,8 @@ export interface GeminiLogItem {
   bbid: string | null;
   filename: string | null;
   model_name: string;
+  primary_model?: string | null;
+  used_fallback_model?: boolean;
   status: "SUCCESS" | "CACHE_HIT" | "FALLBACK" | "ERROR" | string;
   status_code: number;
   prompt_tokens: number;

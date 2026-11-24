@@ -51,7 +51,9 @@ class Settings(BaseSettings):
     # Google Gemini AI Vision & Classification configuration (https://ai.google.dev/gemini-api/docs/models)
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = ""  # Configured strictly in .env (e.g. GEMINI_MODEL=gemini-3.5-flash-lite)
-    GEMINI_MAX_ATTEMPTS: int  # Required, fetched from .env only
+    # Optional second model (e.g. gemini-3.1-flash-lite), used only when GEMINI_MODEL keeps failing with 429/5xx.
+    GEMINI_FALLBACK_MODEL: str = ""
+    GEMINI_MAX_ATTEMPTS: int  # Required, fetched from .env only (attempts per model)
     # Optional speed-up for the classification call only (e.g. "low" or "minimal" on Gemini 3). Empty = model default.
     # Compare results on your own images before enabling: less thinking can change classification accuracy.
     GEMINI_THINKING_LEVEL: str = ""
