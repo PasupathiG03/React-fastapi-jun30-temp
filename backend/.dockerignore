@@ -1,0 +1,39 @@
+# Virtual environments
+env/
+venv/
+.venv/
+
+# Python caches & compiled bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Test & coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Logs & process files
+*.log
+celery.log
+.celery.pid
+run_*.log
+
+# Uploads & local data (mounted as volumes, never baked into image layers)
+uploads/*
+!uploads/.gitkeep
+exports/*
+!exports/.gitkeep
+models/*
+!models/.gitkeep
+
+# Git & IDE configs
+.git
+.github
+.gitignore
+.gitattributes
+.claude
+.vscode
+.idea

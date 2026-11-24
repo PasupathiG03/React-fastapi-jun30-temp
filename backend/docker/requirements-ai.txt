@@ -1,0 +1,14 @@
+# Heavy AI, Computer Vision, Deep Learning & OCR Dependencies
+# This file is strictly separated so Docker caches PyTorch & AI packages permanently.
+torch>=2.0.0
+torchvision>=0.15.0
+transformers>=4.40.0
+timm>=0.9.0
+kornia>=0.7.0
+einops>=0.7.0
+pillow>=12.3.0
+opencv-python-headless>=5.0.0.93
+onnxruntime>=1.23.2
+rembg>=2.0.69
+rapidocr==3.10.0
+

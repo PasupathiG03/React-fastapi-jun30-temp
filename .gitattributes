@@ -1,0 +1,12 @@
+# Ensure shell scripts always retain LF line endings across Windows and Ubuntu/Linux
+*.sh text eol=lf
+*.bash text eol=lf
+Dockerfile* text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+.env* text eol=lf
+
+# Batch files for Windows retain CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+

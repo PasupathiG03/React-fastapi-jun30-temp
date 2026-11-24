@@ -1,0 +1,138 @@
+name: bigbasket
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # No postgres service: the app uses the PostgreSQL already running on the host machine
+  # (DATABASE_URL's @localhost is mapped to host.docker.internal by backend/docker/entrypoint.sh).
+
+  redis:
+    image: redis:7-alpine
+    container_name: bigbasket_redis
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    env_file:
+      - .env
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    stop_grace_period: 10s
+    logging: *default-logging
+    networks:
+      - bigbasket_net
+
+  backend:
+    image: bigbasket-backend
+    build:
+      context: ./backend
+      dockerfile: docker/Dockerfile
+      target: runtime
+    container_name: bigbasket_backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8107}:${BACKEND_PORT:-8107}"
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app/backend
+      - ./backend/docker/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
+      - ./backend/uploads:/app/backend/uploads
+      - ./backend/exports:/app/backend/exports
+      - ./models:/app/models
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:${BACKEND_PORT:-8107}/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    stop_grace_period: 15s
+    logging: *default-logging
+    networks:
+      - bigbasket_net
+
+  celery_worker:
+    image: bigbasket-celery-worker
+    build:
+      context: ./backend
+      dockerfile: docker/Dockerfile
+      target: runtime
+    container_name: bigbasket_celery_worker
+    restart: unless-stopped
+    command: ["celery"]
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app/backend
+      - ./backend/docker/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
+      - ./backend/uploads:/app/backend/uploads
+      - ./backend/exports:/app/backend/exports
+      - ./models:/app/models
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import redis, os; r=redis.from_url(\"redis://redis:6379/0\", socket_timeout=2); r.ping()' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    stop_grace_period: 30s
+    logging: *default-logging
+    networks:
+      - bigbasket_net
+
+  frontend:
+    image: bigbasket-frontend
+    build:
+      context: ./frontend
+      dockerfile: docker/Dockerfile
+      target: development
+    container_name: bigbasket_frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8106}:${FRONTEND_PORT:-8106}"
+    environment:
+      API_URL: ${API_URL:-}
+      FRONTEND_PORT: ${FRONTEND_PORT:-8106}
+      BACKEND_PORT: ${BACKEND_PORT:-8107}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:' + (process.env.FRONTEND_PORT || 8106), (r) => process.exit(r.statusCode < 400 ? 0 : 1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    stop_grace_period: 5s
+    logging: *default-logging
+    networks:
+      - bigbasket_net
+
+networks:
+  bigbasket_net:
+    name: bigbasket_net
+    driver: bridge
+
+volumes:
+  redis_data:

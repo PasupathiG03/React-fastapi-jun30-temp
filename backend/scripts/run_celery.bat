@@ -4,7 +4,7 @@ setlocal
 title Celery Worker
 
 echo =======================================================
-echo          Pulse Image Studio - Celery Worker
+echo          Bigbasket Image Studio - Celery Worker
 echo =======================================================
 
 cd /d "%~dp0.."

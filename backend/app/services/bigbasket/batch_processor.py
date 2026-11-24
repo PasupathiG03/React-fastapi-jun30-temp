@@ -171,7 +171,15 @@ class BatchProcessor:
             })
 
             ai_manager = ConsensusAiManager()
-            cfg = batch.config or {}
+            cfg = dict(batch.config or {})
+            # A provider chosen for a rerun applies to this run only; later runs go back to local BiRefNet.
+            if "bg_removal_provider" in (batch.config or {}):
+                saved = dict(batch.config)
+                saved.pop("bg_removal_provider", None)
+                batch.config = saved
+                from sqlalchemy.orm.attributes import flag_modified
+                flag_modified(batch, "config")
+                db.commit()
 
             # Query all pending or failed images
             images = (

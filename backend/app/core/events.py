@@ -16,7 +16,7 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.core.logger import logger
 
-CHANNEL = "pulse_changes"
+CHANNEL = "bigbasket_changes"
 
 
 class Broadcaster:

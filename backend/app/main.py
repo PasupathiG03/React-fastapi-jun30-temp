@@ -28,7 +28,7 @@ async def block_cross_site_writes(request: Request, call_next):
     so another website can never make a signed-in user's browser change data (CSRF)."""
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         origin = request.headers.get("origin")
-        if origin and origin.rstrip("/") not in ALLOWED_ORIGINS:
+        if origin and not settings.origin_allowed(origin):
             return JSONResponse({"detail": "Cross-site request refused"}, status_code=403)
     return await call_next(request)
 
@@ -52,7 +52,8 @@ async def security_headers(request: Request, call_next):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,  # the session cookie; safe because origins are an explicit list, never "*"
+    allow_origin_regex=settings.cors_origin_regex,  # private-network addresses on the frontend port
+    allow_credentials=True,  # the session cookie; safe because origins are an explicit list or private-network addresses, never "*"
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
     expose_headers=["X-Session-Ended"],  # lets the UI say "signed in elsewhere" instead of "expired"
@@ -79,4 +80,33 @@ async def on_shutdown():
 @app.get("/health", tags=["Health"])
 def health():
     ocr = get_ocr_status()
-    return {"status": "ok" if ocr["status"] != "unavailable" else "degraded", "ocr": ocr}
+
+    # Check database connectivity
+    db_status = "ok"
+    try:
+        from app.core.database import SessionLocal
+        from sqlalchemy import text
+        db = SessionLocal()
+        try:
+            db.execute(text("SELECT 1"))
+        finally:
+            db.close()
+    except Exception as e:
+        db_status = f"unhealthy: {type(e).__name__}"
+
+    # Check Redis connectivity
+    redis_status = "ok"
+    try:
+        from app.services.bigbasket.events import redis_usable
+        if not redis_usable():
+            redis_status = "unreachable"
+    except Exception as e:
+        redis_status = f"error: {type(e).__name__}"
+
+    is_ok = (ocr.get("status") != "unavailable") and (db_status == "ok")
+    return {
+        "status": "ok" if is_ok else "degraded",
+        "database": db_status,
+        "redis": redis_status,
+        "ocr": ocr,
+    }

@@ -9,7 +9,7 @@ broker_url = settings.CELERY_BROKER_URL
 result_backend = settings.CELERY_RESULT_BACKEND
 
 celery_app = Celery(
-    "pulse_tasks",
+    "bigbasket_tasks",
     broker=broker_url,
     backend=result_backend,
     include=["app.tasks.batch_tasks"],

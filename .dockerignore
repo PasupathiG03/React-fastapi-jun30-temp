@@ -1,0 +1,16 @@
+.git
+.github
+.claude
+.playwright-mcp
+.pytest_cache
+node_modules
+*/node_modules
+*/env
+*/venv
+__pycache__
+*/__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.log
+

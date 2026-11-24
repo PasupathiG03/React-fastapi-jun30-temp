@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
@@ -11,11 +11,13 @@ const baseSecurityHeaders = {
   'Referrer-Policy': 'no-referrer',
 }
 
-// Address of the backend API. This is the one place to change it (there is no .env file in the frontend);
-// it is baked into the app as API_BASE_URL and also allowed in the Content-Security-Policy below.
-const API_URL = 'http://localhost:8107'
-const apiOrigin = API_URL
-const contentSecurityPolicy = [
+// Address of the backend API, baked into the app as API_BASE_URL and allowed in the Content-Security-Policy below.
+// Leave API_URL unset (the default): the browser then calls the API on the same host it opened the app from,
+// the BACKEND_PORT, so the app works on any machine / IP address without a rebuild. Set API_URL in the root .env
+// only if the API lives somewhere else (e.g. API_URL=https://api.example.com).
+// Ports (FRONTEND_PORT, BACKEND_PORT) and API_URL come from the root .env; Docker passes them as environment variables.
+const rootEnv = (mode: string) => loadEnv(mode, path.resolve(import.meta.dirname, '..'), '')
+const buildCsp = (apiOrigin: string) => [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
@@ -31,7 +33,7 @@ const contentSecurityPolicy = [
 // hosts dist/ (nginx, IIS, a CDN...), even one that sends no headers. Build only: the dev server needs
 // inline scripts for hot reload. frame-ancestors is ignored inside <meta>, so it stays a header (preview /
 // your host) -- X-Frame-Options: DENY covers clickjacking either way.
-function cspMetaTag(): Plugin {
+function cspMetaTag(contentSecurityPolicy: string): Plugin {
   const metaPolicy = contentSecurityPolicy
     .split('; ')
     .filter((d) => !d.startsWith('frame-ancestors'))
@@ -48,10 +50,17 @@ function cspMetaTag(): Plugin {
   }
 }
 
-export default defineConfig({
-  plugins: [react(), tailwindcss(), cspMetaTag()],
+export default defineConfig(({ mode }) => {
+  const env = rootEnv(mode)
+  const FRONTEND_PORT = Number(env.FRONTEND_PORT) || 8106
+  const BACKEND_PORT = Number(env.BACKEND_PORT) || 8107
+  const API_URL = env.API_URL ?? ''
+  const contentSecurityPolicy = buildCsp(API_URL || `http://*:${BACKEND_PORT} https://*:${BACKEND_PORT}`)
+  return {
+  plugins: [react(), tailwindcss(), cspMetaTag(contentSecurityPolicy)],
   define: {
     __API_URL__: JSON.stringify(API_URL),
+    __API_PORT__: JSON.stringify(String(BACKEND_PORT)),
   },
   resolve: {
     alias: {
@@ -59,10 +68,15 @@ export default defineConfig({
     },
   },
   server: {
-    port: 8106,
+    host: '0.0.0.0',
+    port: FRONTEND_PORT,
     headers: baseSecurityHeaders,
+    watch: {
+      usePolling: true,
+    },
   },
   preview: {
     headers: { ...baseSecurityHeaders, 'Content-Security-Policy': contentSecurityPolicy },
   },
+  }
 })
