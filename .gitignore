@@ -20,7 +20,6 @@ env/
 
 # ── Alembic ────────────────────────────────────────────────────────────────
 alembic/versions/*.pyc
-backend/alembic/versions/
 
 # ── Pytest / Coverage ──────────────────────────────────────────────────────
 .pytest_cache/
@@ -54,7 +53,9 @@ CLAUDE.local.md
 # ── Uploads / Generated files ──────────────────────────────────────────────
 uploads/
 exports/
-models/
+# AI model cache only. A bare "models/" would also hide backend/app/models/ (the SQLAlchemy models).
+/models/
+/backend/models/
 project doc/
 *.pdf
 *.docx
