@@ -5,6 +5,7 @@ rem   docker.bat stop                 stop and remove containers
 rem   docker.bat update               git pull, rebuild, migrate, check models vs migrations
 rem   docker.bat check                health check of all services
 rem   docker.bat makemigration "msg"  generate a migration from model changes
+rem   docker.bat createuser [ID] [--superuser] [--role R] [--name N]   create a user and its role
 setlocal
 cd /d "%~dp0..\.."
 set "FRONTEND_PORT=8106"
@@ -24,7 +25,8 @@ if /i "%CMD%"=="stop" goto stop
 if /i "%CMD%"=="update" goto update
 if /i "%CMD%"=="check" goto check
 if /i "%CMD%"=="makemigration" goto makemigration
-echo Usage: docker.bat [run^|stop^|update^|check^|makemigration "msg"]
+if /i "%CMD%"=="createuser" goto createuser
+echo Usage: docker.bat [run^|stop^|update^|check^|makemigration "msg"^|createuser]
 exit /b 1
 
 :run
@@ -59,6 +61,11 @@ if "%~2"=="" (
 )
 docker compose run --rm backend makemigration "%~2"
 echo [!] Review the new file in backend\alembic\versions, then run: docker.bat update
+exit /b %errorlevel%
+
+:createuser
+shift
+docker compose run --rm -it backend createuser %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b %errorlevel%
 
 :check

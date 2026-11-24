@@ -95,6 +95,13 @@ if [ "$1" = "celery" ]; then
 elif [ "$1" = "migrate" ]; then
     echo "[+] Running Alembic migrations..."
     exec alembic upgrade head
+elif [ "$1" = "createuser" ]; then
+    # Interactive: creates a user and its role (e.g. superuser + "Developer" = full access).
+    # Runs here, after the DATABASE_URL rewrite above, so it reaches the host's PostgreSQL.
+    echo "[+] Applying migrations before creating the user..."
+    alembic upgrade head
+    shift
+    exec python scripts/create_user.py "$@"
 elif [ "$1" = "check" ]; then
     # Fails (exit 1) if the models differ from the migrations, i.e. a migration still has to be generated.
     echo "[+] Checking models against migrations..."

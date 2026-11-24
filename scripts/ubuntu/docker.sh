@@ -5,6 +5,7 @@
 #   ./docker.sh update               git pull, rebuild, migrate, check models vs migrations
 #   ./docker.sh check                health check of all services
 #   ./docker.sh makemigration "msg"  generate a migration from model changes
+#   ./docker.sh createuser [ID] [--superuser] [--role R] [--name N]   create a user and its role
 set -e
 cd "$(cd "$(dirname "$0")/../.." && pwd)"
 CMD="${1:-run}"
@@ -47,6 +48,9 @@ case "$CMD" in
         [ -n "$2" ] || { echo 'Usage: ./docker.sh makemigration "short description"'; exit 1; }
         docker compose run --rm backend makemigration "$2"
         echo "[!] Review the new file in backend/alembic/versions, then run: ./docker.sh update" ;;
+    createuser)
+        shift
+        docker compose run --rm -it backend createuser "$@" ;;
     *)
-        echo 'Usage: ./docker.sh [run|stop|update|check|makemigration "msg"]'; exit 1 ;;
+        echo 'Usage: ./docker.sh [run|stop|update|check|makemigration "msg"|createuser]'; exit 1 ;;
 esac
