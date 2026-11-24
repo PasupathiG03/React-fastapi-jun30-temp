@@ -106,17 +106,17 @@ class ImageProcessingPipeline:
                 clean_rgba.save(seg_buf, format="PNG")
                 segmented_bytes = seg_buf.getvalue()
                 has_transparency = True
-                logger.info(f"[Pipeline] Preserving pre-existing transparent alpha channel ({orig_w}x{orig_h}). Photoroom call skipped (0 credits used).")
+                logger.info(f"[Pipeline] Preserving pre-existing transparent alpha channel (original input: {orig_w}x{orig_h}px, target canvas: {canvas_w}x{canvas_h}px). Photoroom call skipped (0 credits used).")
             else:
                 if use_photoroom:
                     # Step 1: Photoroom AI Background Removal (SRS Section 3)
-                    logger.info(f"[Pipeline] Processing FOP/BOP image through Photoroom AI ({orig_w}x{orig_h})...")
+                    logger.info(f"[Pipeline] Processing FOP/BOP image through Photoroom AI (original input: {orig_w}x{orig_h}px, target canvas: {canvas_w}x{canvas_h}px)...")
                     segmented_png_bytes = PhotoroomService.remove_background(image_bytes, crop=False, size="full")
                     photoroom_called = True
                     bg_error = None
                 else:
                     # Step 1 (Primary): Local BiRefNet Background Removal (no automatic Photoroom fallback)
-                    logger.info(f"[Pipeline] Processing FOP/BOP image locally through BiRefNet ({orig_w}x{orig_h})...")
+                    logger.info(f"[Pipeline] Processing FOP/BOP image locally through BiRefNet (original input: {orig_w}x{orig_h}px, target canvas: {canvas_w}x{canvas_h}px)...")
                     segmented_png_bytes, bg_error = BiRefNetService.remove_background_with_status(image_bytes)
 
                 if segmented_png_bytes:
