@@ -87,6 +87,7 @@ class ImageProcessingPipeline:
 
         inpaint_applied = False
         inpaint_reasons = []
+        kept_bg_audit = None
         sku_bbid = cfg.get("bbid", "")
         img_filename = cfg.get("filename", "")
         batch_id_val = cfg.get("batch_id")
@@ -122,6 +123,7 @@ class ImageProcessingPipeline:
                 if segmented_png_bytes:
                     clean_rgba = Image.open(io.BytesIO(segmented_png_bytes)).convert("RGBA")
                     segmented_bytes = segmented_png_bytes
+                    kept_bg_audit = cls._audit_kept_background(clean_rgba, raw_img)
                     # Optional specular-highlight hole fill (opt-in only, so wire-basket gaps and hang-tab cutouts stay transparent).
                     if use_photoroom and cfg.get("fill_small_alpha_holes", False):
                         clean_rgba, holes_filled = cls._fill_small_alpha_holes(
@@ -311,6 +313,15 @@ class ImageProcessingPipeline:
             # The padding around the product is transparent even when the photo's own background was never
             # removed, so the pixel checks alone can pass. The Background Transparency check must still fail.
             val_result["alpha_valid"] = False
+        if kept_bg_audit is not None:
+            # Needs the original photo, which validate_output (canvas only) never sees.
+            val_result.setdefault("five_point_audit", {})["kept_background"] = kept_bg_audit
+            if not kept_bg_audit["passed"]:
+                val_result["alpha_valid"] = False
+                error_notes.append(
+                    "Background not fully removed: part of the original background is still attached to the "
+                    "product (e.g. a half-removed handle or edge). Manual review required."
+                )
         if error_notes:
             if not val_result.get("failure_reasons"):
                 val_result["failure_reasons"] = []
@@ -352,6 +363,61 @@ class ImageProcessingPipeline:
             "inpaint_applied": inpaint_applied,
             "inpaint_notes": inpaint_reasons,
             "execution_time_ms": round(exec_time_ms, 2),
+        }
+
+    @staticmethod
+    def _audit_kept_background(segmented: Image.Image, original: Image.Image) -> Optional[Dict[str, Any]]:
+        """
+        Finds background that removal kept *attached* to the product, which the canvas-only checks cannot see
+        (stray_fragments only looks at detached islands). Typical case: a white carry handle on a white backdrop
+        that the model removed only partly, leaving a thin background-coloured sliver sticking out of the pack.
+
+        Thin protrusions of the cut-out are found with a morphological opening; one whose pixels in the original
+        photo mostly match the backdrop colour is leftover background. Legitimate thin parts (wire baskets,
+        bristles, mop fibres, coloured handles) differ strongly from the backdrop and pass. Measured on past
+        batches: real slivers had 53% of pixels within 25 levels of the backdrop, legitimate parts <= 2%.
+
+        Returns None (check not applicable) when sizes differ or the backdrop is not a uniform colour.
+        """
+        if segmented.size != original.size:
+            return None
+        alpha = np.array(segmented)[:, :, 3]
+        orig = np.array(original.convert("RGB")).astype(np.int16)
+
+        border = np.concatenate([orig[0, :], orig[-1, :], orig[:, 0], orig[:, -1]])
+        if float(border.std(axis=0).max()) > 25.0:
+            return None  # Photo / gradient backdrop: no single background colour to compare against.
+        bg_color = np.median(border, axis=0)
+
+        fg = (alpha > 128).astype(np.uint8)
+        n_cc, labels, stats, _ = cv2.connectedComponentsWithStats(fg, connectivity=8)
+        if n_cc < 2:
+            return None
+        main_label = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+        main = (labels == main_label).astype(np.uint8)
+        main_area = int(stats[main_label, cv2.CC_STAT_AREA])
+        _, _, pw, ph = cv2.boundingRect(main)
+
+        k = max(5, int(0.03 * min(pw, ph))) | 1
+        opened = cv2.morphologyEx(main, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+        thin = cv2.bitwise_and(main, 1 - opened)
+
+        bg_diff = np.abs(orig - bg_color).max(axis=2)
+        n_thin, thin_labels, thin_stats, _ = cv2.connectedComponentsWithStats(thin, connectivity=8)
+        boxes = []
+        for j in range(1, n_thin):
+            if thin_stats[j, cv2.CC_STAT_AREA] < 0.001 * main_area:
+                continue
+            if float(np.mean(bg_diff[thin_labels == j] < 25)) >= 0.35:
+                boxes.append([int(v) for v in thin_stats[j, :4]])
+
+        passed = not boxes
+        return {
+            "passed": passed,
+            "count": len(boxes),
+            "boxes": boxes[:10],
+            "notes": "No background left attached to the product" if passed
+            else f"{len(boxes)} background-coloured sliver(s) still attached to the product",
         }
 
     @staticmethod
@@ -941,6 +1007,8 @@ class ImageProcessingPipeline:
                 checks.append(audit_5d["stray_fragments"].get("passed", True))
             if "interior_cutout" in audit_5d:
                 checks.append(audit_5d["interior_cutout"].get("passed", True))
+            if "kept_background" in audit_5d:
+                checks.append(audit_5d["kept_background"].get("passed", True))
 
         total_checks = len(checks)
         passed_checks = sum(1 for c in checks if c)
