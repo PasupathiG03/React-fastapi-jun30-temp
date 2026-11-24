@@ -93,8 +93,9 @@ def _remember_live_changes(session, flush_context, instances):
 
 @event.listens_for(SessionLocal, "after_bulk_update")
 def _remember_bulk_update(update_context):
-    mapper = update_context.matched_mapper
-    if mapper:
+    # SQLAlchemy 2.x: BulkUpdate exposes .mapper (the 1.x .matched_mapper no longer exists).
+    mapper = getattr(update_context, "mapper", None)
+    if mapper is not None:
         kind = _LIVE_TABLES.get(getattr(mapper.class_, "__tablename__", None))
         if kind:
             update_context.session.info.setdefault("live_kinds", set()).add(kind)
