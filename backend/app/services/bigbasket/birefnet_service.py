@@ -24,6 +24,9 @@ class BiRefNetService:
 
     # Default to MIT-licensed BiRefNet (ZhengPeng7/BiRefNet) for royalty-free commercial compliance
     DEFAULT_MODEL_ID = "ZhengPeng7/BiRefNet"
+    # The official ZhengPeng7/BiRefNet repo ships no ONNX file (onnx/model.onnx there is a 404); the ONNX export
+    # is published in a separate repo, so the ONNX backend uses its own repo id.
+    DEFAULT_ONNX_REPO_ID = "onnx-community/BiRefNet-ONNX"
     DEFAULT_ONNX_FILE = "onnx/model.onnx"
     INPUT_SIZE = (1024, 1024)
 
@@ -73,6 +76,10 @@ class BiRefNetService:
     @classmethod
     def get_model_id(cls) -> str:
         return cls._get_env_value("BIREFNET_MODEL_ID") or cls.DEFAULT_MODEL_ID
+
+    @classmethod
+    def get_onnx_repo_id(cls) -> str:
+        return cls._get_env_value("BIREFNET_ONNX_REPO_ID") or cls.DEFAULT_ONNX_REPO_ID
 
     @classmethod
     def get_onnx_file(cls) -> str:
@@ -217,7 +224,7 @@ class BiRefNetService:
             import onnxruntime as ort
             from huggingface_hub import hf_hub_download
 
-            model_id = cls.get_model_id()
+            model_id = cls.get_onnx_repo_id()
             onnx_file = cls.get_onnx_file()
             hf_token = cls.get_hf_token()
             cache_dir = cls.get_model_cache_dir()
