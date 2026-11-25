@@ -10,6 +10,7 @@ import requests
 from pydantic import BaseModel, Field, ValidationError
 
 from app.core.config import settings
+from app.services.bigbasket.image_format import to_png_or_jpeg
 from app.prompts import (
     GEMINI_CLASSIFICATION_SCHEMA,
     PACKAGING_SUBREGIONS_SCHEMA,
@@ -474,8 +475,7 @@ class GeminiClassificationService:
 
         # 3. Call Google Gemini REST API with Structured JSON Output
         # Optimize payload for fast, reliable transfer (<1280px)
-        send_bytes = image_bytes
-        mime_type = "image/png" if image_bytes[:8] == b"\x89PNG\r\n\x1a\n" else "image/jpeg"
+        send_bytes, mime_type = to_png_or_jpeg(image_bytes)
         if len(image_bytes) > 800_000:
             try:
                 import io
@@ -493,7 +493,7 @@ class GeminiClassificationService:
                     send_bytes = buf.getvalue()
             except Exception as opt_err:
                 logger.warning(f"Could not downscale image for Gemini: {opt_err}")
-                send_bytes = image_bytes
+                send_bytes, mime_type = to_png_or_jpeg(image_bytes)
 
         b64_data = base64.b64encode(send_bytes).decode("utf-8")
 
@@ -635,8 +635,7 @@ class GeminiClassificationService:
             return []
 
         # Preserve 100% original image quality without any downscaling or lossy compression
-        send_bytes = image_bytes
-        mime_type = "image/png" if image_bytes[:8] == b"\x89PNG\r\n\x1a\n" else "image/jpeg"
+        send_bytes, mime_type = to_png_or_jpeg(image_bytes)
 
         b64_data = base64.b64encode(send_bytes).decode("utf-8")
 
@@ -751,8 +750,7 @@ class GeminiClassificationService:
             return {"has_removable_stamps": False, "stamps": [], "detection_ok": False}
 
         # Preserve 100% original image quality without any downscaling or lossy compression
-        send_bytes = image_bytes
-        mime_type = "image/png" if image_bytes[:8] == b"\x89PNG\r\n\x1a\n" else "image/jpeg"
+        send_bytes, mime_type = to_png_or_jpeg(image_bytes)
         b64_data = base64.b64encode(send_bytes).decode("utf-8")
         user_prompt = build_gemini_mrp_expiry_prompt(
             bbid=bbid,

@@ -15,6 +15,8 @@ export interface BatchItem {
   config?: any;
   created_at: string;
   updated_at: string;
+  /** The user who uploaded the batch. */
+  creator?: { employee_id: string; employee_name: string | null } | null;
 }
 
 export interface BatchListResponse {

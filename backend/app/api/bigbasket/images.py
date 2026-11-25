@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -9,6 +9,7 @@ from app.core.dependencies import get_current_user, get_db
 from app.models.bigbasket import BatchImage, ImageBatch
 from app.models.user import User
 from app.schemas.bigbasket import BatchImageDetailOut, ImageListResponse
+from app.services.bigbasket.image_format import JPEG_SIGNATURE, PNG_SIGNATURE, to_png_or_jpeg
 from app.services.bigbasket.pipeline import PipelineService
 
 router = APIRouter()
@@ -148,8 +149,15 @@ def stream_image_file(
     if not target_path.exists():
         raise HTTPException(status_code=404, detail="Image asset file not found on disk.")
 
-    media_type = "image/png" if target_path.suffix.lower() == ".png" else "image/jpeg"
-    return FileResponse(target_path, media_type=media_type)
+    with open(target_path, "rb") as fh:
+        head = fh.read(8)
+    if head[:8] == PNG_SIGNATURE:
+        return FileResponse(target_path, media_type="image/png")
+    if head[:3] == JPEG_SIGNATURE:
+        return FileResponse(target_path, media_type="image/jpeg")
+    # Originals may be any uploaded image format; convert the rest to PNG so every browser can show them.
+    data, media_type = to_png_or_jpeg(target_path.read_bytes())
+    return Response(content=data, media_type=media_type)
 
 
 @router.post("/{image_id}/repad")

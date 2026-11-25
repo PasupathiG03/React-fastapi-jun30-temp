@@ -71,7 +71,7 @@ class BatchOut(BaseModel):
     excel_report_path: Optional[str] = None
     created_at: datetime
     updated_at: datetime
-    created_by: Optional[CreatorOut] = None
+    creator: Optional[CreatorOut] = None  # the user who uploaded the batch (AuditMixin.creator)
 
     model_config = {"from_attributes": True}
 

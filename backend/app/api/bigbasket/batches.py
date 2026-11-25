@@ -2,7 +2,7 @@ import asyncio
 import secrets
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.dependencies import get_current_user, get_db
 from app.core.logger import logger
@@ -29,7 +29,7 @@ def list_batches(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = db.query(ImageBatch)
+    query = db.query(ImageBatch).options(joinedload(ImageBatch.creator))  # uploader name, without a query per row
     if status_filter:
         query = query.filter(ImageBatch.status == status_filter)
 

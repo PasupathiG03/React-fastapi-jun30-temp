@@ -544,13 +544,14 @@ export default function BatchProcessing() {
                 <th className="py-3 px-4">Pipeline Status</th>
                 <th className="py-3 px-4 w-48">Automation Progress</th>
                 <th className="py-3 px-4">Standardization Quality</th>
+                <th className="py-3 px-4">Uploaded By</th>
                 <th className="py-3 px-4">Created Date</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-white/5">
               {loadingBatches ? (
-                <GlobalTableRowSkeleton rows={5} cols={8} />
+                <GlobalTableRowSkeleton rows={5} cols={9} />
               ) : (
                 pagedBatches.map((batch, index) => {
                   const isExpanded = expandedBatchId === batch.id;
@@ -958,6 +959,27 @@ function BatchTableRow({
           </div>
         </td>
 
+        {/* Uploaded By */}
+        <td className="py-3.5 px-4 text-xs whitespace-nowrap">
+          {batch.creator ? (
+            <div className="flex items-center gap-2" title={batch.creator.employee_id}>
+              <span className="w-6 h-6 rounded-full bg-gradient-to-br from-sky-500 to-blue-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">
+                {(batch.creator.employee_name || batch.creator.employee_id).trim().charAt(0).toUpperCase()}
+              </span>
+              <div className="leading-tight">
+                <div className="font-medium text-slate-700 dark:text-slate-200">
+                  {batch.creator.employee_name || batch.creator.employee_id}
+                </div>
+                {batch.creator.employee_name && (
+                  <div className="text-[10px] text-slate-400 font-mono">{batch.creator.employee_id}</div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <span className="text-slate-400">—</span>
+          )}
+        </td>
+
         {/* Date */}
         <td className="py-3.5 px-4 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">
           {formattedDate}
@@ -1085,7 +1107,7 @@ function BatchTableRow({
       {/* EXPANDED IMAGES SUB-TABLE */}
       {isExpanded && (
         <tr className="bg-slate-50/70 dark:bg-slate-950/40 border-b border-slate-200/80 dark:border-white/10">
-          <td colSpan={8} className="p-4 sm:p-6">
+          <td colSpan={9} className="p-4 sm:p-6">
             <div className="glass-card rounded-2xl p-5 border border-slate-200 dark:border-white/10 space-y-4 subtable-row-in">
               {/* Sub-header & Image Search Bar */}
               <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200/60 dark:border-white/5">
@@ -1532,6 +1554,13 @@ function CreateBatchModal({
     setClientLowResCount(lowRes);
   }
 
+  // The whole dashed box is the file picker (click or drop), not just its link text.
+  const [dragActive, setDragActive] = useState(false);
+  const dropzoneClass = `group block cursor-pointer border-2 border-dashed rounded-2xl p-6 text-center transition-colors focus-within:ring-2 focus-within:ring-sky-500/40 ${dragActive
+    ? "border-sky-500 bg-sky-500/10"
+    : "border-slate-200 dark:border-white/10 hover:border-sky-500 bg-slate-50/50 dark:bg-slate-900/40"
+    }`;
+
   async function handleFileSelection(files: File[]) {
     setImageFiles(files);
     if (targetWidth != null && targetHeight != null) await recheckFiles(files, targetWidth, targetHeight);
@@ -1582,7 +1611,10 @@ function CreateBatchModal({
 
       // 2. Upload images
       if (mode === "files" && imageFiles.length > 0) {
-        await uploadBatchImageFiles(batch.id, imageFiles);
+        const up = await uploadBatchImageFiles(batch.id, imageFiles);
+        if (up?.skipped_files?.length) {
+          showError(`Skipped ${up.skipped_files.length} file(s) that could not be read as images: ${up.skipped_files.join(", ")}`);
+        }
       } else if (mode === "zip" && zipFile) {
         await uploadBatchImagesZip(batch.id, zipFile);
       }
@@ -1802,23 +1834,36 @@ function CreateBatchModal({
 
             {/* Dropzone */}
             {mode === "files" ? (
-              <div className="border-2 border-dashed border-slate-200 dark:border-white/10 rounded-2xl p-6 text-center hover:border-sky-500 transition-colors bg-slate-50/50 dark:bg-slate-900/40">
+              <label
+                onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+                onDragLeave={() => setDragActive(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragActive(false);
+                  // Any image type; files the browser can't type are sent too and the server checks their content.
+                  const files = Array.from(e.dataTransfer.files).filter((f) => !f.type || f.type.startsWith("image/"));
+                  if (files.length === 0) return showError("Drop image files");
+                  handleFileSelection(files);
+                }}
+                className={dropzoneClass}
+              >
                 <Upload className="w-8 h-8 text-sky-500 mx-auto mb-2" />
-                <label className="cursor-pointer text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline">
+                <span className="text-xs font-semibold text-sky-600 dark:text-sky-400 group-hover:underline">
                   Choose Image Files (Select Multiple)
-                  <input
-                    type="file"
-                    multiple
-                    accept=".png,.jpg,.jpeg,.webp"
-                    className="hidden"
-                    onChange={(e) => {
-                      const files = Array.from(e.target.files || []);
-                      handleFileSelection(files);
-                    }}
-                  />
-                </label>
+                </span>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    handleFileSelection(files);
+                    e.target.value = "";
+                  }}
+                />
                 <p className="text-[11px] text-slate-400 mt-1">
-                  Supports PNG, JPG, JPEG, and WEBP files
+                  Supports any image format
                 </p>
                 {imageFiles.length > 0 && (
                   <div className="mt-2 space-y-1">
@@ -1840,22 +1885,34 @@ function CreateBatchModal({
                     )}
                   </div>
                 )}
-              </div>
+              </label>
             ) : (
-              <div className="border-2 border-dashed border-slate-200 dark:border-white/10 rounded-2xl p-6 text-center hover:border-sky-500 transition-colors bg-slate-50/50 dark:bg-slate-900/40">
+              <label
+                onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+                onDragLeave={() => setDragActive(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragActive(false);
+                  const file = Array.from(e.dataTransfer.files).find((f) => /\.zip$/i.test(f.name));
+                  if (!file) return showError("Drop a .zip archive");
+                  setZipFile(file);
+                }}
+                className={dropzoneClass}
+              >
                 <FolderArchive className="w-8 h-8 text-indigo-500 mx-auto mb-2" />
-                <label className="cursor-pointer text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline">
+                <span className="text-xs font-semibold text-sky-600 dark:text-sky-400 group-hover:underline">
                   Choose ZIP Archive (.zip)
-                  <input
-                    type="file"
-                    accept=".zip"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0] || null;
-                      setZipFile(file);
-                    }}
-                  />
-                </label>
+                </span>
+                <input
+                  type="file"
+                  accept=".zip"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    if (file) setZipFile(file);
+                    e.target.value = "";
+                  }}
+                />
                 <p className="text-[11px] text-slate-400 mt-1">All image files in the archive will be extracted and inspected automatically</p>
                 {zipFile && (
                   <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-2 font-medium flex items-center justify-center gap-1.5">
@@ -1863,7 +1920,7 @@ function CreateBatchModal({
                     Selected: {zipFile.name} ({(zipFile.size / (1024 * 1024)).toFixed(1)} MB)
                   </div>
                 )}
-              </div>
+              </label>
             )}
 
             {/* BigBasket SRS Specifications Strip */}

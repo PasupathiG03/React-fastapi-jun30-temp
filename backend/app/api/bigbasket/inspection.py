@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, get_db
 from app.models.user import User
+from app.api.bigbasket.uploads import is_image, zip_image_entries
 from app.services.app_settings import SettingsNotConfigured, require_image_validation_settings
 from app.services.bigbasket.image_inspector import inspect_image_bytes
 
@@ -47,11 +48,11 @@ async def inspect_uploaded_images(
     has_any_hundred_percent = False
 
     for file in files:
-        filename = Path(file.filename).name
-        if not filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+        filename = Path(file.filename or "").name
+        content = await file.read()
+        if not is_image(content):
             continue
 
-        content = await file.read()
         inspection = inspect_image_bytes(
             content,
             filename=filename,
@@ -101,25 +102,23 @@ async def inspect_uploaded_zip(
 
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as zf:
-            for name in zf.namelist():
-                if name.endswith("/") or name.startswith("__MACOSX"):
-                    continue
-                if name.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
-                    data = zf.read(name)
-                    filename = Path(name).name
-                    inspection = inspect_image_bytes(
-                        data,
-                        filename=filename,
-                        min_width=min_width,
-                        min_height=min_height,
-                    )
+            for name in zip_image_entries(zf):
+                # Keep the product folder in the label: "3534535345/1.png" and "4025437635/1.png" are different images.
+                entry = Path(name)
+                filename = f"{entry.parent.name}/{entry.name}" if entry.parent.name else entry.name
+                inspection = inspect_image_bytes(
+                    zf.read(name),
+                    filename=filename,
+                    min_width=min_width,
+                    min_height=min_height,
+                )
 
-                    if not inspection["is_dimension_valid"]:
-                        has_any_invalid_dimension = True
-                    if inspection["has_hundred_percent"]:
-                        has_any_hundred_percent = True
+                if not inspection["is_dimension_valid"]:
+                    has_any_invalid_dimension = True
+                if inspection["has_hundred_percent"]:
+                    has_any_hundred_percent = True
 
-                    results.append(inspection)
+                results.append(inspection)
     except zipfile.BadZipFile:
         raise HTTPException(status_code=400, detail="Corrupted or invalid ZIP file.")
 
