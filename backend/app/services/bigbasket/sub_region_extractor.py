@@ -4,7 +4,7 @@ import threading
 from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageEnhance, ImageFilter
 
 from app.core.logger import logger
 
@@ -324,7 +324,8 @@ class SubRegionExtractor:
             ]
 
         dark_mask = (gray < 115).astype(np.uint8)
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 5))
+        is_vertical = (py2 - py1) > (px2 - px1)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 15) if is_vertical else (15, 5))
         closed = cv2.morphologyEx(dark_mask, cv2.MORPH_CLOSE, kernel)
         contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -337,6 +338,14 @@ class SubRegionExtractor:
                     valid_c.append((bx, by, bw, bh))
 
         if valid_c:
+            target_x1, target_y1, target_x2, target_y2 = symbol if symbol is not None else (px1, py1, px2, py2)
+            overlapping_c = [
+                (bx, by, bw, bh) for (bx, by, bw, bh) in valid_c
+                if max(sx1 + bx, target_x1) < min(sx1 + bx + bw, target_x2)
+                and max(sy1 + by, target_y1) < min(sy1 + by + bh, target_y2)
+            ]
+            if overlapping_c:
+                valid_c = overlapping_c
             if bar_text_lines:
                 dt_x1 = min(l["x1"] for l in bar_text_lines)
                 dt_x2 = max(l["x2"] for l in bar_text_lines)
@@ -352,6 +361,15 @@ class SubRegionExtractor:
             bx2 = max(b[0] + b[2] for b in valid_c)
             by2 = max(b[1] + b[3] for b in valid_c)
             gbx1, gby1, gbx2, gby2 = sx1 + bx1, sy1 + by1, sx1 + bx2, sy1 + by2
+            if symbol is not None:
+                # Keep BarcodeDetector quad whole, and never let MORPH_CLOSE bleed into
+                # neighboring text/borders outside the union of Gemini's box and symbol.
+                ux1, uy1 = min(px1, symbol[0]), min(py1, symbol[1])
+                ux2, uy2 = max(px2, symbol[2]), max(py2, symbol[3])
+                gbx1 = max(ux1, min(gbx1, symbol[0]))
+                gby1 = max(uy1, min(gby1, symbol[1]))
+                gbx2 = min(ux2, max(gbx2, symbol[2]))
+                gby2 = min(uy2, max(gby2, symbol[3]))
         else:
             gbx1, gby1, gbx2, gby2 = px1, py1, px2, py2
 
@@ -361,43 +379,51 @@ class SubRegionExtractor:
             gbx2 = max(gbx2, max(l["x2"] for l in bar_text_lines))
             gby2 = max(gby2, max(l["y2"] for l in bar_text_lines))
 
+        # Tight quiet-zone expansion: enough to avoid clipping guard bars, but never 35px into
+        # adjacent white MRP boxes or neighboring text lines.
+        max_pad_x = min(10, max(4, int(round(0.05 * max(1, gbx2 - gbx1)))))
+        max_pad_y = min(8, max(3, int(round(0.05 * max(1, gby2 - gby1)))))
+
+        def _strip_has_foreground(strip_gray: np.ndarray) -> bool:
+            return int((strip_gray < 140).sum()) > 2
+
         fx1 = gbx1
-        for s in range(1, 35):
+        for s in range(1, max_pad_x + 1):
             x = gbx1 - s
             if x < 0:
                 break
             strip = arr[gby1:gby2, x]
-            if cls._get_chroma(strip) > 22 or full_gray[gby1:gby2, x].mean() < 120:
+            if cls._get_chroma(strip) > 22 or full_gray[gby1:gby2, x].mean() < 120 or _strip_has_foreground(full_gray[gby1:gby2, x]):
                 break
             fx1 = x
 
         fx2 = gbx2
-        for s in range(1, 35):
+        for s in range(1, max_pad_x + 1):
             x = gbx2 + s
             if x >= w:
                 break
             strip = arr[gby1:gby2, x]
-            if cls._get_chroma(strip) > 22 or full_gray[gby1:gby2, x].mean() < 120:
+            if cls._get_chroma(strip) > 22 or full_gray[gby1:gby2, x].mean() < 120 or _strip_has_foreground(full_gray[gby1:gby2, x]):
                 break
             fx2 = x
 
         fy1 = gby1
-        for s in range(1, 25):
+        for s in range(1, max_pad_y + 1):
             y = gby1 - s
             if y < 0:
                 break
             strip = arr[y, fx1:fx2]
-            if cls._get_chroma(strip) > 22 or full_gray[y, fx1:fx2].mean() < 120:
+            if cls._get_chroma(strip) > 22 or full_gray[y, fx1:fx2].mean() < 120 or _strip_has_foreground(full_gray[y, fx1:fx2]):
                 break
             fy1 = y
 
         fy2 = gby2
-        for s in range(1, 20):
+        for s in range(1, max_pad_y + 1):
             y = gby2 + s
             if y >= h:
                 break
             strip = arr[y, fx1:fx2]
-            if cls._get_chroma(strip) > 22 or full_gray[y, fx1:fx2].mean() < 120:
+            if cls._get_chroma(strip) > 22 or full_gray[y, fx1:fx2].mean() < 120 or _strip_has_foreground(full_gray[y, fx1:fx2]):
                 break
             fy2 = y
 
@@ -415,7 +441,31 @@ class SubRegionExtractor:
             else:
                 break
 
-        return fx1, fy1, fx2, fy2
+        # If the barcode sits inside a bordered card (like a "SAMPLE BARCODE" box), snap to the card
+        # border so stray neighboring glyphs just outside the border (e.g. "u") are excluded.
+        bg_b = float(np.median(full_gray[fy1:fy2, fx1:fx2]))
+        if bg_b >= 170 and (fx2 - fx1) > 60 and (fy2 - fy1) > 40:
+            thr_b = bg_b - 30
+            bh_b = fy2 - fy1
+            for x in range(fx1, min(fx1 + 25, fx2 - 30)):
+                if int((full_gray[fy1:fy2, x] < thr_b).sum()) >= 0.7 * bh_b and int((full_gray[fy1:fy2, x + 4] >= thr_b).sum()) >= 0.5 * bh_b:
+                    fx1 = x
+                    break
+            for x in range(fx2 - 1, max(fx2 - 25, fx1 + 30), -1):
+                if int((full_gray[fy1:fy2, x] < thr_b).sum()) >= 0.7 * bh_b and int((full_gray[fy1:fy2, x - 4] >= thr_b).sum()) >= 0.5 * bh_b:
+                    fx2 = x + 1
+                    break
+            bw_b = fx2 - fx1
+            for y in range(fy1, min(fy1 + 15, fy2 - 25)):
+                if int((full_gray[y, fx1:fx2] < thr_b).sum()) >= 0.7 * bw_b and int((full_gray[y + 4, fx1:fx2] >= thr_b).sum()) >= 0.5 * bw_b:
+                    fy1 = y
+                    break
+            for y in range(fy2 - 1, max(fy2 - 15, fy1 + 25), -1):
+                if int((full_gray[y, fx1:fx2] < thr_b).sum()) >= 0.7 * bw_b and int((full_gray[y - 4, fx1:fx2] >= thr_b).sum()) >= 0.5 * bw_b:
+                    fy2 = y + 1
+                    break
+
+        return cls._even_frame_margins(arr, (fx1, fy1, fx2, fy2))
 
     @classmethod
     def _find_clean_boundary_y(
@@ -631,13 +681,23 @@ class SubRegionExtractor:
         # by the neighbouring text, so a frame is kept whole instead of being cut through.
         has_hframe = False
         if gray is not None:
+            def _is_color_seam(y_line: int) -> bool:
+                if color is None or y_line < 4 or y_line + 5 >= color.shape[0]:
+                    return False
+                above_strip = color[y_line - 4:y_line - 1, ox1:ox2].astype(np.float32)
+                below_strip = color[y_line + 2:y_line + 5, ox1:ox2].astype(np.float32)
+                if above_strip.size == 0 or below_strip.size == 0:
+                    return False
+                mean_diff = float(np.linalg.norm(above_strip.mean(axis=(0, 1)) - below_strip.mean(axis=(0, 1))))
+                return mean_diff > 45.0
+
             reach = int(1.5 * line_h)
             top_rule = cls._find_horizontal_line(gray, ox1, ox2, oy1, search_range=(-reach, 0))
-            if top_rule is not None and top_limit <= top_rule - 3 < oy1:
+            if top_rule is not None and top_limit <= top_rule - 3 < oy1 and not _is_color_seam(top_rule):
                 ny1 = min(ny1, top_rule - 3)
                 has_hframe = True
             bot_rule = cls._find_horizontal_line(gray, ox1, ox2, oy2, search_range=(0, reach))
-            if bot_rule is not None and oy2 < bot_rule + 3 <= bottom_limit:
+            if bot_rule is not None and oy2 < bot_rule + 3 <= bottom_limit and not _is_color_seam(bot_rule):
                 ny2 = max(ny2, bot_rule + 3)
                 has_hframe = True
 
@@ -1001,8 +1061,49 @@ class SubRegionExtractor:
                     gray=gray, tighten_x=(cat_lower == "ingredient"), color=arr,
                 )
                 if refined:
+                    rx1, ry1, rx2, ry2 = refined
+                    if cat_lower == "fssai":
+                        # FSSAI is a compact emblem+license block; keep outward expansion tight unless
+                        # a 14-digit Lic. No. line sits directly below an emblem-only Gemini box.
+                        has_lic_inside = any(
+                            re.search(r'\b\d{14}\b|lic', l["text"].lower())
+                            for l in ocr_lines
+                            if l["x2"] > px1 and l["x1"] < px2 and l["y2"] > py1 and l["y1"] < py2
+                        )
+                        extra_down = 15 if has_lic_inside else 45
+                        refined = (
+                            max(rx1, px1 - 20),
+                            max(ry1, py1 - 15),
+                            min(rx2, px2 + 20),
+                            min(ry2, py2 + extra_down),
+                        )
+                    else:
+                        # Proportional expansion budget for nutritional, ingredient, manufactured_by
+                        pad_x = max(24, int(round(0.15 * max(1, px2 - px1))))
+                        pad_y = max(24, int(round(0.15 * max(1, py2 - py1))))
+                        refined = (
+                            max(rx1, px1 - pad_x),
+                            max(ry1, py1 - pad_y),
+                            min(rx2, px2 + pad_x),
+                            min(ry2, py2 + pad_y),
+                        )
                     px1, py1, px2, py2 = refined
                     block_refined = True
+
+                    if cat_lower == "manufactured_by":
+                        box_text = " ".join(
+                            l["text"].lower() for l in ocr_lines
+                            if l["x2"] > px1 and l["x1"] < px2 and l["y2"] > py1 and l["y1"] < py2
+                        )
+                        has_entity_cue = bool(re.search(
+                            r'manufactur|marketed|packed|imported|distribut|consumer\s*care|customer\s*care|'
+                            r'pvt|ltd|llp|limited|inc\.|corp\.|@|www\.|email|ph\.|tel\.|toll\s*free|'
+                            r'road|street|sector|plot|survey|dist\.|india|pin\s*[:\-]?\s*\d{6}',
+                            box_text,
+                        ))
+                        if box_text and not has_entity_cue:
+                            logger.info(f"Rejecting false-positive manufactured_by crop (no entity/contact text): {box_text[:120]}")
+                            return None
 
         if all_regions and not block_refined:
             for other_reg in all_regions:
@@ -1513,12 +1614,23 @@ class SubRegionExtractor:
         dpi: int,
     ):
         crop_img = Image.fromarray(crop_arr)
+        if category == "barcode" and crop_img.height > crop_img.width * 1.2:
+            # Auto-orient vertical barcodes to horizontal: pick the 90-degree rotation that puts
+            # the denser zebra-bar half on top and the lighter human-readable digits at the bottom.
+            g = cv2.cvtColor(crop_arr, cv2.COLOR_RGB2GRAY) if crop_arr.ndim == 3 else crop_arr
+            dark = (g < 128).astype(np.float32)
+            mid_x = max(1, dark.shape[1] // 2)
+            left_density = float(dark[:, :mid_x].mean())
+            right_density = float(dark[:, mid_x:].mean())
+            transpose_op = Image.Transpose.ROTATE_90 if left_density >= right_density else Image.Transpose.ROTATE_270
+            crop_img = crop_img.transpose(transpose_op)
 
         canvas_bytes = cls._fit_to_standard_canvas(
             crop_img,
             target_w=canvas_w,
             target_h=canvas_h,
             dpi=dpi,
+            category=category,
         )
 
         orig_buf = io.BytesIO()
@@ -1649,9 +1761,16 @@ class SubRegionExtractor:
         target_w: int,
         target_h: int,
         dpi: int,
+        category: str = "",
     ) -> bytes:
         crop_rgba = crop_img.convert("RGBA")
         cw, ch = crop_rgba.size
+
+        if category == "barcode" and max(cw, ch) < 350:
+            # Boost bar/digit separation slightly on tiny barcodes before 6x-10x upscaling.
+            rgb = crop_rgba.convert("RGB")
+            rgb = ImageEnhance.Contrast(rgb).enhance(1.15)
+            crop_rgba = rgb.convert("RGBA")
 
         # Table 3: information panels use 0 px padding and fill the canvas edge-to-edge. Scale without
         # distortion so the panel touches the canvas on its long side.
@@ -1663,6 +1782,9 @@ class SubRegionExtractor:
         scaled_h = min(target_h, max(1, round(ch * scale)))
 
         scaled_img = crop_rgba.resize((scaled_w, scaled_h), Image.Resampling.LANCZOS)
+        if max(cw, ch) < 500:
+            # Small crops upscaled >4x to 2000px look soft with LANCZOS alone; apply light unsharp masking.
+            scaled_img = scaled_img.filter(ImageFilter.UnsharpMask(radius=1.5, percent=120, threshold=3))
 
         # The rest of the canvas is transparent, never a colour (matches the manual reference outputs).
         canvas = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))

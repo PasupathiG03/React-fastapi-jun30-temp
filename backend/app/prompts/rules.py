@@ -136,7 +136,9 @@ you must detect the exact 2D bounding boxes normalized strictly from 0 to 1000: 
        NEVER include the 'Ingredients:' header or any text below the bottom border line.
 
 4. "manufactured_by" (COMPLETE ENTITY, MANUFACTURING & CUSTOMER SUPPORT CLUSTER):
-   - Semantic Scope: The complete legal entity and corporate hierarchy declared on the packaging.
+   - Semantic Scope: The complete legal entity and corporate hierarchy declared on the packaging (must contain an actual company/entity name, address, or consumer care contact).
+   - STRICT EXCLUSION: If no manufacturer, marketer, packer, importer, or consumer-care entity is printed on the image, DO NOT emit "manufactured_by".
+     NEVER classify standalone batch/traceability stamps, 'SAMPLE TRACEABILITY', 'Mfg. Date', 'Batch No.', 'Best before', 'Expiry', or 'MRP' boxes as "manufactured_by".
    - Boundary Anchors:
      * ymin: Position precisely in the whitespace gap right above the opening entity title (e.g. 'Marketed by:', 'Manufactured by:', 'Consumer Care').
        NEVER include storage guidelines (e.g. 'Store in a cool, dry & hygienic place...'), usage directions, or recipes above it.
@@ -148,19 +150,21 @@ you must detect the exact 2D bounding boxes normalized strictly from 0 to 1000: 
    - CRITICAL REQUIREMENT (NEVER EMBLEM-ONLY):
      The FSSAI sub-region is NEVER just the logo or wordmark alone! Whenever statutory license numbers
      ('Lic. No.', 'License No.', 'Mfg by Lic. No.', or 14-digit numbers) are printed below or alongside the FSSAI emblem,
-     the bounding box [ymin, xmin, ymax, xmax] MUST extend down to cover the entire license block.
-     Boxing only the logo icon (e.g. height < 50 units) while cutting off the license numbers below is strictly prohibited.
+     the bounding box [ymin, xmin, ymax, xmax] MUST extend down or laterally to cover the entire license block.
+     Boxing only the logo icon (e.g. height < 50 units) while cutting off the license numbers is strictly prohibited.
+     When a package has bare 'Lic. No.' lines inside 'manufactured_by' AND a dedicated FSSAI emblem + license cluster elsewhere,
+     always target the dedicated emblem + license cluster for "fssai".
    - Boundary Anchors:
      * ymin: Position in the whitespace gap directly above the topmost FSSAI element (the upper swirl/leaf graphic).
        NEVER include storage instructions or manufacturer entity titles above it.
      * ymax: Position in the whitespace gap directly below the lowest statutory license line in that block.
-       NEVER include company street address lines, corporate office text, or plastic recycling disclaimers below it.
+       NEVER include company street address lines, corporate office text, plastic recycling disclaimers, or bottom packaging seams below it.
      * xmin / xmax: Fully frame the widest element in the cluster (emblem or license lines). Position xmin and xmax with clean lateral whitespace so the opening prefix ('Lic. No.') and ending digits are NEVER sliced vertically through characters.
 
 6. "barcode" (MACHINE-READABLE IDENTIFIER):
-   - Semantic Scope: 1D linear barcode (EAN, UPC, Code 128) or 2D matrix code.
-   - Dynamic Requirement: Fully encompass the zebra bars, human-readable numeric digits beneath, and clear lateral quiet zone margins.
-     NEVER overlap into price boxes, MRP stamps, or recycling icons.
+   - Semantic Scope: 1D linear barcode (EAN, UPC, Code 128) or 2D matrix code in any orientation (horizontal or vertical/rotated 90°).
+   - Dynamic Requirement: Fully encompass the zebra bars, human-readable numeric digits (below or beside the bars), and clear lateral quiet zone margins.
+     NEVER overlap into adjacent blank/printed price boxes, MRP stamps, or recycling icons.
 
 7. "directions", "caution", "storage":
    - Dynamic Requirement: Identify and self-contain preparation/usage steps, safety/warning alerts, or storage guidelines where present.
