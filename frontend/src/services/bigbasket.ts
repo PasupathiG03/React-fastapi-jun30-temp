@@ -437,7 +437,23 @@ export async function updateImageCategory(
   });
 }
 
-export function getImageFileUrl(imageId: number, variant: "original" | "final" = "original"): string {
+export async function saveManualBgMask(
+  imageId: number,
+  maskBlob: Blob,
+  approve: boolean = false
+): Promise<any> {
+  const fd = new FormData();
+  fd.append("mask", maskBlob, "manual_mask.png");
+  return request(`/api/image-studio/images/${imageId}/manual-bg-mask?approve=${approve}`, {
+    method: "POST",
+    body: fd,
+  });
+}
+
+export function getImageFileUrl(
+  imageId: number,
+  variant: "original" | "final" | "segmented" = "original"
+): string {
   return `${API_BASE_URL}/api/image-studio/images/${imageId}/file?variant=${variant}`;
 }
 

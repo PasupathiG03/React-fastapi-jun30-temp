@@ -1,7 +1,10 @@
+from datetime import datetime, timezone
+import io
 from pathlib import Path
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
+from PIL import Image, ImageOps
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -210,6 +213,141 @@ def reapply_padding_endpoint(
 
     db.commit()
     return {"message": "Padding re-applied successfully"}
+
+
+@router.post("/{image_id}/manual-bg-mask", response_model=BatchImageDetailOut)
+async def apply_manual_bg_mask(
+    image_id: int,
+    mask: UploadFile = File(...),
+    approve: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Applies a human-edited alpha mask (PNG) directly to the output canvas (final_output_path)
+    without re-cropping, re-padding, or re-annotating. Falls back to original_file_path +
+    reapply_padding only if no final_output_path exists yet.
+    """
+    img = db.query(BatchImage).filter(BatchImage.id == image_id).first()
+    if not img:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    parent = db.query(ImageBatch).filter(ImageBatch.id == img.batch_id).first()
+    batch_cfg = (parent.config if parent else None) or {}
+    target_dpi = int(batch_cfg.get("dpi") or 150)
+
+    final_path = Path(img.final_output_path) if img.final_output_path else None
+    orig_path = Path(img.original_file_path) if img.original_file_path else None
+    has_final = bool(final_path and final_path.exists())
+
+    if not has_final and (not orig_path or not orig_path.exists()):
+        raise HTTPException(status_code=404, detail="Image file not found on disk")
+
+    mask_bytes = await mask.read()
+    if not mask_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded mask file is empty")
+
+    try:
+        mask_pil = Image.open(io.BytesIO(mask_bytes))
+        if mask_pil.mode in ("RGBA", "LA") or "A" in mask_pil.getbands():
+            alpha_channel = mask_pil.convert("RGBA").getchannel("A")
+        else:
+            alpha_channel = mask_pil.convert("L")
+
+        if has_final:
+            base_pil = Image.open(final_path).convert("RGBA")
+            if alpha_channel.size != base_pil.size:
+                alpha_channel = alpha_channel.resize(base_pil.size, Image.Resampling.LANCZOS)
+            base_pil.putalpha(alpha_channel)
+
+            out_buf = io.BytesIO()
+            base_pil.save(out_buf, format="PNG", dpi=(target_dpi, target_dpi))
+            new_png_bytes = out_buf.getvalue()
+        else:
+            if not all(batch_cfg.get(k) for k in ("canvas_width", "canvas_height", "dpi")):
+                raise HTTPException(status_code=400, detail="This image's batch has no canvas size or DPI configured.")
+            orig_pil = ImageOps.exif_transpose(Image.open(orig_path)).convert("RGBA")
+            if alpha_channel.size != orig_pil.size:
+                alpha_channel = alpha_channel.resize(orig_pil.size, Image.Resampling.LANCZOS)
+            orig_pil.putalpha(alpha_channel)
+
+            seg_buf = io.BytesIO()
+            orig_pil.save(seg_buf, format="PNG")
+            padding_cfg = batch_cfg.get("fop_bop_padding") or {
+                "top": 180,
+                "bottom": 180,
+                "left": 100,
+                "right": 100,
+            }
+            new_png_bytes = PipelineService.reapply_padding(
+                image_bytes=seg_buf.getvalue(),
+                padding_cfg=padding_cfg,
+                image_type=img.image_type,
+                target_dpi=target_dpi,
+                canvas_w=int(batch_cfg["canvas_width"]),
+                canvas_h=int(batch_cfg["canvas_height"]),
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to process manual mask: {exc}")
+
+    if not img.final_output_path:
+        out_dir = Path("uploads/processed")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        img.final_output_path = str(out_dir / f"{img.id}_final.png")
+    else:
+        Path(img.final_output_path).parent.mkdir(parents=True, exist_ok=True)
+
+    with open(img.final_output_path, "wb") as f:
+        f.write(new_png_bytes)
+
+    now = datetime.now(timezone.utc)
+    img.file_size_bytes = len(new_png_bytes)
+    val = dict(img.validation_results or {})
+    val["alpha_valid"] = True
+    val["bg_removal_provider"] = "manual_brush"
+    val["manual_bg_edited"] = True
+
+    audit_entry = {
+        "user_id": current_user.id,
+        "employee_id": getattr(current_user, "employee_id", None),
+        "employee_name": getattr(current_user, "employee_name", None),
+        "edited_at": now.isoformat(),
+        "action": "manual_brush_approve" if approve else "manual_brush_save",
+    }
+    history = list(val.get("manual_edit_history") or [])
+    history.append(audit_entry)
+    val["manual_edit_history"] = history[-25:]
+    val["last_manual_edit"] = audit_entry
+
+    img.validation_results = val
+    img.error_message = None
+
+    if approve:
+        img.status = "manually_approved"
+        img.review_decision = "approved"
+        img.reviewer_id = current_user.id
+        img.reviewed_at = now
+        img.review_comments = "Manually edited and approved via Background Brush Tool"
+
+    db.commit()
+    if approve and parent:
+        from app.services.bigbasket.batch_processor import BatchProcessor
+        BatchProcessor._refresh_batch_counters(db, parent, include_total=True)
+        db.commit()
+    db.refresh(img)
+
+    setattr(img, "validation_status", img.validation_results)
+    if all(batch_cfg.get(k) for k in ("canvas_width", "canvas_height", "dpi")):
+        setattr(img, "batch_output_spec", {
+            "width": int(batch_cfg["canvas_width"]),
+            "height": int(batch_cfg["canvas_height"]),
+            "dpi": int(batch_cfg["dpi"]),
+        })
+    cat = val.get("product_category") or (val.get("gemini_classification") or {}).get("primary_category")
+    setattr(img, "product_category", cat)
+    return img
 
 
 @router.post("/{image_id}/retry", response_model=BatchImageDetailOut)
