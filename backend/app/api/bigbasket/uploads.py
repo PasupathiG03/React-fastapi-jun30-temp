@@ -173,15 +173,21 @@ async def upload_image_files(
         bbid, seq, img_type = resolve_bbid_and_seq(file.filename, False, allocator.next_free)
         seq = allocator.claim(bbid, seq)
 
+        entry = Path(file.filename or "")
+        source_folder = entry.parent.as_posix().strip("/")
+        if source_folder in ("", "."):
+            source_folder = None
+
         b_img = BatchImage(
             batch_id=batch.id,
             bbid=bbid,
-            original_filename=Path(file.filename).name,
+            original_filename=entry.name,
             original_file_path=str(dest),
             image_type=img_type,
             sequence_order=seq,
             file_size_bytes=len(content),
             status="pending",
+            validation_results={"source_folder": source_folder} if source_folder else None,
         )
         db.add(b_img)
         registered_count += 1
@@ -237,6 +243,9 @@ async def upload_images_zip(
             seq = allocator.claim(bbid, seq)
 
             entry = Path(name)
+            source_folder = entry.parent.as_posix().strip("/")
+            if source_folder in ("", "."):
+                source_folder = None
             disk_name = f"{entry.parent.name}_{entry.name}" if entry.parent.name else entry.name
             p = unique_dest(orig_dir, disk_name, taken_names)
             with open(p, "wb") as f:
@@ -251,6 +260,7 @@ async def upload_images_zip(
                 sequence_order=seq,
                 file_size_bytes=p.stat().st_size,
                 status="pending",
+                validation_results={"source_folder": source_folder} if source_folder else None,
             )
             db.add(b_img)
             registered_count += 1

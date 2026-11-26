@@ -578,7 +578,11 @@ class BatchProcessor:
                 img.image_type = outcome["effective_type"]
             img.segmented_file_path = outcome["segmented_file_path"]
             img.final_output_path = outcome["final_output_path"]
-            img.validation_results = outcome["validation_results"]
+            prev_folder = (img.validation_results or {}).get("source_folder")
+            new_val = dict(outcome["validation_results"] or {})
+            if prev_folder and not new_val.get("source_folder"):
+                new_val["source_folder"] = prev_folder
+            img.validation_results = new_val
             img.status = outcome["status"]
             img.confidence_score = outcome["confidence_score"]
             img.original_width = outcome["original_width"]
@@ -760,6 +764,11 @@ class BatchProcessor:
                         "aspect_ratio_valid": True,
                         "failure_reasons": [],
                         "auto_extracted_from": parent_img.id,
+                        **(
+                            {"source_folder": (parent_img.validation_results or {}).get("source_folder")}
+                            if (parent_img.validation_results or {}).get("source_folder")
+                            else {}
+                        ),
                     },
                 )
                 db.add(sub_img)
@@ -804,10 +813,12 @@ class BatchProcessor:
             for img in images:
                 if img.status in allowed_statuses and img.final_output_path:
                     p = Path(img.final_output_path)
-                    if p.exists() and p.name not in seen_arcnames:
-                        # Standard BigBasket naming: {BBID}_{sequence}.png
-                        zf.write(p, arcname=p.name)
-                        seen_arcnames.add(p.name)
+                    source_folder = (img.validation_results or {}).get("source_folder")
+                    arcname = f"{source_folder.strip('/')}/{p.name}" if source_folder else p.name
+                    if p.exists() and arcname not in seen_arcnames:
+                        # Preserve uploaded folder structure (if any) with standard BigBasket filename
+                        zf.write(p, arcname=arcname)
+                        seen_arcnames.add(arcname)
                         exported_count += 1
 
         # 2. Build Excel Exception & Summary Report
@@ -995,7 +1006,8 @@ class BatchProcessor:
             img.status = "pending"
             img.error_message = None
             img.confidence_score = None
-            img.validation_results = None
+            src_folder = (img.validation_results or {}).get("source_folder")
+            img.validation_results = {"source_folder": src_folder} if src_folder else None
             img.review_decision = None
             img.reviewer_id = None
             img.review_comments = None
