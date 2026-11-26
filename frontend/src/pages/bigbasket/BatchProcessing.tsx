@@ -1041,11 +1041,11 @@ function BatchTableRow({
                 type="button"
                 onClick={onRerunBatch}
                 disabled={actionLoading || rerunningBatchId === batch.id}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 border border-indigo-200 dark:border-indigo-800 shadow-xs transition-all cursor-pointer active:scale-95 disabled:opacity-50"
-                title="Rerun the entire batch with single click"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors cursor-pointer disabled:opacity-50"
+                title={rerunningBatchId === batch.id ? "Rerunning batch..." : "Rerun Batch"}
+                aria-label="Rerun Batch"
               >
-                <RotateCcw className={`w-3.5 h-3.5 ${rerunningBatchId === batch.id ? "animate-spin" : ""}`} />
-                <span>{rerunningBatchId === batch.id ? "Rerunning..." : "Rerun Batch"}</span>
+                <RotateCcw className={`w-4 h-4 ${rerunningBatchId === batch.id ? "animate-spin text-indigo-500" : ""}`} />
               </button>
             )}
 

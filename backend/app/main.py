@@ -70,6 +70,9 @@ async def on_startup():
     broadcaster.start(loop)
     # Load the RapidOCR models in the background so startup is not blocked; /health shows "initializing" until done.
     loop.run_in_executor(None, warm_up_ocr)
+    # Automatically resume any batches/images interrupted by a deploy or worker restart
+    from app.tasks.batch_tasks import recover_interrupted_tasks
+    loop.run_in_executor(None, recover_interrupted_tasks)
 
 
 @app.on_event("shutdown")

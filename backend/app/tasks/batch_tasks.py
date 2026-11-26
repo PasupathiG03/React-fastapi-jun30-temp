@@ -102,3 +102,59 @@ def dispatch_single_image_task(
         t = threading.Thread(target=_run_in_thread, daemon=True, name=f"img-thread-{image_id}")
         t.start()
         logger.info(f"Started image {image_id} in detached daemon thread.")
+
+
+def recover_interrupted_tasks():
+    """Re-queues batches and individual images that were left in 'processing'/'queued' when the server or worker restarted."""
+    from app.core.database import SessionLocal
+    from app.models.bigbasket import BatchImage, ImageBatch
+    from app.services.bigbasket.events import redis_usable
+
+    # In multi-worker deployments (--workers 4), only one worker should run recovery per startup.
+    acquired = BatchProcessor._redis_call(
+        lambda r: r.set("startup:recover_interrupted_tasks", "1", nx=True, ex=60),
+        force=False,
+    )
+    if redis_usable() and not acquired:
+        return
+
+    db = SessionLocal()
+    try:
+        active_batches = (
+            db.query(ImageBatch)
+            .filter(ImageBatch.status.in_(["queued", "processing"]))
+            .all()
+        )
+        active_batch_ids = set()
+        for batch in active_batches:
+            active_batch_ids.add(batch.id)
+            stuck_imgs = (
+                db.query(BatchImage)
+                .filter(
+                    BatchImage.batch_id == batch.id,
+                    BatchImage.status == "processing",
+                )
+                .all()
+            )
+            for img in stuck_imgs:
+                img.status = "pending"
+            db.commit()
+            try:
+                process_batch_task.delay(batch.id)
+                logger.info(f"[Startup Recovery] Re-queued interrupted batch {batch.id} ({batch.batch_code}).")
+            except Exception as exc:
+                logger.warning(f"[Startup Recovery] Failed to re-queue batch {batch.id}: {exc}")
+
+        # Re-dispatch any standalone image reruns stuck in 'processing' outside active batches
+        orphan_query = db.query(BatchImage).filter(BatchImage.status == "processing")
+        if active_batch_ids:
+            orphan_query = orphan_query.filter(~BatchImage.batch_id.in_(active_batch_ids))
+        orphans = orphan_query.all()
+        for img in orphans:
+            provider = ((img.batch.config if img.batch else None) or {}).get("bg_removal_provider") or "birefnet"
+            dispatch_single_image_task(img.id, provider=provider, skip_classification=False)
+            logger.info(f"[Startup Recovery] Re-dispatched interrupted image {img.id} (provider={provider}).")
+    except Exception as exc:
+        logger.warning(f"[Startup Recovery] Error checking interrupted tasks: {exc}")
+    finally:
+        db.close()
